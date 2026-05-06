@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../shared/ConfirmDialog'
 import type { SessionListItem } from '../../types/session'
 import { useTabStore, SETTINGS_TAB_ID, SCHEDULED_TAB_ID } from '../../stores/tabStore'
 import { useChatStore } from '../../stores/chatStore'
+import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
 
 const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
 const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform)
@@ -26,6 +27,9 @@ export function Sidebar() {
   const addToast = useUIStore((s) => s.addToast)
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
+  const centralStatus = useCentralOAuthStore((s) => s.status)
+  const isCentralLoggedIn = centralStatus?.loggedIn
+  const centralDisplayName = centralStatus?.displayName
   const activeTabId = useTabStore((s) => s.activeTabId)
   const closeTab = useTabStore((s) => s.closeTab)
   const disconnectSession = useChatStore((s) => s.disconnectSession)
@@ -144,17 +148,22 @@ export function Sidebar() {
             </span>
           </div>
           <div className={`flex items-center ${sidebarOpen ? 'gap-1.5' : 'flex-col gap-2'}`}>
-            <a
-              href="https://github.com/NanmiCoder/AmbiCrew"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`sidebar-copy ${sidebarOpen ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} inline-flex items-center justify-center rounded-md p-1 text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)]`}
-              title="GitHub"
-              tabIndex={sidebarOpen ? undefined : -1}
-              aria-hidden={!sidebarOpen}
-            >
-              <GitHubIcon />
-            </a>
+            {isCentralLoggedIn ? (
+              <span
+                className={`sidebar-copy ${sidebarOpen ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} text-xs text-[var(--color-text-secondary)]`}
+                title={centralDisplayName}
+              >
+                {centralDisplayName || 'CrewCentral'}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => useUIStore.getState().setPendingSettingsTab('providers')}
+                className={`sidebar-copy ${sidebarOpen ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors`}
+              >
+                登录
+              </button>
+            )}
             <button
               type="button"
               onClick={toggleSidebar}
@@ -453,14 +462,6 @@ function formatRelativeTime(dateStr: string): string {
   const day = Math.floor(hr / 24)
   if (day < 30) return `${day}d`
   return `${Math.floor(day / 30)}mo`
-}
-
-function GitHubIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-    </svg>
-  )
 }
 
 function PlusIcon() {
