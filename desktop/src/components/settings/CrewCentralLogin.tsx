@@ -1,8 +1,8 @@
 // desktop/src/components/settings/CrewCentralLogin.tsx
 //
 // CrewCentral login UI component — shows login status and provides
-// login/logout buttons. Opens browser for OAuth flow via Electron shell.openExternal.
-// Uses server-side central-oauth API for session management.
+// login/logout buttons. In Electron mode, the main process handles the full OAuth flow
+// (opens browser, waits for callback, completes login). In web mode, uses server API.
 
 import { useEffect } from 'react'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'

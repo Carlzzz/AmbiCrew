@@ -7,6 +7,11 @@ import { setupSingleInstance } from './shell/singleInstance.js'
 import { setAppMenu } from './shell/appMenu.js'
 import { registerShellIpc } from './ipc/shellIpc.js'
 import { registerWhitelistedInvoke } from './ipc/ipcRegistry.js'
+import { registerAuthIpc } from './ipc/authIpc.js'
+import { AuthController } from './auth/authController.js'
+import { CallbackServer } from './auth/callbackServer.js'
+import { startDeviceHeartbeat } from './auth/deviceManager.js'
+import { getAccessToken } from './auth/tokenStore.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -68,7 +73,28 @@ app.whenReady().then(async () => {
     return { ok: true, baseUrl: url }
   })
 
-  // Auth, skills IPC will be registered later
+  // Initialize auth
+  const authController = new AuthController()
+  const callbackSrv = new CallbackServer()
+  registerAuthIpc({ controller: authController, callbackSrv: callbackSrv })
+
+  // Try restore session
+  const restored = await authController.tryRestoreSession()
+
+  // Start device heartbeat if logged in
+  if (restored) {
+    startDeviceHeartbeat({
+      getAccessToken: () => getAccessToken(),
+      onTokenRefresh: () => authController.tryRefreshToken(),
+      onExpire: () => authController.expire(),
+      onReboot: () => {
+        app.relaunch()
+        app.exit(0)
+      },
+    })
+  }
+
+  // Skills IPC will be registered later
 
   mainWindow = createWindow()
 
