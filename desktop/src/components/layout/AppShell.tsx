@@ -4,12 +4,12 @@ import { ContentRouter } from './ContentRouter'
 import { ToastContainer } from '../shared/Toast'
 import { UpdateChecker } from '../shared/UpdateChecker'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { useUIStore, type SettingsTab } from '../../stores/uiStore'
+import { useUIStore } from '../../stores/uiStore'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
-import { initializeDesktopServerUrl, isTauriRuntime } from '../../lib/desktopRuntime'
+import { initializeDesktopServerUrl } from '../../lib/desktopRuntime'
 import { TabBar } from './TabBar'
 import { StartupErrorView } from './StartupErrorView'
-import { useTabStore, SETTINGS_TAB_ID } from '../../stores/tabStore'
+import { useTabStore } from '../../stores/tabStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useTranslation } from '../../i18n'
 
@@ -56,24 +56,7 @@ export function AppShell() {
     }
   }, [fetchSettings])
 
-  // Listen for macOS native menu navigation events (About / Settings)
-  useEffect(() => {
-    if (!isTauriRuntime()) return
-    let unlisten: (() => void) | undefined
-    import('@tauri-apps/api/event')
-      .then(({ listen }) =>
-        listen<string>('native-menu-navigate', (event) => {
-          const target = event.payload as SettingsTab | 'settings'
-          if (target === 'about') {
-            useUIStore.getState().setPendingSettingsTab('about')
-          }
-          useTabStore.getState().openTab(SETTINGS_TAB_ID, 'Settings', 'settings')
-        }),
-      )
-      .then((fn) => { unlisten = fn })
-      .catch(() => {})
-    return () => { unlisten?.() }
-  }, [])
+  // macOS native menu events are handled via Electron IPC (registered later)
 
   useKeyboardShortcuts()
 
