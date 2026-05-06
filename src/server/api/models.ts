@@ -1,0 +1,391 @@
+/**
+ * Models REST API
+ *
+ * GET  /api/models          — 获取可用模型列表
+ * GET  /api/models/current  — 获取当前选中的模型
+ * PUT  /api/models/current  — 切换模型
+ * GET  /api/effort          — 获取 Effort 等级
+ * PUT  /api/effort          — 设置 Effort 等级
+ */
+
+import { SettingsService } from '../services/settingsService.js'
+import { ProviderService } from '../services/providerService.js'
+import { ApiError, errorResponse } from '../middleware/errorHandler.js'
+import { hasOpenAIAuthLogin, isCentralAuthMode, getCentralAccessToken } from '../../utils/auth.js'
+import { OPENAI_CODEX_MODEL_CATALOG } from '../../services/openaiAuth/models.js'
+import {
+  fetchProxyModelList,
+  parseDirectModels,
+  type ProxyModelItem,
+} from '../../services/central/proxy-client.js'
+
+// ─── Fallback models (used when no provider is configured) ────────────────────
+
+const DEFAULT_MODELS = [
+  {
+    id: 'claude-opus-4-7',
+    name: 'Opus 4.7',
+    description: 'Most capable for ambitious work',
+    context: '1m',
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    name: 'Sonnet 4.6',
+    description: 'Most efficient for everyday tasks',
+    context: '200k',
+  },
+  {
+    id: 'claude-haiku-4-5',
+    name: 'Haiku 4.5',
+    description: 'Fastest for quick answers',
+    context: '200k',
+  },
+] as const
+
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const
+
+const DEFAULT_MODEL = 'claude-opus-4-7'
+const DEFAULT_EFFORT = 'medium'
+
+const settingsService = new SettingsService()
+const providerService = new ProviderService()
+
+type ApiModelInfo = {
+  id: string
+  name: string
+  description: string
+  context: string
+}
+
+function addUniqueModel(
+  models: ApiModelInfo[],
+  model: ApiModelInfo | null,
+): void {
+  if (!model || !model.id.trim()) {
+    return
+  }
+
+  if (models.some(existing => existing.id === model.id)) {
+    return
+  }
+
+  models.push(model)
+}
+
+function buildProviderModelList(models: {
+  main: string
+  haiku: string
+  sonnet: string
+  opus: string
+}): ApiModelInfo[] {
+  const modelList: ApiModelInfo[] = []
+
+  addUniqueModel(modelList, {
+    id: models.main,
+    name: models.main,
+    description: 'Main model',
+    context: '',
+  })
+  addUniqueModel(modelList, models.haiku
+    ? {
+        id: models.haiku,
+        name: models.haiku,
+        description: 'Haiku model',
+        context: '',
+      }
+    : null)
+  addUniqueModel(modelList, models.sonnet
+    ? {
+        id: models.sonnet,
+        name: models.sonnet,
+        description: 'Sonnet model',
+        context: '',
+      }
+    : null)
+  addUniqueModel(modelList, models.opus
+    ? {
+        id: models.opus,
+        name: models.opus,
+        description: 'Opus model',
+        context: '',
+      }
+    : null)
+
+  return modelList
+}
+
+function getEnvConfiguredAnthropicModels(): ApiModelInfo[] {
+  return buildProviderModelList({
+    main: process.env.ANTHROPIC_MODEL?.trim() || '',
+    haiku: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL?.trim() || '',
+    sonnet: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL?.trim() || '',
+    opus: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL?.trim() || '',
+  })
+}
+
+function getOpenAIAuthModels(): ApiModelInfo[] {
+  if (!hasOpenAIAuthLogin()) {
+    return []
+  }
+
+  return OPENAI_CODEX_MODEL_CATALOG.map(model => ({
+    id: model.value,
+    name: model.label,
+    description: model.description,
+    context: '',
+  }))
+}
+
+function getStandaloneModelList(): ApiModelInfo[] {
+  const models = [...getEnvConfiguredAnthropicModels()]
+
+  if (models.length === 0) {
+    models.push(...DEFAULT_MODELS)
+  }
+
+  for (const model of getOpenAIAuthModels()) {
+    addUniqueModel(models, model)
+  }
+
+  return models
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+
+export async function handleModelsApi(
+  req: Request,
+  url: URL,
+  segments: string[],
+): Promise<Response> {
+  try {
+    const resource = segments[1] // 'models' | 'effort'
+    const sub = segments[2] // 'current' | undefined
+
+    // ── /api/effort ───────────────────────────────────────────────────
+    if (resource === 'effort') {
+      return await handleEffort(req)
+    }
+
+    // ── /api/models/* ─────────────────────────────────────────────────
+    switch (sub) {
+      case undefined:
+        // GET /api/models — 优先从激活的 Provider 读取模型列表
+        if (req.method !== 'GET') throw methodNotAllowed(req.method)
+        return await handleModelsList()
+
+      case 'current':
+        return await handleCurrentModel(req)
+
+      default:
+        throw ApiError.notFound(`Unknown models endpoint: ${sub}`)
+    }
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
+// ─── Handlers ─────────────────────────────────────────────────────────────────
+
+async function handleModelsList(): Promise<Response> {
+  const { providers, activeId } = await providerService.listProviders()
+  const activeProvider = activeId ? providers.find((p) => p.id === activeId) : null
+  if (activeProvider) {
+    // When using crewcentral provider, try fetching dynamic models from CrewProxy first
+    if (activeProvider.presetId === 'crewcentral') {
+      const proxyModels = await tryFetchProxyModels()
+      if (proxyModels) {
+        return Response.json({
+          models: proxyModels,
+          provider: { id: activeProvider.id, name: activeProvider.name },
+        })
+      }
+    }
+    const modelList = buildProviderModelList(activeProvider.models)
+    return Response.json({
+      models: modelList,
+      provider: { id: activeProvider.id, name: activeProvider.name },
+    })
+  }
+  // No active provider — try proxy models if in central auth mode
+  if (isCentralAuthMode()) {
+    const proxyModels = await tryFetchProxyModels()
+    if (proxyModels) {
+      return Response.json({ models: proxyModels, provider: null })
+    }
+  }
+  return Response.json({ models: getStandaloneModelList(), provider: null })
+}
+
+/**
+ * Attempt to fetch model list from CrewProxy.
+ * Returns null if proxy is not configured or fetch fails.
+ */
+async function tryFetchProxyModels(): Promise<ApiModelInfo[] | null> {
+  const proxyBaseUrl =
+    process.env.LLM_PROXY_BASE_URL?.trim() ||
+    process.env.ANTHROPIC_BASE_URL?.trim()
+  if (!proxyBaseUrl) return null
+
+  try {
+    const token = (await getCentralAccessToken()) ||
+      process.env.LLM_PROXY_API_KEY?.trim() ||
+      process.env.LLM_DIRECT_API_KEY?.trim() ||
+      undefined
+
+    const result = await fetchProxyModelList({
+      baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
+      token,
+    })
+
+    return result.items.map((m: ProxyModelItem) => ({
+      id: m.modelId,
+      name: m.modelAlias,
+      description: m.imageSupport ? 'Supports image input' : '',
+      context: '',
+    }))
+  } catch {
+    // Proxy fetch failed — try LLM_DIRECT_MODELS as fallback
+    return tryGetDirectModels()
+  }
+}
+
+/**
+ * Parse model list from LLM_DIRECT_MODELS env var.
+ * Format: "DisplayName:modelId,Name2:id2"
+ */
+function tryGetDirectModels(): ApiModelInfo[] | null {
+  const raw = process.env.LLM_DIRECT_MODELS?.trim()
+  if (!raw) return null
+  const items = parseDirectModels(raw)
+  if (items.length === 0) return null
+  return items.map((m) => ({
+    id: m.modelId,
+    name: m.modelAlias,
+    description: '',
+    context: '',
+  }))
+}
+
+async function handleCurrentModel(req: Request): Promise<Response> {
+  if (req.method === 'GET') {
+    // Build the full model list: prefer active provider's models, fall back to defaults
+    const { providers, activeId } = await providerService.listProviders()
+    const activeProvider = activeId ? providers.find((p) => p.id === activeId) : null
+    const settings = activeProvider
+      ? await providerService.getManagedSettings()
+      : await settingsService.getUserSettings()
+    const explicitModel = (settings.model as string) || ''
+    const contextTier = (settings.modelContext as string) || undefined
+    const env = (settings.env as Record<string, string>) || {}
+    const envModel = process.env.ANTHROPIC_MODEL?.trim() || ''
+
+    let currentModelId: string
+    let currentModelName: string
+
+    if (activeProvider) {
+      // Provider is active — only use the provider-managed cc-haha settings.
+      // This avoids leaking global ~/.claude/settings.json model choices into
+      // the active provider flow.
+      const providerEnvModel = env.ANTHROPIC_MODEL
+      if (providerEnvModel && !explicitModel) {
+        currentModelId = providerEnvModel
+        currentModelName = providerEnvModel
+      } else {
+        currentModelId = explicitModel || providerEnvModel || activeProvider.models.main
+        currentModelName = currentModelId
+      }
+    } else {
+      // No provider — use settings model with context tier
+      currentModelId = explicitModel || envModel || DEFAULT_MODEL
+      currentModelName = currentModelId
+    }
+
+    const lookupId = contextTier ? `${currentModelId}:${contextTier}` : currentModelId
+
+    // Build available models for name lookup
+    const availableModels = activeProvider
+      ? buildProviderModelList(activeProvider.models)
+      : getStandaloneModelList()
+
+    const modelEntry = availableModels.find((m) => m.id === lookupId)
+      || availableModels.find((m) => m.id === currentModelId)
+      || {
+        id: currentModelId,
+        name: currentModelName,
+        description: 'Custom model',
+        context: contextTier || 'unknown',
+      }
+
+    return Response.json({ model: { ...modelEntry, context: contextTier || modelEntry.context } })
+  }
+
+  if (req.method === 'PUT') {
+    const body = await parseJsonBody(req)
+    const modelId = body.modelId
+    if (typeof modelId !== 'string' || !modelId) {
+      throw ApiError.badRequest('Missing or invalid "modelId" in request body')
+    }
+
+    // Parse composite IDs like 'claude-opus-4-7-20250610:1m'
+    // Persist the base model ID for CLI compatibility and context tier separately
+    const colonIdx = modelId.indexOf(':')
+    const baseId = colonIdx !== -1 ? modelId.slice(0, colonIdx) : modelId
+    const contextTier = colonIdx !== -1 ? modelId.slice(colonIdx + 1) : undefined
+
+    const updates: Record<string, unknown> = { model: baseId }
+    if (contextTier) {
+      updates.modelContext = contextTier
+    } else {
+      // Clear context tier when switching to a non-composite model
+      updates.modelContext = undefined
+    }
+    const { activeId } = await providerService.listProviders()
+    if (activeId) {
+      await providerService.updateManagedSettings(updates)
+    } else {
+      await settingsService.updateUserSettings(updates)
+    }
+    return Response.json({ ok: true, model: modelId })
+  }
+
+  throw methodNotAllowed(req.method)
+}
+
+async function handleEffort(req: Request): Promise<Response> {
+  if (req.method === 'GET') {
+    const settings = await settingsService.getUserSettings()
+    const level = (settings.effort as string) || DEFAULT_EFFORT
+    return Response.json({ level, available: EFFORT_LEVELS })
+  }
+
+  if (req.method === 'PUT') {
+    const body = await parseJsonBody(req)
+    const level = body.level
+    if (typeof level !== 'string') {
+      throw ApiError.badRequest('Missing or invalid "level" in request body')
+    }
+    if (!EFFORT_LEVELS.includes(level as (typeof EFFORT_LEVELS)[number])) {
+      throw ApiError.badRequest(
+        `Invalid effort level: "${level}". Valid levels: ${EFFORT_LEVELS.join(', ')}`,
+      )
+    }
+    await settingsService.updateUserSettings({ effort: level })
+    return Response.json({ ok: true, level })
+  }
+
+  throw methodNotAllowed(req.method)
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function parseJsonBody(req: Request): Promise<Record<string, unknown>> {
+  try {
+    return (await req.json()) as Record<string, unknown>
+  } catch {
+    throw ApiError.badRequest('Invalid JSON body')
+  }
+}
+
+function methodNotAllowed(method: string): ApiError {
+  return new ApiError(405, `Method ${method} not allowed`, 'METHOD_NOT_ALLOWED')
+}

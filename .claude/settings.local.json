@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\zhaocao\\\\Documents\\\\GitHub\\\\AmbiCrew\" -Depth 2)",
+      "Bash(Select-Object Mode, Name)",
+      "Bash(Format-Table -AutoSize)",
+      "PowerShell($crew = Get-ChildItem -Path \"C:\\\\Users\\\\zhaocao\\\\Documents\\\\GitHub\\\\AmbiCrew\\\\src\" -Directory | Select-Object -ExpandProperty Name; $code = Get-ChildItem -Path \"C:\\\\Users\\\\zhaocao\\\\Documents\\\\GitHub\\\\AmbiCode\\\\src\" -Directory | Select-Object -ExpandProperty Name; Write-Output \"=== Only in AmbiCrew ===\"; $crew | Where-Object { $_ -notin $code }; Write-Output \"=== Only in AmbiCode ===\"; $code | Where-Object { $_ -notin $crew }; Write-Output \"=== Common ===\"; $crew | Where-Object { $_ -in $code })",
+      "Bash(npx tsc *)",
+      "Bash(bun --version)",
+      "PowerShell(bun --version 2>&1)",
+      "PowerShell(Get-Command bun -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source; if \\(-not $?\\) { where.exe bun 2>&1 }; if \\(-not $?\\) { Get-ChildItem \"$env:USERPROFILE\\\\.bun\\\\bin\\\\bun.exe\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName })",
+      "Bash(\"C:\\\\Users\\\\zhaocao\\\\.bun\\\\bin\\\\bun.exe\" run *)",
+      "Bash(\"C:\\\\Users\\\\zhaocao\\\\.bun\\\\bin\\\\bun.exe\" --version)",
+      "Bash(\"C:\\\\Users\\\\zhaocao\\\\.bun\\\\bin\\\\bun.exe\" x *)",
+      "PowerShell(& \"C:\\\\Users\\\\zhaocao\\\\.bun\\\\bin\\\\bun.exe\" install 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\zhaocao\\\\.bun\\\\bin\\\\bun.exe\" run src/server/index.ts 2>&1)",
+      "Bash(Get-ChildItem -Directory -Name 'c:\\\\Users\\\\zhaocao\\\\Documents\\\\GitHub\\\\AmbiCrew\\\\desktop\\\\src\\\\')",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\zhaocao\\\\Documents\\\\GitHub\\\\AmbiCrew\\\\docs\\\\ui-clone\\\\Ambilightlogo.png\" \"C:\\\\Users\\\\zhaocao\\\\Documents\\\\GitHub\\\\AmbiCrew\\\\desktop\\\\public\\\\app-icon.png\" -Force)"
+    ]
+  }
+}
