@@ -27,7 +27,6 @@ import { McpSettings } from './McpSettings'
 import { TerminalSettings } from './TerminalSettings'
 import { DiagnosticsSettings } from './DiagnosticsSettings'
 import { useUIStore, type SettingsTab } from '../stores/uiStore'
-import { ClaudeOfficialLogin } from '../components/settings/ClaudeOfficialLogin'
 import { CrewCentralLogin } from '../components/settings/CrewCentralLogin'
 import { useUpdateStore } from '../stores/updateStore'
 import { formatBytes } from '../lib/formatBytes'
@@ -122,21 +121,17 @@ function ProviderSettings() {
   const {
     providers,
     activeId,
-    hasLoadedProviders,
     presets,
     isLoading,
-    isPresetsLoading,
     fetchProviders,
     fetchPresets,
     deleteProvider,
     activateProvider,
-    activateOfficial,
     testProvider,
   } = useProviderStore()
   const fetchSettings = useSettingsStore((s) => s.fetchAll)
   const t = useTranslation()
   const [editingProvider, setEditingProvider] = useState<SavedProvider | null>(null)
-  const [showCreateModal, setShowCreateModal] = useState(false)
   const [pendingDeleteProvider, setPendingDeleteProvider] = useState<SavedProvider | null>(null)
   const [isDeletingProvider, setIsDeletingProvider] = useState(false)
   const [testResults, setTestResults] = useState<Record<string, { loading: boolean; result?: ProviderTestResult }>>({})
@@ -184,55 +179,11 @@ function ProviderSettings() {
     await fetchSettings()
   }
 
-  const handleActivateOfficial = async () => {
-    await activateOfficial()
-    await fetchSettings()
-  }
-
-  const isOfficialActive = hasLoadedProviders && activeId === null
-
   return (
     <div className="max-w-2xl">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">{t('settings.providers.title')}</h2>
-          <p className="text-sm text-[var(--color-text-tertiary)] mt-0.5">{t('settings.providers.description')}</p>
-        </div>
-        <Button size="sm" onClick={() => setShowCreateModal(true)} disabled={isPresetsLoading || presets.length === 0}>
-          <span className="material-symbols-outlined text-[16px]">add</span>
-          {t('settings.providers.addProvider')}
-        </Button>
-      </div>
-
-      {/* Official provider — always visible at top */}
-      <div
-        className={`relative flex flex-col rounded-xl border transition-all mb-2 ${
-          isOfficialActive
-            ? 'border-[var(--color-brand)] bg-[var(--color-surface-container)] shadow-[var(--shadow-focus-ring)]'
-            : 'border-[var(--color-border)] hover:border-[var(--color-border-focus)] cursor-pointer'
-        }`}
-      >
-        <div
-          className="flex items-center gap-4 px-4 py-3.5"
-          onClick={() => !isOfficialActive && handleActivateOfficial()}
-        >
-          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isOfficialActive ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-tertiary)]'}`} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-[var(--color-text-primary)]">{t('settings.providers.officialName')}</span>
-              {isOfficialActive && (
-                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded border border-[var(--color-brand)]/18 bg-[var(--color-brand)]/14 text-[var(--color-brand)] leading-none">{t('settings.providers.default')}</span>
-              )}
-            </div>
-            <div className="text-xs text-[var(--color-text-tertiary)] mt-0.5">{t('settings.providers.officialDesc')}</div>
-          </div>
-        </div>
-
-        {isOfficialActive && (
-          <div className="px-4 pb-4 pt-3 border-t border-[var(--color-border-separator)]">
-            <ClaudeOfficialLogin />
-          </div>
-        )}
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-[var(--color-text-primary)]">{t('settings.providers.title')}</h2>
+        <p className="text-sm text-[var(--color-text-tertiary)] mt-0.5">{t('settings.providers.description')}</p>
       </div>
 
       {/* CrewCentral — 中控系统连接 */}
@@ -312,11 +263,6 @@ function ProviderSettings() {
             )
           })}
         </div>
-      )}
-
-      {/* Create Modal — conditionally rendered so state resets on close */}
-      {showCreateModal && (
-        <ProviderFormModal open={true} onClose={() => setShowCreateModal(false)} mode="create" presets={presets} />
       )}
 
       {/* Edit Modal */}

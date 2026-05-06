@@ -31,15 +31,6 @@ type UpdateStore = {
   dismissPrompt: () => void
 }
 
-function readDismissedUpdateVersion(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return window.localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY)
-  } catch {
-    return null
-  }
-}
-
 function writeDismissedUpdateVersion(version: string | null) {
   if (typeof window === 'undefined') return
   try {
@@ -68,7 +59,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
     // Update checking will be wired via electron-updater in a future phase
   },
 
-  checkForUpdates: async ({ silent = false } = {}) => {
+  checkForUpdates: async () => {
     set({ status: 'idle' })
     return null
   },
