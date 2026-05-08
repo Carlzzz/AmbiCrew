@@ -1,19 +1,24 @@
 import { app } from 'electron'
 
-let mainWindow: Electron.BrowserWindow | null = null
-
-export function setupSingleInstance(getWindow: () => Electron.BrowserWindow | null) {
+export function setupSingleInstance(
+  getWindow: () => Electron.BrowserWindow | null,
+  onSecondInstance?: (argv: string[]) => void,
+): boolean {
   const gotLock = app.requestSingleInstanceLock()
   if (!gotLock) {
-    app.quit()
-    return
+    return false
   }
 
-  app.on('second-instance', () => {
-    mainWindow = getWindow()
+  app.on('second-instance', (_event, argv) => {
+    const mainWindow = getWindow()
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
     }
+    if (onSecondInstance) {
+      onSecondInstance(argv)
+    }
   })
+
+  return true
 }

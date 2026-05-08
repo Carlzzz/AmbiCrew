@@ -44,7 +44,8 @@ export async function handleProvidersApi(
 
     // GET /api/providers/presets
     if (id === 'presets' && req.method === 'GET') {
-      return Response.json({ presets: PROVIDER_PRESETS })
+      const filteredPresets = PROVIDER_PRESETS.filter(p => p.id !== 'official' && p.id !== 'custom')
+      return Response.json({ presets: filteredPresets })
     }
 
     // GET /api/providers/auth-status
@@ -66,10 +67,9 @@ export async function handleProvidersApi(
       throw methodNotAllowed(req.method)
     }
 
-    // POST /api/providers/official
+    // POST /api/providers/official — blocked: providers are managed by CrewProxy
     if (id === 'official' && req.method === 'POST') {
-      await providerService.activateOfficial()
-      return Response.json({ ok: true })
+      throw new ApiError(403, 'Provider management is centralized through CrewProxy', 'PROVIDER_MANAGED_BY_PROXY')
     }
 
     // /api/providers (no ID)
@@ -79,7 +79,7 @@ export async function handleProvidersApi(
         return Response.json({ providers, activeId })
       }
       if (req.method === 'POST') {
-        return await handleCreate(req)
+        throw new ApiError(403, 'Adding providers is disabled. Providers are managed by CrewProxy.', 'PROVIDER_MANAGED_BY_PROXY')
       }
       throw methodNotAllowed(req.method)
     }

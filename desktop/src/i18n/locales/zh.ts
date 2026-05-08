@@ -38,6 +38,11 @@ export const zh: Record<TranslationKey, string> = {
   'sidebar.collapse': '折叠侧边栏',
   'sidebar.expand': '展开侧边栏',
 
+  // ─── Auth ────────────────────────────────────────────
+  'auth.pleaseLogin': '请先登录 CrewCentral',
+  'auth.pleaseLoginPrompt': '请登录 CrewCentral 以开始使用',
+  'auth.pleaseLoginToViewSessions': '请登录以查看会话',
+
   // ─── Title Bar ──────────────────────────────────────
   'titlebar.code': '代码',
   'titlebar.terminal': '终端',

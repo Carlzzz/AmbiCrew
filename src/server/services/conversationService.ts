@@ -853,6 +853,9 @@ export class ConversationService {
       // 否则 CLI 会忽略 provider 的 AUTH_TOKEN、错误地走 OAuth 打到第三方
       // endpoint。详见 src/utils/auth.ts isManagedOAuthContext()。
       ...(explicitProviderEnv ?? {}),
+      ...(explicitProviderEnv?.AUTH_MODE === 'central'
+        ? await this.buildCrewCentralOAuthEnv()
+        : {}),
       ...(this.shouldMarkManagedOAuth(options?.providerId)
         ? await this.buildOfficialOAuthEnv()
         : {}),
@@ -885,6 +888,27 @@ export class ConversationService {
       )
     }
     return env
+  }
+
+  /**
+   * CrewCentral 模式下注入 access token 到 CLI 子进程。
+   * providerService 为 crewcentral 设置了 ANTHROPIC_AUTH_TOKEN=''，
+   * 此方法在 spawn 时用实际 token 覆盖空值。
+   */
+  private async buildCrewCentralOAuthEnv(): Promise<Record<string, string>> {
+    try {
+      const { centralOAuthService } = await import('./centralOAuthService.js')
+      const token = await centralOAuthService.ensureFreshAccessToken()
+      if (token) {
+        return { ANTHROPIC_AUTH_TOKEN: token }
+      }
+    } catch (err) {
+      console.error(
+        '[conversationService] CrewCentral token fetch failed:',
+        err instanceof Error ? err.message : err,
+      )
+    }
+    return {}
   }
 
   private shouldStripInheritedProviderEnv(providerId?: string | null): boolean {

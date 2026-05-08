@@ -1,7 +1,13 @@
-import { kvGet, kvSet, kvDelete } from '../db/database.js'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { mkdirSync, readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
 
-const KEY_TOKEN = 'auth.token'
-const KEY_DISPLAY_NAME = 'auth.displayName'
+interface StoredPayload {
+  v: 1
+  access_token: string
+  refresh_token: string
+  display_name?: string
+}
 
 interface TokenPayload {
   access_token: string
@@ -9,44 +15,76 @@ interface TokenPayload {
   display_name?: string
 }
 
-export function saveTokens(payload: TokenPayload): void {
-  kvSet(KEY_TOKEN, JSON.stringify({
-    access_token: payload.access_token,
-    refresh_token: payload.refresh_token,
-  }))
-  if (payload.display_name) {
-    kvSet(KEY_DISPLAY_NAME, payload.display_name)
-  }
+function filePath(): string {
+  const dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+  return join(dir, 'central-auth.json')
 }
 
-export function loadTokens(): TokenPayload | null {
-  const raw = kvGet(KEY_TOKEN)
-  if (!raw) return null
+let cached: StoredPayload | null = null
+
+function readCache(): StoredPayload | null {
+  if (cached) return cached
   try {
-    const parsed = JSON.parse(raw) as { access_token: string; refresh_token: string }
-    return {
-      access_token: parsed.access_token,
-      refresh_token: parsed.refresh_token,
-      display_name: kvGet(KEY_DISPLAY_NAME) || undefined,
+    const raw = readFileSync(filePath(), 'utf-8')
+    const parsed = JSON.parse(raw) as StoredPayload
+    if (parsed && parsed.v === 1 && parsed.access_token && parsed.refresh_token) {
+      cached = parsed
+      return parsed
     }
+    return null
   } catch {
     return null
   }
 }
 
+function writeCache(payload: StoredPayload): void {
+  cached = payload
+  const dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(filePath(), JSON.stringify(payload), 'utf-8')
+}
+
+export function saveTokens(payload: TokenPayload): void {
+  writeCache({
+    v: 1,
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token,
+    display_name: payload.display_name,
+  })
+}
+
+export function loadTokens(): TokenPayload | null {
+  const stored = readCache()
+  if (!stored) return null
+  return {
+    access_token: stored.access_token,
+    refresh_token: stored.refresh_token,
+    display_name: stored.display_name,
+  }
+}
+
 export function getAccessToken(): string | null {
-  return loadTokens()?.access_token ?? null
+  return readCache()?.access_token ?? null
 }
 
 export function getRefreshToken(): string | null {
-  return loadTokens()?.refresh_token ?? null
+  return readCache()?.refresh_token ?? null
 }
 
 export function getDisplayName(): string | null {
-  return kvGet(KEY_DISPLAY_NAME)
+  return readCache()?.display_name ?? null
 }
 
 export function clearTokens(): void {
-  kvDelete(KEY_TOKEN)
-  kvDelete(KEY_DISPLAY_NAME)
+  cached = null
+  try {
+    if (existsSync(filePath())) unlinkSync(filePath())
+  } catch {
+    // file may not exist
+  }
+}
+
+/** Invalidate the in-memory cache so the next read hits disk. */
+export function invalidateCache(): void {
+  cached = null
 }

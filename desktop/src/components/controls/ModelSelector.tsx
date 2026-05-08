@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { OFFICIAL_DEFAULT_MODEL_ID, OFFICIAL_MODELS } from '../../constants/modelCatalog'
+import { OFFICIAL_MODELS } from '../../constants/modelCatalog'
 import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chatStore'
 import { useProviderStore } from '../../stores/providerStore'
@@ -36,7 +36,12 @@ function officialChoices(availableModels: ModelInfo[], isDefault: boolean, offic
 function buildProviderModels(
   provider: SavedProvider,
   labels: Record<'main' | 'haiku' | 'sonnet' | 'opus', string>,
+  availableModels: ModelInfo[],
 ): ModelInfo[] {
+  if (provider.presetId === 'crewcentral' && availableModels.length > 0) {
+    return availableModels
+  }
+
   const entries: Array<{ id: string; label: string }> = [
     { id: provider.models.main.trim(), label: labels.main },
     { id: provider.models.haiku.trim(), label: labels.haiku },
@@ -78,7 +83,7 @@ function buildProviderChoices(
       providerId: provider.id,
       providerName: provider.name,
       isDefault: activeId === provider.id,
-      models: buildProviderModels(provider, labels),
+      models: buildProviderModels(provider, labels, availableModels),
     })),
   ]
 }
@@ -88,6 +93,7 @@ function resolveDefaultRuntimeSelection(
   activeProviderName: string | null,
   providers: SavedProvider[],
   currentModelId: string | undefined,
+  availableModelIds: string[],
 ): RuntimeSelection {
   const inferredProviderId = activeId ?? (
     activeProviderName
@@ -97,7 +103,7 @@ function resolveDefaultRuntimeSelection(
 
   return {
     providerId: inferredProviderId,
-    modelId: currentModelId ?? OFFICIAL_DEFAULT_MODEL_ID,
+    modelId: currentModelId || availableModelIds[0] || '',
   }
 }
 
@@ -172,15 +178,22 @@ export function ModelSelector({
     [t],
   )
 
+  const activeProvider = useMemo(
+    () => activeId ? providers.find((p) => p.id === activeId) ?? null : null,
+    [activeId, providers],
+  )
+
+  const isCrewCentralActive = activeProvider?.presetId === 'crewcentral'
+
   const providerChoices = useMemo(
     () => buildProviderChoices(
       providers,
       activeId,
-      activeId === null ? availableModels : OFFICIAL_MODELS,
+      activeId === null || isCrewCentralActive ? availableModels : OFFICIAL_MODELS,
       t('settings.providers.officialName'),
       roleLabels,
     ),
-    [activeId, availableModels, providers, roleLabels, t],
+    [activeId, availableModels, providers, roleLabels, t, isCrewCentralActive],
   )
 
   const selectedModel = isControlled
@@ -188,12 +201,15 @@ export function ModelSelector({
     : storeModel
 
   const activeRuntimeSelection = isRuntimeScoped
-    ? runtimeSelection ?? resolveDefaultRuntimeSelection(
-      activeId,
-      activeProviderName,
-      providers,
-      storeModel?.id,
-    )
+    ? runtimeSelection ?? (isCrewCentralActive
+      ? null
+      : resolveDefaultRuntimeSelection(
+        activeId,
+        activeProviderName,
+        providers,
+        storeModel?.id,
+        availableModels.map(m => m.id),
+      ))
     : null
 
   const selectedProviderChoice = activeRuntimeSelection
@@ -211,7 +227,7 @@ export function ModelSelector({
     : null
 
   const buttonModelLabel = isRuntimeScoped
-    ? selectedRuntimeModel?.name ?? storeModel?.name ?? t('model.selectModel')
+    ? selectedRuntimeModel?.name ?? (isCrewCentralActive ? t('model.selectModel') : storeModel?.name ?? t('model.selectModel'))
     : selectedModel?.name ?? t('model.selectModel')
   const buttonProviderLabel = isRuntimeScoped
     ? selectedProviderChoice?.providerName ?? activeProviderName ?? t('settings.providers.officialName')

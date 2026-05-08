@@ -19,32 +19,16 @@ import {
   type ProxyModelItem,
 } from '../../services/central/proxy-client.js'
 
-// ─── Fallback models (used when no provider is configured) ────────────────────
-
-const DEFAULT_MODELS = [
-  {
-    id: 'claude-opus-4-7',
-    name: 'Opus 4.7',
-    description: 'Most capable for ambitious work',
-    context: '1m',
-  },
-  {
-    id: 'claude-sonnet-4-6',
-    name: 'Sonnet 4.6',
-    description: 'Most efficient for everyday tasks',
-    context: '200k',
-  },
-  {
-    id: 'claude-haiku-4-5',
-    name: 'Haiku 4.5',
-    description: 'Fastest for quick answers',
-    context: '200k',
-  },
-] as const
+// ─── Default models — empty by design ──────────────────────────────────────
+// AmbiCrew is built on Claude Code but is a separate product.
+// Default models come from CrewProxy (when connected) or provider config.
+// Hardcoded Anthropic model names are intentionally removed to avoid
+// confusion with the user's locally installed Claude Code.
+const DEFAULT_MODELS: ApiModelInfo[] = []
 
 const EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const
 
-const DEFAULT_MODEL = 'claude-opus-4-7'
+const DEFAULT_MODEL = ''
 const DEFAULT_EFFORT = 'medium'
 
 const settingsService = new SettingsService()
@@ -212,6 +196,8 @@ async function handleModelsList(): Promise<Response> {
     if (proxyModels) {
       return Response.json({ models: proxyModels, provider: null })
     }
+    // In CrewCentral mode, don't fall back to local Claude model names
+    return Response.json({ models: DEFAULT_MODELS, provider: null })
   }
   return Response.json({ models: getStandaloneModelList(), provider: null })
 }
@@ -284,8 +270,6 @@ async function handleCurrentModel(req: Request): Promise<Response> {
 
     if (activeProvider) {
       // Provider is active — only use the provider-managed cc-haha settings.
-      // This avoids leaking global ~/.claude/settings.json model choices into
-      // the active provider flow.
       const providerEnvModel = env.ANTHROPIC_MODEL
       if (providerEnvModel && !explicitModel) {
         currentModelId = providerEnvModel
@@ -294,18 +278,52 @@ async function handleCurrentModel(req: Request): Promise<Response> {
         currentModelId = explicitModel || providerEnvModel || activeProvider.models.main
         currentModelName = currentModelId
       }
+
+      // For crewcentral, validate against proxy models to avoid sending stale
+      // local-model names (from previous providers) to CrewProxy
+      if (activeProvider.presetId === 'crewcentral') {
+        const proxyModels = await tryFetchProxyModels()
+        if (proxyModels && proxyModels.length > 0) {
+          const isValid = proxyModels.some((m) => m.id === currentModelId)
+          if (!isValid || !currentModelId) {
+            currentModelId = proxyModels[0].id
+            currentModelName = proxyModels[0].name
+            // Persist the corrected model so the stale value doesn't resurface
+            const currentEnv = (settings.env as Record<string, string>) || {}
+            await providerService.updateManagedSettings({
+              model: currentModelId,
+              env: { ...currentEnv, ANTHROPIC_MODEL: currentModelId },
+            })
+          }
+        } else {
+          currentModelId = ''
+          currentModelName = ''
+        }
+      }
     } else {
-      // No provider — use settings model with context tier
-      currentModelId = explicitModel || envModel || DEFAULT_MODEL
+      // No provider — try models from CrewProxy / env first, fall back to defaults
+      currentModelId = explicitModel || envModel
+      if (!currentModelId) {
+        const proxyModels = await tryFetchProxyModels()
+        currentModelId = proxyModels?.[0]?.id || DEFAULT_MODEL
+      }
       currentModelName = currentModelId
     }
 
     const lookupId = contextTier ? `${currentModelId}:${contextTier}` : currentModelId
 
     // Build available models for name lookup
-    const availableModels = activeProvider
-      ? buildProviderModelList(activeProvider.models)
-      : getStandaloneModelList()
+    let availableModels: ApiModelInfo[]
+    if (activeProvider) {
+      if (activeProvider.presetId === 'crewcentral') {
+        const proxyModels = await tryFetchProxyModels()
+        availableModels = proxyModels ?? buildProviderModelList(activeProvider.models)
+      } else {
+        availableModels = buildProviderModelList(activeProvider.models)
+      }
+    } else {
+      availableModels = getStandaloneModelList()
+    }
 
     const modelEntry = availableModels.find((m) => m.id === lookupId)
       || availableModels.find((m) => m.id === currentModelId)
@@ -342,6 +360,15 @@ async function handleCurrentModel(req: Request): Promise<Response> {
     const { activeId } = await providerService.listProviders()
     if (activeId) {
       await providerService.updateManagedSettings(updates)
+      // Also update ANTHROPIC_MODEL in env so the CLI picks up the model change
+      const provider = await providerService.getProvider(activeId)
+      if (provider.presetId === 'crewcentral') {
+        const currentSettings = await providerService.getManagedSettings()
+        const currentEnv = (currentSettings.env as Record<string, string>) || {}
+        await providerService.updateManagedSettings({
+          env: { ...currentEnv, ANTHROPIC_MODEL: baseId },
+        })
+      }
     } else {
       await settingsService.updateUserSettings(updates)
     }

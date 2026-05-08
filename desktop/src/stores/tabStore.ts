@@ -201,11 +201,21 @@ export const useTabStore = create<TabStore>((set, get) => ({
         return
       }
 
+      // Determine active tab: prefer session tabs over settings/scheduled tabs
+      // so the app opens to the conversation view, not the settings page
       const activeId = data.activeTabId && validTabs.some((t) => t.sessionId === data.activeTabId)
         ? data.activeTabId
-        : validTabs[0]!.sessionId
+        : null
 
-      set({ tabs: validTabs, activeTabId: activeId })
+      // If the active tab is a settings/scheduled type and there are no session
+      // tabs, default to null (new conversation page)
+      const hasSessionTab = validTabs.some((t) => t.type === 'session')
+      const activeTab = validTabs.find((t) => t.sessionId === activeId)
+      const finalActiveId = activeId && (hasSessionTab || activeTab?.type === 'session')
+        ? activeId
+        : null
+
+      set({ tabs: validTabs, activeTabId: finalActiveId })
     } catch { /* noop */ }
   },
 }))

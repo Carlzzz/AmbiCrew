@@ -29,7 +29,6 @@ export type Toast = {
 }
 
 export type SettingsTab =
-  | 'providers'
   | 'permissions'
   | 'general'
   | 'adapters'

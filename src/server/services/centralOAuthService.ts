@@ -59,6 +59,7 @@ export class CentralOAuthService {
   async startSession({ serverPort }: { serverPort: number }): Promise<{ authorizeUrl: string }> {
     const deviceInfo = await getDeviceInfo()
     const loginUrl = new URL(appendDeviceToLoginUrl(this.getLoginUrl(), deviceInfo))
+    loginUrl.searchParams.delete('redirect_scheme')
     loginUrl.searchParams.set('redirect_uri', `http://127.0.0.1:${serverPort}/callback`)
 
     const authorizeUrl = loginUrl.toString()

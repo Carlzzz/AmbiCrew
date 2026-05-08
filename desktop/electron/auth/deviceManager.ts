@@ -1,6 +1,8 @@
 import os from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { app } from 'electron'
 import { kvGet, kvSet } from '../db/database.js'
+import { deriveApiBase } from './authController.js'
 
 export interface DeviceInfo {
   device_uuid: string
@@ -39,7 +41,7 @@ export async function getDeviceInfo(): Promise<DeviceInfo> {
     device_uuid: uuid,
     mac_address: getMacAddress(),
     os_version: `${os.type()} ${os.release()}`,
-    client_version: process.env.npm_package_version || '',
+    client_version: app.getVersion(),
     platform: process.platform,
   }
   return cachedDeviceInfo
@@ -58,17 +60,6 @@ export function appendDeviceToLoginUrl(url: string, info: DeviceInfo): string {
 // ---- Device Heartbeat ----
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
-
-function deriveApiBase(): string {
-  const loginUrl = process.env.CREWCENTRAL_AUTH_LOGIN_URL || 'http://127.0.0.1:1420/woicrew/auth/login'
-  try {
-    const url = new URL(loginUrl)
-    const parts = url.pathname.split('/auth/')
-    return `${url.origin}${parts[0] || ''}`
-  } catch {
-    return 'http://127.0.0.1:1420/woicrew'
-  }
-}
 
 export function startDeviceHeartbeat(options: {
   getAccessToken: () => string | null
@@ -151,7 +142,7 @@ export function startDeviceHeartbeat(options: {
     } catch { /* network error, retry next cycle */ }
   }
 
-  sendHeartbeat() // First immediate call
+  sendHeartbeat()
   heartbeatTimer = setInterval(sendHeartbeat, 15_000)
 
   return () => {

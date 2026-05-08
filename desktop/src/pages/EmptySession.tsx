@@ -8,6 +8,7 @@ import { useSessionRuntimeStore, DRAFT_RUNTIME_SELECTION_KEY } from '../stores/s
 import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../stores/tabStore'
+import { useCentralOAuthStore } from '../stores/centralOAuthStore'
 import { OFFICIAL_DEFAULT_MODEL_ID } from '../constants/modelCatalog'
 import { DirectoryPicker } from '../components/shared/DirectoryPicker'
 import { PermissionModeSelector } from '../components/controls/PermissionModeSelector'
@@ -64,6 +65,8 @@ export function EmptySession() {
   const connectToSession = useChatStore((state) => state.connectToSession)
   const setActiveView = useUIStore((state) => state.setActiveView)
   const addToast = useUIStore((state) => state.addToast)
+  const centralStatus = useCentralOAuthStore((s) => s.status)
+  const isCentralLoggedIn = centralStatus?.loggedIn
   const currentModel = useSettingsStore((state) => state.currentModel)
   const draftRuntimeSelection = useSessionRuntimeStore((state) => state.selections[DRAFT_RUNTIME_SELECTION_KEY])
   const draftRuntimeSelectionKey = draftRuntimeSelection
@@ -182,11 +185,19 @@ export function EmptySession() {
         ? providerState.providers.find((provider) => provider.name === settings.activeProviderName)?.id ?? null
         : null
     )
+    // For CrewCentral (provider-managed), prefer availableModels[0] over
+    // currentModel because currentModel may hold a stale value from a previous
+    // provider (e.g. "haiku") that isn't valid on CrewProxy.
+    const isProviderManaged = !!inferredProviderId
+    const modelId = isProviderManaged
+      ? (settings.availableModels[0]?.id || settings.currentModel?.id || OFFICIAL_DEFAULT_MODEL_ID)
+      : (settings.currentModel?.id || settings.availableModels[0]?.id || OFFICIAL_DEFAULT_MODEL_ID)
+
     return (
       useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
       ?? {
         providerId: inferredProviderId,
-        modelId: settings.currentModel?.id ?? OFFICIAL_DEFAULT_MODEL_ID,
+        modelId,
       }
     )
   }
@@ -261,6 +272,10 @@ export function EmptySession() {
   }, [slashMenuOpen, slashSelectedIndex])
 
   const handleSubmit = async () => {
+    if (!isCentralLoggedIn) {
+      addToast({ type: 'warning', message: t('auth.pleaseLogin') })
+      return
+    }
     const text = input.trim()
     if ((!text && attachments.length === 0) || isSubmitting) return
 
@@ -287,6 +302,11 @@ export function EmptySession() {
     setIsSubmitting(true)
     try {
       const draftSelection = await resolveDraftRuntimeSelection()
+      if (!draftSelection.modelId) {
+        addToast({ type: 'warning', message: t('model.selectModel') })
+        setIsSubmitting(false)
+        return
+      }
       const sessionId = await createSession(workDir || undefined)
       useSessionRuntimeStore.getState().setSelection(sessionId, draftSelection)
       useSessionRuntimeStore.getState().clearSelection(DRAFT_RUNTIME_SELECTION_KEY)
@@ -527,8 +547,9 @@ export function EmptySession() {
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-0 right-0 flex justify-center px-8">
-        <div className="flex w-full max-w-3xl flex-col gap-2">
+      {isCentralLoggedIn ? (
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center px-8">
+          <div className="flex w-full max-w-3xl flex-col gap-2">
           <div
             className="glass-panel relative flex flex-col gap-3 rounded-xl p-4"
             onDragOver={(event) => event.preventDefault()}
@@ -699,8 +720,26 @@ export function EmptySession() {
           </div>
         </div>
       </div>
+      ) : (
+        <div className="flex justify-center px-8 mt-8">
+          <div className="glass-panel rounded-xl p-6 text-center max-w-md">
+            <p className="text-sm text-[var(--color-text-secondary)] mb-3">{t('auth.pleaseLoginPrompt')}</p>
+            <button
+              onClick={handleLogin}
+              className="rounded-lg bg-[image:var(--gradient-btn-primary)] px-4 py-2 text-xs font-semibold text-[var(--color-btn-primary-fg)] shadow-[var(--shadow-button-primary)] transition-all hover:brightness-105"
+            >
+              连接 CrewCentral
+            </button>
+          </div>
+        </div>
+      )}
 
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
     </div>
   )
+}
+
+function handleLogin() {
+  const store = useCentralOAuthStore.getState()
+  store.login()
 }

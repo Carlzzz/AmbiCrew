@@ -6,7 +6,9 @@ import { UpdateChecker } from '../shared/UpdateChecker'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
+import { useScheduledTaskDesktopNotifications } from '../../hooks/useScheduledTaskDesktopNotifications'
 import { initializeDesktopServerUrl } from '../../lib/desktopRuntime'
+import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
 import { TabBar } from './TabBar'
 import { StartupErrorView } from './StartupErrorView'
 import { useTabStore } from '../../stores/tabStore'
@@ -27,6 +29,7 @@ export function AppShell() {
       try {
         await initializeDesktopServerUrl()
         await fetchSettings()
+        void useCentralOAuthStore.getState().fetchStatus()
 
         if (!cancelled) {
           setReady(true)
@@ -56,7 +59,8 @@ export function AppShell() {
     }
   }, [fetchSettings])
 
-  // macOS native menu events are handled via Electron IPC (registered later)
+  // Only activate scheduled task notifications after the server URL is initialized
+  useScheduledTaskDesktopNotifications()
 
   useKeyboardShortcuts()
 

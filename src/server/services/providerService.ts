@@ -321,7 +321,7 @@ export class ProviderService {
       return {
         ...getPresetDefaultEnv(provider.presetId),
         ANTHROPIC_BASE_URL: proxyBaseUrl,
-        ANTHROPIC_AUTH_TOKEN: '', // filled by buildChildEnv at spawn time
+        ANTHROPIC_AUTH_TOKEN: '', // overridden by buildCrewCentralOAuthEnv at spawn time
         AUTH_MODE: 'central',
         ANTHROPIC_MODEL: provider.models.main,
         ANTHROPIC_DEFAULT_HAIKU_MODEL: provider.models.haiku,
@@ -368,6 +368,14 @@ export class ProviderService {
 
     for (const key of getManagedEnvKeys()) {
       delete cleanedEnv[key]
+    }
+
+    // CrewCentral has no default models — model must come from set_runtime_config.
+    // Clear stale model from a previous provider so the CLI doesn't pick it up as
+    // a fallback when ANTHROPIC_MODEL env is empty.
+    if (provider.presetId === 'crewcentral') {
+      delete settings.model
+      delete settings.modelContext
     }
 
     settings.env = {

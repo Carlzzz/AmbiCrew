@@ -456,12 +456,17 @@ async function handleSetRuntimeConfig(
 ) {
   const { sessionId } = ws.data
   const modelId = typeof message.modelId === 'string' ? message.modelId.trim() : ''
+
+  // Allow empty modelId — the server will resolve the default model via
+  // getDefaultRuntimeSettings() (which fetches proxy models for CrewCentral).
+  // This prevents a stale/empty model from blocking session creation.
   if (!modelId) {
-    sendMessage(ws, {
-      type: 'error',
-      message: 'Runtime model selection is invalid.',
-      code: 'RUNTIME_CONFIG_INVALID',
-    })
+    runtimeOverrides.delete(sessionId)
+    if (conversationService.hasSession(sessionId)) {
+      await enqueueRuntimeTransition(sessionId, () =>
+        restartSessionWithRuntimeConfig(ws, sessionId),
+      )
+    }
     return
   }
 
@@ -1354,6 +1359,36 @@ async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> 
   return getDefaultRuntimeSettings()
 }
 
+/**
+ * Fetch model IDs from CrewProxy for runtime default fallback.
+ * Returns an array of model ID strings, or null on failure.
+ */
+async function tryFetchProxyModelsForRuntime(): Promise<string[] | null> {
+  const proxyBaseUrl =
+    process.env.LLM_PROXY_BASE_URL?.trim() ||
+    process.env.ANTHROPIC_BASE_URL?.trim()
+  if (!proxyBaseUrl) return null
+
+  try {
+    const { getCentralAccessToken } = await import('../../utils/auth.js')
+    const { fetchProxyModelList } = await import('../../services/central/proxy-client.js')
+
+    const token = (await getCentralAccessToken()) ||
+      process.env.LLM_PROXY_API_KEY?.trim() ||
+      process.env.LLM_DIRECT_API_KEY?.trim() ||
+      undefined
+
+    const result = await fetchProxyModelList({
+      baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
+      token,
+    })
+
+    return result.items.map((m) => m.modelId)
+  } catch {
+    return null
+  }
+}
+
 async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
   // Check if a custom provider is active
   const { providers, activeId } = await providerService.listProviders()
@@ -1363,6 +1398,11 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     resolvedActiveId = null
     await providerService.activateOfficial()
   }
+
+  const activeProvider = resolvedActiveId
+    ? providers.find((p) => p.id === resolvedActiveId) ?? null
+    : null
+  const isCrewCentral = activeProvider?.presetId === 'crewcentral'
 
   const userSettings = await settingsService.getUserSettings()
   const providerSettings = resolvedActiveId
@@ -1380,8 +1420,8 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
   const thinking = resolveDesktopThinkingMode(userSettings)
 
   let model: string | undefined
-  if (resolvedActiveId) {
-    // Provider is active — only consult provider-managed cc-haha settings.
+  if (resolvedActiveId && !isCrewCentral) {
+    // Provider is active (non-crewcentral) — only consult provider-managed settings.
     // Global ~/.claude/settings.json model values must not bleed into provider mode.
     const baseModel =
       typeof modelSettings.model === 'string' && modelSettings.model.trim()
@@ -1391,13 +1431,28 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
       model = baseModel
       if (modelContext) model += `:${modelContext}`
     }
-  } else {
+  } else if (!resolvedActiveId) {
     // No provider — pass model normally
     const baseModel =
       typeof userSettings.model === 'string' && userSettings.model.trim()
         ? userSettings.model
         : undefined
     model = baseModel ? (modelContext ? `${baseModel}:${modelContext}` : baseModel) : undefined
+  } else if (isCrewCentral) {
+    // CrewCentral: clear stale model from a previous provider, then fallback
+    // to the first available proxy model so the CLI doesn't fall through to
+    // Anthropic's built-in default (which CrewProxy doesn't recognise).
+    const staleModel = typeof modelSettings.model === 'string' && modelSettings.model.trim()
+    if (staleModel) {
+      console.warn(
+        `[WS] Clearing stale model from managed settings (crewcentral): ${staleModel}`,
+      )
+      await providerService.updateManagedSettings({ model: undefined, modelContext: undefined })
+    }
+    const proxyModels = await tryFetchProxyModelsForRuntime()
+    if (proxyModels && proxyModels.length > 0) {
+      model = proxyModels[0]
+    }
   }
 
   return {

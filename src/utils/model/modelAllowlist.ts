@@ -2,6 +2,7 @@ import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { isModelAlias, isModelFamilyAlias } from './aliases.js'
 import { parseUserSpecifiedModel } from './model.js'
 import { resolveOverriddenModel } from './modelStrings.js'
+import { isEnvTruthy } from '../envUtils.js'
 
 /**
  * Check if a model belongs to a given family by checking if its name
@@ -98,6 +99,14 @@ function familyHasSpecificEntries(
  * 3. Full model IDs ("claude-opus-4-5-20251101") — exact match only
  */
 export function isModelAllowed(model: string): boolean {
+  // When a host (desktop app) manages the provider, it has already validated
+  // the model against the upstream (e.g. CrewProxy). Bypass the allowlist so
+  // that non-Claude models (minimax2.7-hs-1, deepseek-v4-pro, etc.) are not
+  // rejected by a Claude-centric allowlist.
+  if (isEnvTruthy(process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST)) {
+    return true
+  }
+
   const settings = getSettings_DEPRECATED() || {}
   const { availableModels } = settings
   if (!availableModels) {

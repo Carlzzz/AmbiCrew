@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { sessionsApi, type RecentProject } from '../../api/sessions'
 import { filesystemApi } from '../../api/filesystem'
 import { useTranslation } from '../../i18n'
+import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
 type Props = {
   value: string
@@ -15,10 +16,6 @@ type DirEntry = { name: string; path: string; isDirectory: boolean }
 let cachedProjects: RecentProject[] | null = null
 let cacheTimestamp = 0
 const CACHE_TTL = 30_000 // 30s
-
-function isTauriRuntime() {
-  return typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
-}
 
 export function DirectoryPicker({ value, onChange }: Props) {
   const t = useTranslation()
@@ -113,17 +110,20 @@ export function DirectoryPicker({ value, onChange }: Props) {
   }
 
   const handleChooseFolder = async () => {
-    if (isTauriRuntime()) {
-      // Desktop: native OS folder dialog
+    if (isDesktopRuntime()) {
+      // Electron: native OS folder dialog via IPC
       setIsOpen(false)
       try {
-        const { open } = await import('@tauri-apps/plugin-dialog')
-        const selected = await open({
-          directory: true,
-          multiple: false,
+        const electron = (window as unknown as {
+          electron: { shell: { showOpenDialog: (opts: { properties: string[]; title?: string }) => Promise<{ ok: boolean; canceled?: boolean; filePaths?: string[] }> } }
+        }).electron
+        const result = await electron.shell.showOpenDialog({
+          properties: ['openDirectory'],
           title: t('dirPicker.chooseProjectFolder'),
         })
-        if (selected) onChange(selected)
+        if (result.ok && !result.canceled && result.filePaths?.[0]) {
+          onChange(result.filePaths[0])
+        }
       } catch (err) {
         console.error('[DirectoryPicker] Failed to open folder dialog:', err)
       }

@@ -85,13 +85,15 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   activateProvider: async (id) => {
     await providersApi.activate(id)
     await get().fetchProviders()
-    // 更新默认 provider 时，同步刷新默认 model，避免 settings.json 里残留
-    // 旧 provider 的 model id 导致默认选择指向不存在的模型。
+    // Update default model when switching provider
     const provider = get().providers.find((p) => p.id === id)
-    if (provider) {
+    if (provider?.models.main) {
       const settings = useSettingsStore.getState()
       await settings.setModel(provider.models.main)
       await settings.fetchAll()
+    } else {
+      // For providers with dynamic models (CrewCentral), fetch model list first
+      await useSettingsStore.getState().fetchAll()
     }
   },
 

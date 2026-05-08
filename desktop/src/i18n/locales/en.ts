@@ -36,6 +36,11 @@ export const en = {
   'sidebar.collapse': 'Collapse sidebar',
   'sidebar.expand': 'Expand sidebar',
 
+  // ─── Auth ────────────────────────────────────────────
+  'auth.pleaseLogin': 'Please login to CrewCentral first',
+  'auth.pleaseLoginPrompt': 'Please login to CrewCentral to get started',
+  'auth.pleaseLoginToViewSessions': 'Please login to view sessions',
+
   // ─── Title Bar ──────────────────────────────────────
   'titlebar.code': 'Code',
   'titlebar.terminal': 'Terminal',

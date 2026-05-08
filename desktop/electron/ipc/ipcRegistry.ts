@@ -1,21 +1,17 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 
-type InvokeHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InvokeHandler = (event: IpcMainInvokeEvent, ...args: any[]) => Promise<any>
 
 const WHITELIST_INVOKE_CHANNELS = new Set([
   'auth:getStatus',
   'auth:login',
   'auth:logout',
+  'auth:startHeartbeat',
+  'auth:stopHeartbeat',
   'shell:openExternal',
   'shell:showOpenDialog',
   'shell:getAppVersion',
-  'model:list',
-  'model:setActive',
-  'skills:list',
-  'skills:setEnabled',
-  'skills:listHub',
-  'skills:download',
-  'skills:delete',
   'server:getBaseUrl',
 ])
 

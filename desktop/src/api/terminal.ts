@@ -1,4 +1,4 @@
-import { isTauriRuntime } from '../lib/desktopRuntime'
+import { isDesktopRuntime } from '../lib/desktopRuntime'
 
 export type TerminalSpawnResult = {
   session_id: number
@@ -20,7 +20,7 @@ export type TerminalExitPayload = {
 type Unlisten = () => void
 
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (!isTauriRuntime()) {
+  if (!isDesktopRuntime()) {
     throw new Error('Terminal is available in the desktop app runtime.')
   }
   const api = await import('@tauri-apps/api/core')
@@ -28,7 +28,7 @@ async function invoke<T>(command: string, args?: Record<string, unknown>): Promi
 }
 
 export const terminalApi = {
-  isAvailable: isTauriRuntime,
+  isAvailable: isDesktopRuntime,
 
   spawn(input: { cols: number; rows: number; cwd?: string }) {
     return invoke<TerminalSpawnResult>('terminal_spawn', input)

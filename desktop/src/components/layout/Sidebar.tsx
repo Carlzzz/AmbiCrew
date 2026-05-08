@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTranslation } from '../../i18n'
@@ -8,8 +8,8 @@ import type { SessionListItem } from '../../types/session'
 import { useTabStore, SETTINGS_TAB_ID, SCHEDULED_TAB_ID } from '../../stores/tabStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
+import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
-const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
 const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform)
 
 type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'older'
@@ -40,8 +40,9 @@ export function Sidebar() {
   const [renameValue, setRenameValue] = useState('')
 
   useEffect(() => {
+    if (!isCentralLoggedIn) return
     fetchSessions()
-  }, [fetchSessions])
+  }, [fetchSessions, isCentralLoggedIn])
 
   useEffect(() => {
     if (!contextMenu || sidebarOpen) return
@@ -102,21 +103,11 @@ export function Sidebar() {
     setRenameValue('')
   }, [renamingId, renameValue, renameSession])
 
-  const startDraggingRef = useRef<(() => Promise<void>) | null>(null)
+  // In Electron, window dragging is handled by the title bar (-webkit-app-region: drag)
+  // In web mode, there's no window dragging
 
-  useEffect(() => {
-    if (!isTauri) return
-    import('@tauri-apps/api/window')
-      .then(({ getCurrentWindow }) => {
-        const win = getCurrentWindow()
-        startDraggingRef.current = () => win.startDragging()
-      })
-      .catch(() => {})
-  }, [])
-
-  const handleSidebarDrag = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button, input, textarea, select, a, [role="button"]')) return
-    startDraggingRef.current?.()
+  const handleSidebarDrag = useCallback((_e: React.MouseEvent) => {
+    // No-op: Electron uses CSS -webkit-app-region: drag on the title bar
   }, [])
 
   const t = useTranslation()
@@ -136,7 +127,7 @@ export function Sidebar() {
       data-state={sidebarOpen ? 'open' : 'closed'}
       aria-label="Sidebar"
     >
-      <div className={`px-3 pb-2 ${isTauri && !isWindows ? 'pt-[44px]' : 'pt-3'}`}>
+      <div className={`px-3 pb-2 ${isDesktopRuntime() && !isWindows ? 'pt-[44px]' : 'pt-3'}`}>
         <div className={`flex ${sidebarOpen ? 'items-center justify-between gap-3' : 'flex-col items-center gap-2'}`}>
           <div className={`flex min-w-0 items-center ${sidebarOpen ? 'gap-2.5' : 'justify-center'}`}>
             <img src="/app-icon.png" alt="" className="h-8 w-8 flex-shrink-0" />
@@ -158,7 +149,10 @@ export function Sidebar() {
             ) : (
               <button
                 type="button"
-                onClick={() => useUIStore.getState().setPendingSettingsTab('providers')}
+                onClick={async () => {
+                  const store = useCentralOAuthStore.getState()
+                  await store.login()
+                }}
                 className={`sidebar-copy ${sidebarOpen ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors`}
               >
                 登录
@@ -184,6 +178,10 @@ export function Sidebar() {
           collapsed={!sidebarOpen}
           label={t('sidebar.newSession')}
           onClick={async () => {
+            if (!isCentralLoggedIn) {
+              addToast({ type: 'warning', message: t('auth.pleaseLogin') })
+              return
+            }
             try {
               const currentTabId = useTabStore.getState().activeTabId
               const currentSession = currentTabId
@@ -217,6 +215,14 @@ export function Sidebar() {
 
       {sidebarOpen ? (
         <>
+          {!isCentralLoggedIn ? (
+            <div className="flex-1 flex items-center justify-center px-3">
+              <p className="text-xs text-[var(--color-text-tertiary)] text-center leading-relaxed">
+                {t('auth.pleaseLoginToViewSessions')}
+              </p>
+            </div>
+          ) : (
+          <>
           <div
             data-testid="sidebar-project-filter-section"
             className="sidebar-section sidebar-section--visible relative z-20 flex-none px-3 pb-2"
@@ -335,6 +341,8 @@ export function Sidebar() {
               })}
             </div>
           </div>
+          </>
+          )}
         </>
       ) : (
         <div className="flex-1" aria-hidden="true" />

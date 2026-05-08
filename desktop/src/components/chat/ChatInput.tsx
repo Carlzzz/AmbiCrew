@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chatStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../../stores/tabStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useSessionRuntimeStore } from '../../stores/sessionRuntimeStore'
 import { useTeamStore } from '../../stores/teamStore'
@@ -115,7 +116,8 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const isActive = chatState !== 'idle'
   const isWorkspaceMissing = activeSession?.workDirExists === false
   const hasWorkspaceReferences = !isMemberSession && workspaceReferences.length > 0
-  const canSubmit = !isWorkspaceMissing && (input.trim().length > 0 || (!isMemberSession && (attachments.length > 0 || hasWorkspaceReferences)))
+  const isCentralLoggedIn = useCentralOAuthStore((s) => s.status?.loggedIn)
+  const canSubmit = !!isCentralLoggedIn && !isWorkspaceMissing && (input.trim().length > 0 || (!isMemberSession && (attachments.length > 0 || hasWorkspaceReferences)))
   const isHeroComposer = variant === 'hero' && !isMemberSession && !compact
   const resolvedWorkDir = activeSession?.workDir || gitInfo?.workDir || undefined
   const composerAttachments = useMemo(
@@ -352,6 +354,7 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   }, [input])
 
   const handleSubmit = () => {
+    if (!isCentralLoggedIn) return
     const text = input.trim()
     if ((!text && ((!attachments.length && !hasWorkspaceReferences) || isMemberSession)) || isWorkspaceMissing) return
 

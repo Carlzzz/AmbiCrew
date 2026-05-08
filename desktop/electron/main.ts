@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { openDatabase, closeDatabase } from './db/database.js'
 import { startServer, stopServer, getServerUrl } from './server/serverManager.js'
@@ -7,13 +8,77 @@ import { setupSingleInstance } from './shell/singleInstance.js'
 import { setAppMenu } from './shell/appMenu.js'
 import { registerShellIpc } from './ipc/shellIpc.js'
 import { registerWhitelistedInvoke } from './ipc/ipcRegistry.js'
-import { registerAuthIpc } from './ipc/authIpc.js'
+import { registerAuthIpc, registerOpenUrlHandler, findProtocolUrlInArgv, dispatchCentralAuthUrl } from './ipc/authIpc.js'
 import { AuthController } from './auth/authController.js'
-import { CallbackServer } from './auth/callbackServer.js'
-import { startDeviceHeartbeat } from './auth/deviceManager.js'
-import { getAccessToken } from './auth/tokenStore.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// --- Load .env ---
+
+function loadEnvFile(): void {
+  const repoRoot = path.resolve(__dirname, '..', '..')
+  const envPath = path.join(repoRoot, '.env')
+  try {
+    const content = readFileSync(envPath, 'utf-8')
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eqIdx = trimmed.indexOf('=')
+      if (eqIdx === -1) continue
+      const key = trimmed.slice(0, eqIdx).trim()
+      const value = trimmed.slice(eqIdx + 1).trim()
+      if (key && !process.env[key]) {
+        process.env[key] = value
+      }
+    }
+    console.log('[main] Loaded .env from', envPath)
+  } catch {
+    console.log('[main] No .env found at', envPath)
+  }
+}
+loadEnvFile()
+
+// --- Register custom protocol handler BEFORE app.whenReady() ---
+// CrewCentral redirects to testcrew://auth?access_token=... after login.
+// The OS routes this back to the Electron app via the registered protocol.
+
+const AUTH_PROTOCOL_SCHEME = process.env.AUTH_CALLBACK_SCHEME?.trim() || 'testcrew'
+
+function registerCustomProtocolClient(): void {
+  try {
+    if (process.defaultApp) {
+      // Dev mode: electron is running with `electron .` so we need to pass
+      // the path to the app entry as an extra argument
+      if (process.argv.length >= 2) {
+        app.setAsDefaultProtocolClient(AUTH_PROTOCOL_SCHEME, process.execPath, [
+          path.resolve(process.argv[1]),
+        ])
+      }
+    } else {
+      app.setAsDefaultProtocolClient(AUTH_PROTOCOL_SCHEME)
+    }
+    console.log('[main] Registered protocol handler for', AUTH_PROTOCOL_SCHEME)
+  } catch (e) {
+    console.warn('[main] setAsDefaultProtocolClient failed', e)
+  }
+}
+
+registerCustomProtocolClient()
+registerOpenUrlHandler()
+
+// --- Single instance lock ---
+// On Windows, custom protocol URLs arrive via second-instance argv
+
+if (!setupSingleInstance(() => mainWindow, (argv: string[]) => {
+  const url = findProtocolUrlInArgv(argv)
+  if (url) {
+    dispatchCentralAuthUrl(url)
+  }
+})) {
+  app.quit()
+}
+
+// --- Window management ---
 
 let mainWindow: BrowserWindow | null = null
 
@@ -47,9 +112,16 @@ function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
+// --- App lifecycle ---
+
 app.whenReady().then(async () => {
-  setupSingleInstance(getMainWindow)
   setAppMenu()
+
+  // Check for protocol URL in startup argv (Windows: first launch with deep link)
+  const deepLinkOnStart = findProtocolUrlInArgv(process.argv)
+  if (deepLinkOnStart) {
+    dispatchCentralAuthUrl(deepLinkOnStart)
+  }
 
   try {
     await openDatabase()
@@ -75,26 +147,12 @@ app.whenReady().then(async () => {
 
   // Initialize auth
   const authController = new AuthController()
-  const callbackSrv = new CallbackServer()
-  registerAuthIpc({ controller: authController, callbackSrv: callbackSrv })
+  registerAuthIpc({ controller: authController })
 
-  // Try restore session
-  const restored = await authController.tryRestoreSession()
-
-  // Start device heartbeat if logged in
+  const restored = await authController.checkServerAuthStatus()
   if (restored) {
-    startDeviceHeartbeat({
-      getAccessToken: () => getAccessToken(),
-      onTokenRefresh: () => authController.tryRefreshToken(),
-      onExpire: () => authController.expire(),
-      onReboot: () => {
-        app.relaunch()
-        app.exit(0)
-      },
-    })
+    console.log('[main] CrewCentral session restored')
   }
-
-  // Skills IPC will be registered later
 
   mainWindow = createWindow()
 

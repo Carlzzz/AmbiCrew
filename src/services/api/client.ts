@@ -400,10 +400,10 @@ function getCustomBaseUrl(): string | null {
     if (!raw) return null
     try {
       const url = new URL(raw)
-      if (!url.pathname.endsWith('/v1')) {
-        url.pathname = url.pathname.replace(/\/+$/, '') + '/v1'
-      }
-      return url.toString()
+      // Do NOT append /v1 — the Anthropic SDK already includes /v1 in its
+      // request paths (e.g. POST /v1/messages). Appending it here causes a
+      // double /v1/v1/messages that results in a 404 from upstream proxies.
+      return url.toString().replace(/\/+$/, '')
     } catch {
       return null
     }
@@ -417,10 +417,11 @@ function getCustomBaseUrl(): string | null {
   if (!raw) return null
   try {
     const url = new URL(raw)
-    if (!url.pathname.endsWith('/v1')) {
-      url.pathname = url.pathname.replace(/\/+$/, '') + '/v1'
-    }
-    return url.toString()
+    // Same as above — strip /v1 if the user included it, since the SDK adds /v1.
+    url.pathname = url.pathname
+      .replace(/\/+$/, '')
+      .replace(/\/v1\/?$/, '')
+    return url.toString().replace(/\/+$/, '')
   } catch {
     return null
   }

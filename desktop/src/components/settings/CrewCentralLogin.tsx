@@ -1,22 +1,5 @@
-// desktop/src/components/settings/CrewCentralLogin.tsx
-//
-// CrewCentral login UI component — shows login status and provides
-// login/logout buttons. In Electron mode, the main process handles the full OAuth flow
-// (opens browser, waits for callback, completes login). In web mode, uses server API.
-
 import { useEffect } from 'react'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
-
-function openExternal(url: string) {
-  if (typeof window !== 'undefined' && 'electron' in window) {
-    const electron = (window as unknown as { electron: { shell: { openExternal: (u: string) => Promise<{ ok: boolean; error?: string }> } } }).electron
-    electron.shell.openExternal(url).catch((err) => {
-      console.error('[CrewCentralLogin] openExternal failed:', err)
-    })
-  } else {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-}
 
 export function CrewCentralLogin() {
   const {
@@ -26,7 +9,6 @@ export function CrewCentralLogin() {
     fetchStatus,
     login,
     logout,
-    startPolling,
     stopPolling,
   } = useCentralOAuthStore()
 
@@ -37,24 +19,9 @@ export function CrewCentralLogin() {
 
   const handleLogin = async () => {
     try {
-      const { authorizeUrl } = await login()
-      // Validate URL before opening
-      let validUrl: URL
-      try {
-        validUrl = new URL(authorizeUrl)
-        if (validUrl.protocol !== 'http:' && validUrl.protocol !== 'https:') {
-          throw new Error('Invalid protocol')
-        }
-      } catch {
-        useCentralOAuthStore.setState({
-          error: '授权地址无效，请联系管理员',
-        })
-        return
-      }
-
-      // Open browser via Electron preload or fallback to window.open
-      openExternal(authorizeUrl)
-      startPolling()
+      await login()
+      // In Electron mode, login() blocks until the protocol callback completes.
+      // In web mode, login() opens the browser and starts polling.
     } catch {
       // store.login() errors are already captured into store.error
     }

@@ -12,10 +12,10 @@ import { useTerminalPanelStore } from '../../stores/terminalPanelStore'
 import { useTranslation } from '../../i18n'
 import { WindowControls, showWindowControls } from './WindowControls'
 import { Folder, FolderOpen, SquareTerminal } from 'lucide-react'
+import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
 const TAB_WIDTH = 180
 const DRAG_START_THRESHOLD = 4
-const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
 
 function isSessionTab(tab: Tab | null) {
   if (!tab) return false
@@ -60,18 +60,9 @@ export function TabBar() {
   const pendingDragRef = useRef<{ index: number; startX: number; startY: number } | null>(null)
   const suppressClickRef = useRef(false)
   const tabRefs = useRef(new Map<string, HTMLDivElement | null>())
-  const startDraggingRef = useRef<(() => Promise<void>) | null>(null)
   const t = useTranslation()
 
-  useEffect(() => {
-    if (!isTauri) return
-    import('@tauri-apps/api/window')
-      .then(({ getCurrentWindow }) => {
-        const win = getCurrentWindow()
-        startDraggingRef.current = () => win.startDragging()
-      })
-      .catch(() => {})
-  }, [])
+  // In Electron, window dragging is handled by the title bar CSS
 
   const updateScrollState = useCallback(() => {
     const el = scrollRef.current
@@ -261,11 +252,8 @@ export function TabBar() {
     setActiveTab(sessionId)
   }
 
-  const handleScrollRegionMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || event.target !== scrollRef.current) return
-    const startDragging = startDraggingRef.current
-    if (!startDragging) return
-    void startDragging().catch(() => {})
+  const handleScrollRegionMouseDown = useCallback((_event: React.MouseEvent<HTMLDivElement>) => {
+    // No-op: Electron uses CSS -webkit-app-region: drag on the title bar
   }, [])
 
   return (
@@ -326,12 +314,12 @@ export function TabBar() {
         )}
       </div>
 
-      {isTauri && (
+      {isDesktopRuntime() && (
         <div
           data-testid="tab-bar-drag-gutter"
-          data-tauri-drag-region
           aria-hidden="true"
           className={`flex-shrink-0 min-h-[37px] ${showWindowControls ? 'w-3' : 'w-4'}`}
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         />
       )}
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { getBaseUrl } from '../api/client'
 
 type CentralOAuthStatus = {
   loggedIn: boolean
@@ -12,16 +13,27 @@ type CentralOAuthState = {
   error: string | null
 
   fetchStatus: () => Promise<void>
-  login: () => Promise<{ authorizeUrl: string }>
+  login: () => Promise<void>
   logout: () => Promise<void>
   startPolling: () => void
   stopPolling: () => void
 }
 
-const isElectron = typeof window !== 'undefined' && 'electron' in window
+function apiUrl(path: string) {
+  return `${getBaseUrl()}${path}`
+}
 
-function getElectronAPI() {
-  return (window as unknown as { electron: NonNullable<Window['electron']> }).electron!
+function isElectron(): boolean {
+  return typeof window !== 'undefined' && 'electron' in window
+}
+
+function currentServerPort(): number {
+  try {
+    const port = new URL(getBaseUrl()).port
+    const parsed = Number.parseInt(port, 10)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  } catch { /* fall through */ }
+  return 43124
 }
 
 export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
@@ -34,102 +46,90 @@ export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
     error: null,
 
     fetchStatus: async () => {
-      if (isElectron) {
-        try {
-          const result = await getElectronAPI().auth.getStatus()
+      try {
+        if (isElectron()) {
+          const electron = (window as unknown as {
+            electron: { auth: { getStatus: () => Promise<{ ok: boolean; status?: CentralOAuthStatus }> } }
+          }).electron
+          const result = await electron.auth.getStatus()
           if (result.ok && result.status) {
             set({ status: result.status, error: null })
-          } else {
-            set({ error: result.error || 'Failed to get status' })
+            return
           }
-        } catch (err) {
-          set({ error: err instanceof Error ? err.message : String(err) })
         }
-      } else {
-        try {
-          const resp = await fetch('/api/central-oauth')
-          const status = await resp.json() as CentralOAuthStatus
-          set({ status, error: null })
-        } catch (err) {
-          set({ error: err instanceof Error ? err.message : String(err) })
-        }
+        // Fallback: server API
+        const resp = await fetch(apiUrl('/api/central-oauth'))
+        const status = await resp.json() as CentralOAuthStatus
+        set({ status, error: null })
+      } catch (err) {
+        set({ error: err instanceof Error ? err.message : String(err) })
       }
     },
 
     login: async () => {
       set({ isLoading: true, error: null })
-      if (isElectron) {
-        try {
-          const result = await getElectronAPI().auth.login()
-          if (result.ok && result.status) {
-            set({ isLoading: false, status: result.status })
-            return { authorizeUrl: '' } // Electron handles browser opening
+      try {
+        if (isElectron()) {
+          // Electron: login via IPC (uses testcrew:// protocol handler)
+          const electron = (window as unknown as {
+            electron: { auth: { login: () => Promise<{ ok: boolean; status?: CentralOAuthStatus; error?: string }> } }
+          }).electron
+          const result = await electron.auth.login()
+          if (!result.ok) {
+            throw new Error(result.error || 'Login failed')
           }
-          set({ isLoading: false, error: result.error || 'Login failed' })
-          throw new Error(result.error || 'Login failed')
-        } catch (err) {
-          set({
-            isLoading: false,
-            error: err instanceof Error ? err.message : String(err),
-          })
-          throw err
+          set({ status: result.status || null, isLoading: false })
+          return
         }
-      } else {
-        try {
-          const resp = await fetch('/api/central-oauth/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serverPort: 43124 }),
-          })
-          const data = await resp.json() as { authorizeUrl?: string; error?: string }
-          if (data.error) throw new Error(data.error)
-          set({ isLoading: false })
-          return { authorizeUrl: data.authorizeUrl! }
-        } catch (err) {
-          set({
-            isLoading: false,
-            error: err instanceof Error ? err.message : String(err),
-          })
-          throw err
+
+        // Non-Electron: server API with HTTP redirect_uri
+        const resp = await fetch(apiUrl('/api/central-oauth/start'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverPort: currentServerPort() }),
+        })
+        const data = await resp.json() as { authorizeUrl?: string; error?: string }
+        if (data.error) throw new Error(data.error)
+
+        // Open browser
+        const url = data.authorizeUrl!
+        if (typeof window !== 'undefined') {
+          window.open(url, '_blank', 'noopener,noreferrer')
         }
+        set({ isLoading: false })
+        // Start polling for server-side login completion
+        get().startPolling()
+      } catch (err) {
+        set({
+          isLoading: false,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     },
 
     logout: async () => {
       get().stopPolling()
       set({ isLoading: true })
-      if (isElectron) {
-        try {
-          const result = await getElectronAPI().auth.logout()
-          if (result.ok) {
-            set({ status: { loggedIn: false }, isLoading: false })
-          } else {
-            set({ isLoading: false, error: result.error || 'Logout failed' })
-          }
-        } catch (err) {
-          set({
-            isLoading: false,
-            error: err instanceof Error ? err.message : String(err),
-          })
+      try {
+        if (isElectron()) {
+          const electron = (window as unknown as {
+            electron: { auth: { logout: () => Promise<{ ok: boolean }> } }
+          }).electron
+          await electron.auth.logout()
+        } else {
+          await fetch(apiUrl('/api/central-oauth'), { method: 'DELETE' })
         }
-      } else {
-        try {
-          await fetch('/api/central-oauth', { method: 'DELETE' })
-          set({ status: { loggedIn: false }, isLoading: false })
-        } catch (err) {
-          set({
-            isLoading: false,
-            error: err instanceof Error ? err.message : String(err),
-          })
-        }
+        set({ status: { loggedIn: false }, isLoading: false })
+      } catch (err) {
+        set({
+          isLoading: false,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     },
 
     startPolling: () => {
       if (pollTimer) return
-      // Electron mode doesn't need polling (callback server handles it)
-      if (isElectron) return
-      // Server mode: poll for status
       set({ isPolling: true })
       const poll = async () => {
         await get().fetchStatus()

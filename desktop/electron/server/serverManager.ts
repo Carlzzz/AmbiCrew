@@ -37,7 +37,7 @@ export function startServer(): Promise<string> {
       cwd,
       env: {
         ...process.env,
-        PORT: String(SERVER_PORT),
+        SERVER_PORT: String(SERVER_PORT),
         DESKTOP_MODE: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -53,7 +53,7 @@ export function startServer(): Promise<string> {
 
     serverProcess.stdout?.on('data', (data: Buffer) => {
       const text = data.toString()
-      if (!resolved && text.includes('listening')) {
+      if (!resolved && text.includes('running at')) {
         resolved = true
         clearTimeout(timeout)
         serverPort = SERVER_PORT

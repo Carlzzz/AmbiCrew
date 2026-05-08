@@ -1,0 +1,47 @@
+# Dependencies
+desktop/node_modules/
+
+# Build output
+desktop/dist-electron/
+desktop/out/
+desktop/release/
+dist/
+build/
+out/
+release/
+
+# Vite cache
+.vite/
+
+# Environment files (contains secrets)
+.env
+.env.*
+!.env.example
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.sublime-workspace
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Electron
+desktop/out/
+
+# Misc
+.cache/
+coverage/
