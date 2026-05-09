@@ -185,12 +185,18 @@ export function EmptySession() {
         ? providerState.providers.find((provider) => provider.name === settings.activeProviderName)?.id ?? null
         : null
     )
-    // For CrewCentral (provider-managed), prefer availableModels[0] over
-    // currentModel because currentModel may hold a stale value from a previous
-    // provider (e.g. "haiku") that isn't valid on CrewProxy.
+    // For CrewCentral (provider-managed), prefer the provider's default model
+    // (e.g. MiniMax-M2.7-highspeed) over availableModels[0] which may be a
+    // different model (e.g. doubao-seed-2.0-pro). currentModel may also hold a
+    // stale value from a previous provider (e.g. "haiku") that isn't valid on CrewProxy.
     const isProviderManaged = !!inferredProviderId
+    const inferredProvider = inferredProviderId
+      ? providerState.providers.find((p) => p.id === inferredProviderId)
+      : null
+    const providerDefault = inferredProvider?.models.main
+    const isProviderDefaultAvailable = providerDefault && settings.availableModels.some((m) => m.id === providerDefault)
     const modelId = isProviderManaged
-      ? (settings.availableModels[0]?.id || settings.currentModel?.id || OFFICIAL_DEFAULT_MODEL_ID)
+      ? (isProviderDefaultAvailable ? providerDefault : settings.availableModels[0]?.id || settings.currentModel?.id || OFFICIAL_DEFAULT_MODEL_ID)
       : (settings.currentModel?.id || settings.availableModels[0]?.id || OFFICIAL_DEFAULT_MODEL_ID)
 
     return (

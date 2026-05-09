@@ -15,11 +15,35 @@ import { AuthController } from './auth/authController.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// --- Inject bundled tools into PATH ---
+// In packaged mode, prepend bundled MinGit/cmd, MinGit/bin, and python
+// to PATH so that git.exe, bash.exe, and python.exe are available to
+// the server process and any spawned child processes.
+
+function injectBundledToolsPath(): void {
+  if (!app.isPackaged) return
+  const rp = process.resourcesPath
+  const entries = [
+    path.join(rp, 'MinGit', 'cmd'),
+    path.join(rp, 'MinGit', 'bin'),
+    path.join(rp, 'python'),
+  ]
+  process.env.PATH = entries.join(path.delimiter) + path.delimiter + (process.env.PATH || '')
+  console.log('[main] Injected bundled Git/Python into PATH')
+}
+
 // --- Load .env ---
 
 function loadEnvFile(): void {
-  const repoRoot = path.resolve(__dirname, '..', '..')
-  const envPath = path.join(repoRoot, '.env')
+  // In packaged mode, .env is in resources/ alongside the app.asar.
+  // In dev mode, .env is at the repo root (two levels above __dirname).
+  let envDir: string
+  if (app.isPackaged) {
+    envDir = process.resourcesPath
+  } else {
+    envDir = path.resolve(__dirname, '..', '..')
+  }
+  const envPath = path.join(envDir, '.env')
   try {
     const content = readFileSync(envPath, 'utf-8')
     for (const line of content.split('\n')) {
@@ -131,6 +155,8 @@ app.whenReady().then(async () => {
   } catch (err) {
     console.error('[main] Database open failed:', err)
   }
+
+  injectBundledToolsPath()
 
   try {
     const serverUrl = await startServer()

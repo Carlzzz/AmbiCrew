@@ -71,8 +71,9 @@ export class AuthController {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       })
       if (res.ok) {
-        const json = await res.json() as { data?: { displayName?: string } }
-        this.displayName = json.data?.displayName || tokens.display_name
+        const json = await res.json() as { rc?: number; data?: Record<string, unknown> }
+        const d = json.data
+        this.displayName = String(d?.display_name ?? d?.displayName ?? d?.email ?? '') || tokens.display_name
         this.state = 'logged_in'
         this.emit()
         return true
@@ -157,8 +158,9 @@ export class AuthController {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       if (res.ok) {
-        const json = await res.json() as { data?: { displayName?: string; nickname?: string } }
-        const name = json.data?.displayName || json.data?.nickname
+        const json = await res.json() as { rc?: number; data?: Record<string, unknown> }
+        const d = json.data
+        const name = String(d?.display_name ?? d?.displayName ?? d?.email ?? '')
         if (name) {
           this.displayName = name
           // Update token file with display name

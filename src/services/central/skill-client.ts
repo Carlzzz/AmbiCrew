@@ -5,6 +5,8 @@
  * Reference: TestCrew src/main/libs/skillHubClient.ts
  */
 
+import { getDeviceInfo } from './device-manager.js'
+
 export interface HubSkillItem {
   id: string
   name?: string
@@ -76,7 +78,12 @@ export async function fetchDeviceManifest(
   signal?: AbortSignal,
 ): Promise<HubManifest> {
   const base = getSkillHubBaseUrl()
-  const url = joinBaseUrl(base, '/api/v1/skills/manifest')
+  const info = await getDeviceInfo()
+  const params = new URLSearchParams({
+    device_uuid: info.device_uuid,
+    platform: info.platform,
+  })
+  const url = joinBaseUrl(base, `/api/v1/skills/manifest?${params.toString()}`)
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
     signal,

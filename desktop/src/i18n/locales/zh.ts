@@ -512,6 +512,7 @@ export const zh: Record<TranslationKey, string> = {
   'settings.skills.source.user': '用户',
   'settings.skills.source.project': '项目',
   'settings.skills.source.plugin': '插件',
+  'settings.skills.source.crewcentral': '中控',
   'settings.skills.source.mcp': 'MCP',
   'settings.skills.source.bundled': '内置',
 
@@ -598,6 +599,7 @@ export const zh: Record<TranslationKey, string> = {
 
   // Settings > Computer Use
   'settings.tab.computerUse': 'Computer Use',
+  'settings.tab.memory': 'CLAUDE.md',
   'settings.computerUse.title': 'Computer Use',
   'settings.computerUse.description': '允许 Claude 截屏、点击、打字并控制你的电脑。需要 Python 3，macOS 上还需要辅助功能权限。',
   'settings.computerUse.notSupported': 'Computer Use 仅支持 macOS 和 Windows。',
@@ -1194,4 +1196,5 @@ export const zh: Record<TranslationKey, string> = {
   'tabs.openTerminal': '打开终端',
   'tabs.showWorkspace': '显示工作区',
   'tabs.hideWorkspace': '隐藏工作区',
+  'tabs.openClaudeMd': '编辑 CLAUDE.md',
 }

@@ -1,13 +1,17 @@
 /**
  * Skills REST API
  *
- * GET /api/skills              — List all installed skills (metadata only)
- * GET /api/skills/detail       — Full skill data (tree + files)
- *       ?source=user&name=xxx
+ * GET  /api/skills              — List all installed skills (metadata only)
+ * GET  /api/skills/detail       — Full skill data (tree + files)
+ *        ?source=user&name=xxx
+ * POST /api/skills/install      — Download & install a hub skill
+ *        { skillSlug: string, version?: string }
  */
 
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import * as os from 'os'
+import { execSync } from 'child_process'
 import { parseFrontmatter } from '../../utils/frontmatterParser.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getProjectDirsUpToHome } from '../../utils/markdownConfigLoader.js'
@@ -15,6 +19,17 @@ import { getCwd } from '../../utils/cwd.js'
 import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
 import type { LoadedPlugin } from '../../types/plugin.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
+import {
+  fetchHubManifest,
+  fetchDeviceManifest,
+  fetchSkillDownloadToken,
+  downloadSkillToBuffer,
+  type HubSkillItem,
+} from '../../services/central/skill-client.js'
+import {
+  getAccessToken,
+  loadTokens,
+} from '../../services/central/token-store.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -22,7 +37,7 @@ type SkillMeta = {
   name: string
   displayName?: string
   description: string
-  source: 'user' | 'project' | 'plugin'
+  source: 'user' | 'project' | 'plugin' | 'crewcentral'
   userInvocable: boolean
   version?: string
   contentLength: number
@@ -61,6 +76,11 @@ const LANG_MAP: Record<string, string> = {
   py: 'python', toml: 'toml', css: 'css', html: 'html',
   txt: 'text', xml: 'xml', sql: 'sql', rs: 'rust', go: 'go',
 }
+
+// ─── Hub manifest cache ──────────────────────────────────────────────────────
+
+let hubManifestCache: { items: HubSkillItem[]; ts: number } | null = null
+const HUB_CACHE_TTL_MS = 120_000 // 2 min
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -355,6 +375,83 @@ async function collectPluginSkills(): Promise<SkillMeta[]> {
   return skills
 }
 
+// ─── CrewCentral hub skills ──────────────────────────────────────────────────
+
+async function getAccessTokenForHub(): Promise<string | null> {
+  let token = getAccessToken()
+  if (token) return token
+  const payload = await loadTokens()
+  return payload?.access_token ?? null
+}
+
+async function fetchHubItems(): Promise<HubSkillItem[]> {
+  const now = Date.now()
+  if (hubManifestCache && now - hubManifestCache.ts < HUB_CACHE_TTL_MS) {
+    return hubManifestCache.items
+  }
+
+  const merged = new Map<string, HubSkillItem>()
+
+  // 1. Public index.json — no auth required, matches TestCrew's approach
+  try {
+    const publicManifest = await fetchHubManifest()
+    for (const item of publicManifest.items) {
+      merged.set(item.id, item)
+    }
+  } catch {
+    // Public manifest unavailable — will try authenticated endpoint below
+  }
+
+  // 2. Device-specific manifest (authenticated) — supplements public index
+  const token = await getAccessTokenForHub()
+  if (token) {
+    try {
+      const deviceManifest = await fetchDeviceManifest(token)
+      for (const item of deviceManifest.items) {
+        // Device-specific entries override public ones (e.g. with config)
+        merged.set(item.id, item)
+      }
+    } catch {
+      // Device manifest unavailable — public items are sufficient
+    }
+  }
+
+  const items = Array.from(merged.values())
+  if (items.length > 0) {
+    hubManifestCache = { items, ts: now }
+  }
+  return items
+}
+
+async function hubItemToSkillMeta(item: HubSkillItem): Promise<SkillMeta> {
+  const name = `crewcentral:${item.id}`
+  const existingDir = path.join(getUserSkillsDir(), name)
+  let hasDirectory = false
+  try {
+    const stat = await fs.stat(existingDir)
+    hasDirectory = stat.isDirectory()
+  } catch {
+    // Not installed locally
+  }
+
+  return {
+    name,
+    displayName: item.name || item.id,
+    description: item.description || `Hub skill: ${item.id}`,
+    source: 'crewcentral',
+    userInvocable: true,
+    version: item.version,
+    contentLength: 0,
+    hasDirectory,
+    pluginName: item.author,
+  }
+}
+
+async function collectHubSkills(): Promise<SkillMeta[]> {
+  const items = await fetchHubItems()
+  return Promise.all(items.map(hubItemToSkillMeta))
+}
+
 // ─── Router ──────────────────────────────────────────────────────────────────
 
 export async function handleSkillsApi(
@@ -363,17 +460,18 @@ export async function handleSkillsApi(
   segments: string[],
 ): Promise<Response> {
   try {
-    if (req.method !== 'GET') {
-      throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
-    }
-
     const sub = segments[2]
 
     switch (sub) {
       case undefined:
-        return await listSkills(url)
+        if (req.method === 'GET') return await listSkills(url)
+        throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
       case 'detail':
-        return await getSkillDetail(url)
+        if (req.method === 'GET') return await getSkillDetail(url)
+        throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
+      case 'install':
+        if (req.method === 'POST') return await installHubSkill(req)
+        throw new ApiError(405, `Method ${req.method} not allowed`, 'METHOD_NOT_ALLOWED')
       default:
         throw ApiError.notFound(`Unknown skills endpoint: ${sub}`)
     }
@@ -386,13 +484,14 @@ export async function handleSkillsApi(
 
 async function listSkills(url: URL): Promise<Response> {
   const cwd = getRequestedCwd(url)
-  const [userSkills, projectSkills, pluginSkills] = await Promise.all([
+  const [userSkills, projectSkills, pluginSkills, hubSkills] = await Promise.all([
     collectSkillsFromRoots([getUserSkillsDir()], 'user'),
     collectSkillsFromRoots(getProjectSkillsDirs(cwd), 'project'),
     collectPluginSkills(),
+    collectHubSkills(),
   ])
 
-  const skills = [...userSkills, ...projectSkills, ...pluginSkills]
+  const skills = [...userSkills, ...projectSkills, ...pluginSkills, ...hubSkills]
   skills.sort((a, b) => a.name.localeCompare(b.name))
   return Response.json({ skills })
 }
@@ -408,6 +507,36 @@ async function getSkillDetail(url: URL): Promise<Response> {
   // Prevent path traversal
   if (name.includes('..') || name.includes('/') || name.includes('\\')) {
     throw ApiError.badRequest('Invalid skill name')
+  }
+
+  // CrewCentral skills — return hub metadata (may not be installed locally)
+  if (source === 'crewcentral') {
+    const slug = name.startsWith('crewcentral:') ? name.slice('crewcentral:'.length) : name
+    const items = await fetchHubItems()
+    const item = items.find((i) => i.id === slug)
+    if (!item) {
+      throw ApiError.notFound(`Hub skill not found: ${slug}`)
+    }
+
+    const meta = await hubItemToSkillMeta(item)
+    // If installed locally, return full detail
+    if (meta.hasDirectory) {
+      const skillDir = path.join(getUserSkillsDir(), name)
+      const { tree, files } = await buildFileTree(skillDir)
+      return Response.json({ detail: { meta, tree, files, skillRoot: skillDir }, hubItem: item })
+    }
+
+    // Not installed — return metadata only, no file tree
+    return Response.json({
+      detail: {
+        meta,
+        tree: [],
+        files: [],
+        skillRoot: '',
+        installable: true,
+        hubItem: item,
+      },
+    })
   }
 
   if (source !== 'user' && source !== 'project' && source !== 'plugin') {
@@ -442,5 +571,85 @@ async function getSkillDetail(url: URL): Promise<Response> {
 
   return Response.json({
     detail: { meta, tree, files, skillRoot: skillDir },
+  })
+}
+
+// ─── Install handler ─────────────────────────────────────────────────────────
+
+async function installHubSkill(req: Request): Promise<Response> {
+  let body: { skillSlug?: string; version?: string }
+  try {
+    body = (await req.json()) as { skillSlug?: string; version?: string }
+  } catch {
+    throw ApiError.badRequest('Invalid JSON body')
+  }
+
+  const { skillSlug, version: _version } = body
+  if (!skillSlug) {
+    throw ApiError.badRequest('Missing required field: skillSlug')
+  }
+
+  // Look up the hub item to get its downloadUrl
+  const items = await fetchHubItems()
+  const hubItem = items.find((i) => i.id === skillSlug)
+  let downloadUrl = hubItem?.downloadUrl
+
+  // If no public downloadUrl, try authenticated download token
+  if (!downloadUrl) {
+    const token = await getAccessTokenForHub()
+    if (!token) {
+      throw new ApiError(401, 'Not authenticated with CrewCentral', 'UNAUTHORIZED')
+    }
+    const downloadToken = await fetchSkillDownloadToken(skillSlug, token)
+    const baseUrl = process.env.SKILL_HUB_BASE_URL ||
+      (process.env.CREWCENTRAL_AUTH_LOGIN_URL
+        ? (() => {
+            try {
+              const u = new URL(process.env.CREWCENTRAL_AUTH_LOGIN_URL!)
+              const parts = u.pathname.split('/auth/')
+              return `${u.origin}${parts[0] || ''}`
+            } catch { return 'http://127.0.0.1:5173/woicrew' }
+          })()
+        : 'http://127.0.0.1:5173/woicrew')
+    downloadUrl = `${baseUrl.replace(/\/+$/, '')}/api/v1/skills/download?token=${encodeURIComponent(downloadToken)}`
+  }
+
+  // Download ZIP
+  let zipBuffer: ArrayBuffer
+  try {
+    zipBuffer = await downloadSkillToBuffer(downloadUrl)
+  } catch (err) {
+    throw new ApiError(502, `Failed to download skill: ${err instanceof Error ? err.message : String(err)}`, 'DOWNLOAD_FAILED')
+  }
+
+  // Extract to user skills directory
+  const skillName = `crewcentral:${skillSlug}`
+  const targetDir = path.join(getUserSkillsDir(), skillName)
+  await fs.mkdir(targetDir, { recursive: true })
+
+  // Write ZIP to temp file and extract
+  const tmpZip = path.join(os.tmpdir(), `skill-${skillSlug}-${Date.now()}.zip`)
+  try {
+    await fs.writeFile(tmpZip, Buffer.from(zipBuffer))
+
+    if (process.platform === 'win32') {
+      execSync(
+        `powershell -NoProfile -Command "Expand-Archive -Path '${tmpZip}' -DestinationPath '${targetDir}' -Force"`,
+        { timeout: 30_000 },
+      )
+    } else {
+      execSync(`unzip -o "${tmpZip}" -d "${targetDir}"`, { timeout: 30_000 })
+    }
+  } finally {
+    try { await fs.unlink(tmpZip) } catch { /* cleanup best-effort */ }
+  }
+
+  // Invalidate hub cache so listSkills picks up hasDirectory=true
+  hubManifestCache = null
+
+  return Response.json({
+    ok: true,
+    skillName,
+    skillDir: targetDir,
   })
 }

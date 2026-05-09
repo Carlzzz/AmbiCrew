@@ -510,6 +510,7 @@ export const en = {
   'settings.skills.source.user': 'User',
   'settings.skills.source.project': 'Project',
   'settings.skills.source.plugin': 'Plugin',
+  'settings.skills.source.crewcentral': 'CrewCentral',
   'settings.skills.source.mcp': 'MCP',
   'settings.skills.source.bundled': 'Built-in',
 
@@ -596,6 +597,7 @@ export const en = {
 
   // Settings > Computer Use
   'settings.tab.computerUse': 'Computer Use',
+  'settings.tab.memory': 'CLAUDE.md',
   'settings.computerUse.title': 'Computer Use',
   'settings.computerUse.description': 'Allow Claude to take screenshots, click, type, and control your computer. Requires Python 3. On macOS, accessibility permissions are also needed.',
   'settings.computerUse.notSupported': 'Computer Use is only supported on macOS and Windows.',
@@ -1192,6 +1194,7 @@ export const en = {
   'tabs.openTerminal': 'Open Terminal',
   'tabs.showWorkspace': 'Show Workspace',
   'tabs.hideWorkspace': 'Hide Workspace',
+  'tabs.openClaudeMd': 'Edit CLAUDE.md',
 } as const
 
 export type TranslationKey = keyof typeof en

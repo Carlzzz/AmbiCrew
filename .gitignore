@@ -41,6 +41,9 @@ pnpm-debug.log*
 
 # Electron
 desktop/out/
+desktop/resources/MinGit/
+desktop/resources/python/
+desktop/resources/.tmp/
 
 # Misc
 .cache/

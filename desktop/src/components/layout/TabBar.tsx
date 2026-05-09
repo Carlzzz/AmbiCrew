@@ -10,6 +10,7 @@ import { useChatStore } from '../../stores/chatStore'
 import { useWorkspacePanelStore } from '../../stores/workspacePanelStore'
 import { useTerminalPanelStore } from '../../stores/terminalPanelStore'
 import { useTranslation } from '../../i18n'
+import { useUIStore } from '../../stores/uiStore'
 import { WindowControls, showWindowControls } from './WindowControls'
 import { Folder, FolderOpen, SquareTerminal } from 'lucide-react'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
@@ -312,6 +313,14 @@ export function TabBar() {
             active={isWorkspacePanelOpen}
           />
         )}
+        <ToolbarIconButton
+          icon={<span className="material-symbols-outlined text-[17px]">description</span>}
+          label={t('tabs.openClaudeMd')}
+          onClick={() => {
+            useUIStore.getState().setPendingSettingsTab('memory')
+            useTabStore.getState().openTab(SETTINGS_TAB_ID, 'Settings', 'settings')
+          }}
+        />
       </div>
 
       {isDesktopRuntime() && (

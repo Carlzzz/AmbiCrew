@@ -101,9 +101,17 @@ function resolveDefaultRuntimeSelection(
       : null
   )
 
+  // For CrewCentral, prefer the provider's default model over the first
+  // available proxy model (which may be a different upstream).
+  const inferredProvider = inferredProviderId
+    ? providers.find((p) => p.id === inferredProviderId)
+    : null
+  const providerDefault = inferredProvider?.models.main
+  const isProviderDefaultAvailable = providerDefault && availableModelIds.includes(providerDefault)
+
   return {
     providerId: inferredProviderId,
-    modelId: currentModelId || availableModelIds[0] || '',
+    modelId: currentModelId || (isProviderDefaultAvailable ? providerDefault : availableModelIds[0]) || '',
   }
 }
 

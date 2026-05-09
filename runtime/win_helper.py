@@ -278,8 +278,121 @@ def _get_exe_path_for_pid(pid: int) -> str | None:
         return None
 
 
+# Well-known built-in Windows apps that may not appear in uninstall registry
+_WELL_KNOWN_WINDOWS_APPS: list[dict[str, str]] = [
+    {"bundleId": "windows-terminal", "displayName": "Windows Terminal", "path": "wt.exe"},
+    {"bundleId": "calculator", "displayName": "Calculator", "path": "CalculatorApp.exe"},
+    {"bundleId": "notepad", "displayName": "Notepad", "path": "notepad.exe"},
+    {"bundleId": "explorer", "displayName": "File Explorer", "path": "explorer.exe"},
+    {"bundleId": "systemsettings", "displayName": "Settings", "path": "SystemSettings.exe"},
+    {"bundleId": "mspaint", "displayName": "Paint", "path": "mspaint.exe"},
+    {"bundleId": "snippingtool", "displayName": "Snipping Tool", "path": "SnippingTool.exe"},
+    {"bundleId": "taskmgr", "displayName": "Task Manager", "path": "Taskmgr.exe"},
+    {"bundleId": "controlpanel", "displayName": "Control Panel", "path": "control.exe"},
+    {"bundleId": "wordpad", "displayName": "WordPad", "path": "wordpad.exe"},
+    {"bundleId": "powershell", "displayName": "Windows PowerShell", "path": "powershell.exe"},
+    {"bundleId": "pwsh", "displayName": "PowerShell", "path": "pwsh.exe"},
+    {"bundleId": "cmd", "displayName": "Command Prompt", "path": "cmd.exe"},
+    {"bundleId": "edge", "displayName": "Microsoft Edge", "path": "msedge.exe"},
+    {"bundleId": "photos", "displayName": "Photos", "path": "PhotosApp.exe"},
+]
+
+
+def _scan_start_menu(results: dict[str, dict[str, Any]]) -> None:
+    """Scan Start Menu .lnk shortcuts for apps not already found."""
+    import glob as glob_mod
+
+    start_menu_roots = [
+        os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
+        os.path.join(os.environ.get("PROGRAMDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
+    ]
+
+    for root in start_menu_roots:
+        if not os.path.isdir(root):
+            continue
+        for lnk_path in glob_mod.glob(os.path.join(root, "**", "*.lnk"), recursive=True):
+            try:
+                target = _resolve_lnk_target(lnk_path)
+            except Exception:
+                continue
+            if not target or not target.lower().endswith(".exe"):
+                continue
+            target_path = Path(target)
+            exe_stem = target_path.stem
+            # Deduplicate by exe stem — keep the Start Menu display name if it's more descriptive
+            display_name = os.path.splitext(os.path.basename(lnk_path))[0]
+            if exe_stem in results:
+                # Update display name if existing is less descriptive
+                existing = results[exe_stem]
+                if len(display_name) > len(existing["displayName"]):
+                    existing["displayName"] = display_name
+                continue
+            results[exe_stem] = {
+                "bundleId": exe_stem,
+                "displayName": display_name,
+                "path": target,
+            }
+
+
+def _resolve_lnk_target(lnk_path: str) -> str | None:
+    """Resolve a .lnk shortcut to its target path using PowerShell."""
+    try:
+        script = (
+            f'$w = New-Object -ComObject WScript.Shell; '
+            f'$s = $w.CreateShortcut({chr(34)}{lnk_path}{chr(34)}); '
+            f'Write-Output $s.TargetPath'
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True, text=True, timeout=10,
+        )
+        target = result.stdout.strip()
+        return target if target else None
+    except Exception:
+        return None
+
+
+def _add_well_known_apps(results: dict[str, dict[str, Any]]) -> None:
+    """Add well-known built-in Windows apps if not already present."""
+    for app in _WELL_KNOWN_WINDOWS_APPS:
+        bid = app["bundleId"]
+        if bid not in results:
+            # Check if the executable actually exists
+            exe = app["path"]
+            resolved = _resolve_exe_path(exe)
+            results[bid] = {
+                "bundleId": bid,
+                "displayName": app["displayName"],
+                "path": resolved or exe,
+            }
+
+
+def _resolve_exe_path(exe_name: str) -> str | None:
+    """Resolve an executable name to a full path using 'where'."""
+    try:
+        result = subprocess.run(
+            ["where", exe_name], capture_output=True, text=True, timeout=10,
+        )
+        lines = result.stdout.strip().splitlines()
+        if lines:
+            return lines[0].strip()
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", f"(Get-Command {exe_name}).Source"],
+            capture_output=True, text=True, timeout=10,
+        )
+        target = result.stdout.strip()
+        if target:
+            return target
+    except Exception:
+        pass
+    return None
+
+
 def installed_apps() -> list[dict[str, Any]]:
-    """List installed programs from Windows registry and Start Menu shortcuts."""
+    """List installed programs from Windows registry, Start Menu, and well-known apps."""
     import winreg
 
     results: dict[str, dict[str, Any]] = {}
@@ -342,6 +455,10 @@ def installed_apps() -> list[dict[str, Any]]:
                 winreg.CloseKey(app_key)
         finally:
             winreg.CloseKey(key)
+
+    # Additional discovery sources
+    _scan_start_menu(results)
+    _add_well_known_apps(results)
 
     return sorted(results.values(), key=lambda item: item["displayName"].lower())
 

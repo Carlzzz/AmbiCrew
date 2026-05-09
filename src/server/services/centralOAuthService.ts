@@ -93,9 +93,34 @@ export class CentralOAuthService {
     if (!token) {
       return { loggedIn: false }
     }
+    let displayName = getDisplayName() || undefined
+    // If no display_name in token store, try fetching from CrewCentral API
+    if (!displayName) {
+      try {
+        const base = deriveApiBase(this.getLoginUrl())
+        const res = await fetch(`${base}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const json = await res.json() as { rc?: number; data?: Record<string, unknown> }
+          const d = json.data
+          const name = String(d?.display_name ?? d?.displayName ?? d?.email ?? '')
+          if (name) {
+            displayName = name
+            // Persist so subsequent calls skip the API
+            const refreshToken = getRefreshToken()
+            if (refreshToken) {
+              await saveTokens({ access_token: token, refresh_token: refreshToken, display_name: name })
+            }
+          }
+        }
+      } catch {
+        // Non-critical
+      }
+    }
     return {
       loggedIn: true,
-      displayName: getDisplayName() || undefined,
+      displayName,
     }
   }
 

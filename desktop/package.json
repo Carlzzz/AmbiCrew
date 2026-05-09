@@ -9,15 +9,17 @@
     "build": "tsc -b && vite build",
     "build:electron": "tsc -p electron-tsconfig.json",
     "build:server": "bun run scripts/build-server.mjs",
+    "download:deps": "node scripts/download-deps.mjs",
     "build:all": "npm run build && npm run build:electron && npm run build:server",
+    "build:all:pack": "npm run download:deps && npm run build:all",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "lint": "tsc --noEmit",
     "electron:dev": "npm run build:electron && electron .",
     "start": "node scripts/dev-launch.mjs",
-    "pack": "npm run build:all && electron-builder --dir",
-    "dist": "npm run build:all && electron-builder"
+    "pack": "npm run build:all:pack && electron-builder --dir",
+    "dist": "npm run build:all:pack && electron-builder"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

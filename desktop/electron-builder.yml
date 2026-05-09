@@ -13,6 +13,12 @@ extraResources:
     to: .env
   - from: resources/server*
     to: .
+  - from: resources/MinGit
+    to: MinGit
+  - from: resources/python
+    to: python
+  - from: ../runtime
+    to: runtime
 win:
   target:
     - target: nsis
@@ -35,4 +41,6 @@ linux:
   icon: public/app-icon.png
 nsis:
   oneClick: false
+  perMachine: true
   allowToChangeInstallationDirectory: true
+  runAfterFinish: false

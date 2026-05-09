@@ -772,6 +772,29 @@ function looksLikeBundleId(s: string): boolean {
   return REVERSE_DNS_RE.test(s) && !s.includes(" ");
 }
 
+/** Extract a human-readable name from a reverse-DNS bundle ID.
+ *  e.g. "com.google.Chrome" → "chrome", "com.microsoft.VSCode" → "vscode" */
+function extractNameFromBundleId(bundleId: string): string {
+  const parts = bundleId.split(".");
+  const last = parts[parts.length - 1];
+  return last.replace(/([A-Z])/g, " $1").trim().toLowerCase();
+}
+
+/** Known cross-platform name mappings: macOS-style names to Windows search terms.
+ *  Helps when the model uses macOS terminology on Windows. */
+const CROSS_PLATFORM_NAME_ALIASES: Record<string, string[]> = {
+  "safari": ["edge", "chrome", "firefox"],
+  "finder": ["file explorer", "explorer"],
+  "system preferences": ["settings"],
+  "system settings": ["settings"],
+  "terminal": ["windows terminal", "powershell", "command prompt", "cmd"],
+  "preview": ["photos", "paint"],
+  "textedit": ["notepad", "wordpad"],
+  "keynote": ["powerpoint"],
+  "pages": ["word"],
+  "numbers": ["excel"],
+};
+
 function resolveRequestedApps(
   requestedNames: string[],
   installed: InstalledApp[],
@@ -788,14 +811,49 @@ function resolveRequestedApps(
     byLowerDisplayName.set(app.displayName.toLowerCase(), app);
   }
 
+  // Build a list of {displayName, lowerName} for fuzzy matching
+  const installedNames = installed.map((a) => ({
+    lower: a.displayName.toLowerCase(),
+    original: a.displayName,
+  }));
+
   return requestedNames.map((requested): ResolvedAppRequest => {
     let resolved: InstalledApp | undefined;
+    const requestedLower = requested.toLowerCase();
+
+    // 1. Exact bundle ID match (for reverse-DNS identifiers)
     if (looksLikeBundleId(requested)) {
       resolved = byBundleId.get(requested);
+      if (!resolved) {
+        // Try matching the extracted name from the bundle ID
+        const extracted = extractNameFromBundleId(requested);
+        resolved = byLowerDisplayName.get(extracted);
+        if (!resolved) {
+          // Try substring matching against display names using extracted name
+          resolved = _fuzzyMatchDisplayName(extracted, installedNames, byLowerDisplayName);
+        }
+        // Try cross-platform aliases
+        if (!resolved) {
+          resolved = _matchByAliases(extracted, byLowerDisplayName);
+        }
+      }
     }
+
+    // 2. Exact display name match
     if (!resolved) {
-      resolved = byLowerDisplayName.get(requested.toLowerCase());
+      resolved = byLowerDisplayName.get(requestedLower);
     }
+
+    // 3. Fuzzy substring match against display names
+    if (!resolved) {
+      resolved = _fuzzyMatchDisplayName(requestedLower, installedNames, byLowerDisplayName);
+    }
+
+    // 4. Cross-platform name alias fallback
+    if (!resolved) {
+      resolved = _matchByAliases(requestedLower, byLowerDisplayName);
+    }
+
     const bundleId = resolved?.bundleId;
     // When unresolved AND the requested string looks like a bundle ID, use it
     // directly for tier lookup (e.g. "company.thebrowser.Browser" with Arc not
@@ -813,6 +871,43 @@ function resolveRequestedApps(
       ),
     };
   });
+}
+
+function _fuzzyMatchDisplayName(
+  needle: string,
+  installedNames: { lower: string; original: string }[],
+  byLowerDisplayName: Map<string, InstalledApp>,
+): InstalledApp | undefined {
+  // Needle as substring of display name (e.g. "chrome" ⊂ "google chrome")
+  for (const entry of installedNames) {
+    if (entry.lower.includes(needle)) {
+      return byLowerDisplayName.get(entry.lower);
+    }
+  }
+  // Display name as substring of needle (e.g. "vs code" ⊂ "microsoft vs code insider")
+  for (const entry of installedNames) {
+    if (needle.includes(entry.lower) && entry.lower.length >= 4) {
+      return byLowerDisplayName.get(entry.lower);
+    }
+  }
+  return undefined;
+}
+
+function _matchByAliases(
+  name: string,
+  byLowerDisplayName: Map<string, InstalledApp>,
+): InstalledApp | undefined {
+  const aliases = CROSS_PLATFORM_NAME_ALIASES[name];
+  if (!aliases) return undefined;
+  for (const alias of aliases) {
+    const match = byLowerDisplayName.get(alias);
+    if (match) return match;
+    // Also try substring
+    for (const [lower, app] of byLowerDisplayName) {
+      if (lower.includes(alias)) return app;
+    }
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

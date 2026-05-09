@@ -286,8 +286,14 @@ async function handleCurrentModel(req: Request): Promise<Response> {
         if (proxyModels && proxyModels.length > 0) {
           const isValid = proxyModels.some((m) => m.id === currentModelId)
           if (!isValid || !currentModelId) {
-            currentModelId = proxyModels[0].id
-            currentModelName = proxyModels[0].name
+            // Prefer the provider's default model if it's available on the proxy,
+            // otherwise fall back to the first proxy model
+            const defaultModel = activeProvider.models.main
+            const defaultIsValid = defaultModel && proxyModels.some((m) => m.id === defaultModel)
+            const resolved = defaultIsValid ? defaultModel : proxyModels[0].id
+            const resolvedEntry = proxyModels.find((m) => m.id === resolved)
+            currentModelId = resolved
+            currentModelName = resolvedEntry?.name ?? resolved
             // Persist the corrected model so the stale value doesn't resurface
             const currentEnv = (settings.env as Record<string, string>) || {}
             await providerService.updateManagedSettings({

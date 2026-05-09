@@ -38,6 +38,7 @@ export type SettingsTab =
   | 'skills'
   | 'plugins'
   | 'computerUse'
+  | 'memory'
   | 'diagnostics'
   | 'about'
 

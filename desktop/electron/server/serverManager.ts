@@ -37,6 +37,7 @@ export function startServer(): Promise<string> {
           ...process.env,
           SERVER_PORT: String(SERVER_PORT),
           DESKTOP_MODE: '1',
+          CLAUDE_RUNTIME_DIR: path.join(process.resourcesPath, 'runtime'),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -50,6 +51,7 @@ export function startServer(): Promise<string> {
           ...process.env,
           SERVER_PORT: String(SERVER_PORT),
           DESKTOP_MODE: '1',
+          CLAUDE_RUNTIME_DIR: path.join(cwd, 'runtime'),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })

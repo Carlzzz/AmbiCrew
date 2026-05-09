@@ -91,6 +91,14 @@ const BROWSER_BUNDLE_IDS: ReadonlySet<string> = new Set([
   "com.sigmaos.sigmaos.macos", // SigmaOS
   // Webkit-based misc
   "com.kagi.kagimacOS", // Orion
+  // Windows (exe stems used as bundleId on Windows)
+  "chrome",
+  "firefox",
+  "msedge",
+  "brave",
+  "opera",
+  "vivaldi",
+  "duckduckgo",
 ]);
 
 /**
@@ -160,6 +168,30 @@ const TERMINAL_BUNDLE_IDS: ReadonlySet<string> = new Set([
   "com.apple.ScriptEditor2",
   "com.apple.Automator",
   "com.apple.shortcuts",
+  // Windows terminals / IDEs (exe stems used as bundleId)
+  "windows-terminal",
+  "powershell",
+  "pwsh",
+  "cmd",
+  "conemu",
+  "cmder",
+  "Code", // VS Code
+  "cursor",
+  "windsurf",
+  "idea64", // IntelliJ
+  "pycharm64", // PyCharm
+  "webstorm64",
+  "clion64",
+  "goland64",
+  "rider64",
+  "studio64", // Android Studio
+  "sublime_text",
+  "gvim",
+  "nvim",
+  "emacs",
+  "devenv", // Visual Studio
+  "eclipse",
+  "netbeans64",
 ]);
 
 /**

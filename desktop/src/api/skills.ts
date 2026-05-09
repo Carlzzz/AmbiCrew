@@ -19,4 +19,11 @@ export const skillsApi = {
       { timeout: 120_000 },
     )
   },
+
+  install: (skillSlug: string, version?: string) =>
+    api.post<{ ok: boolean; skillName: string; skillDir: string }>(
+      '/api/skills/install',
+      { skillSlug, version },
+      { timeout: 120_000 },
+    ),
 }

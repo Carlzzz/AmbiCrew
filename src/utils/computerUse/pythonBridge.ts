@@ -7,11 +7,17 @@ import { logForDebugging } from '../debug.js'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// In dev mode, the runtime/ directory is at the project root.
+// In bundled (packaged desktop) mode, CLAUDE_RUNTIME_DIR is set by the
+// Electron main process to <resourcesPath>/runtime.
 const projectRoot = path.resolve(__dirname, '../../..')
+const bundledRuntimeDir = process.env.CLAUDE_RUNTIME_DIR || ''
 
 // All runtime state lives in ~/.claude/.runtime — writable in both dev and
-// bundled (Tauri app) modes. The setup API (or ensureRuntimeFiles below)
-// populates requirements.txt and mac_helper.py here.
+// bundled modes. ensureRuntimeFiles below populates requirements.txt and
+// helper scripts here, copying them from the source (dev) or bundled
+// (CLAUDE_RUNTIME_DIR) location.
 const runtimeStateRoot = path.join(getClaudeConfigHomeDir(), '.runtime')
 const venvRoot = path.join(runtimeStateRoot, 'venv')
 const installStampPath = path.join(runtimeStateRoot, 'requirements.sha256')
@@ -69,13 +75,13 @@ async function ensureRuntimeFiles(): Promise<void> {
   await mkdir(runtimeStateRoot, { recursive: true })
 
   const devReqFile = isWindows ? 'requirements-win.txt' : 'requirements.txt'
-  const devRequirements = path.join(projectRoot, 'runtime', devReqFile)
-  const devHelper = path.join(projectRoot, 'runtime', helperFileName)
+  const devRequirements = bundledRuntimeDir
+    ? path.join(bundledRuntimeDir, devReqFile)
+    : path.join(projectRoot, 'runtime', devReqFile)
+  const devHelper = bundledRuntimeDir
+    ? path.join(bundledRuntimeDir, helperFileName)
+    : path.join(projectRoot, 'runtime', helperFileName)
 
-  // Always sync from dev runtime/ so source changes are reflected immediately.
-  // Previously this only copied when the dest was missing, causing stale files
-  // to persist after source updates — breaking mouse/keyboard actions if the
-  // cached copy was from an older version.
   if (await pathExists(devRequirements)) {
     await writeFile(requirementsPath, await readFile(devRequirements, 'utf8'), 'utf8')
   }

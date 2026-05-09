@@ -1440,8 +1440,9 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     model = baseModel ? (modelContext ? `${baseModel}:${modelContext}` : baseModel) : undefined
   } else if (isCrewCentral) {
     // CrewCentral: clear stale model from a previous provider, then fallback
-    // to the first available proxy model so the CLI doesn't fall through to
-    // Anthropic's built-in default (which CrewProxy doesn't recognise).
+    // to the provider's default model (if available on the proxy) or the first
+    // proxy model so the CLI doesn't fall through to Anthropic's built-in
+    // default (which CrewProxy doesn't recognise).
     const staleModel = typeof modelSettings.model === 'string' && modelSettings.model.trim()
     if (staleModel) {
       console.warn(
@@ -1451,7 +1452,10 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     }
     const proxyModels = await tryFetchProxyModelsForRuntime()
     if (proxyModels && proxyModels.length > 0) {
-      model = proxyModels[0]
+      const defaultModel = activeProvider?.models.main
+      model = (defaultModel && proxyModels.includes(defaultModel))
+        ? defaultModel
+        : proxyModels[0]
     }
   }
 

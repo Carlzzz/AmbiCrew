@@ -125,7 +125,11 @@ export const tryFindGitBashPath = memoize((): string | null => {
 })
 
 /**
- * Find the path where `bash.exe` included with git-bash exists, exiting the process if not found.
+ * Find the path where `bash.exe` included with git-bash exists.
+ * Throws if git-bash cannot be found.
+ *
+ * Callers who prefer a soft fallback should use {@link tryFindGitBashPath}
+ * instead, which returns null when git-bash is unavailable.
  */
 export const findGitBashPath = memoize((): string => {
   const gitBashPath = tryFindGitBashPath()
@@ -134,20 +138,18 @@ export const findGitBashPath = memoize((): string => {
   }
 
   if (process.env.CLAUDE_CODE_GIT_BASH_PATH) {
-    // biome-ignore lint/suspicious/noConsole:: intentional console output
+    // biome-ignore lint/suspicious/noConsole: intentional console output
     console.error(
       `Claude Code was unable to find CLAUDE_CODE_GIT_BASH_PATH path "${process.env.CLAUDE_CODE_GIT_BASH_PATH}"`,
     )
-    // eslint-disable-next-line custom-rules/no-process-exit
-    process.exit(1)
+    throw new Error(
+      `CLAUDE_CODE_GIT_BASH_PATH is set but path does not exist: ${process.env.CLAUDE_CODE_GIT_BASH_PATH}`,
+    )
   }
 
-  // biome-ignore lint/suspicious/noConsole:: intentional console output
-  console.error(
+  throw new Error(
     'Claude Code on Windows requires git-bash (https://git-scm.com/downloads/win). If installed but not in PATH, set environment variable pointing to your bash.exe, similar to: CLAUDE_CODE_GIT_BASH_PATH=C:\\Program Files\\Git\\bin\\bash.exe',
   )
-  // eslint-disable-next-line custom-rules/no-process-exit
-  process.exit(1)
 })
 
 /** Convert a Windows path to a POSIX path using pure JS. */

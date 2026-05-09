@@ -11,6 +11,7 @@
 
 /** These apps can execute arbitrary shell commands. */
 const SHELL_ACCESS_BUNDLE_IDS = new Set([
+  // macOS
   "com.apple.Terminal",
   "com.googlecode.iterm2",
   "com.microsoft.VSCode",
@@ -20,12 +21,28 @@ const SHELL_ACCESS_BUNDLE_IDS = new Set([
   "net.kovidgoyal.kitty",
   "com.jetbrains.intellij",
   "com.jetbrains.pycharm",
+  // Windows
+  "windows-terminal",
+  "powershell",
+  "pwsh",
+  "cmd",
+  "Code", // VS Code on Windows
+  "conemu",
+  "cmder",
+  "git-bash",
 ]);
 
 /** Finder in the allowlist ≈ browse + open-any-file. */
-const FILESYSTEM_ACCESS_BUNDLE_IDS = new Set(["com.apple.finder"]);
+const FILESYSTEM_ACCESS_BUNDLE_IDS = new Set([
+  "com.apple.finder",
+  "explorer", // Windows File Explorer
+]);
 
-const SYSTEM_SETTINGS_BUNDLE_IDS = new Set(["com.apple.systempreferences"]);
+const SYSTEM_SETTINGS_BUNDLE_IDS = new Set([
+  "com.apple.systempreferences",
+  "systemsettings", // Windows Settings
+  "controlpanel", // Windows Control Panel
+]);
 
 export const SENTINEL_BUNDLE_IDS: ReadonlySet<string> = new Set([
   ...SHELL_ACCESS_BUNDLE_IDS,

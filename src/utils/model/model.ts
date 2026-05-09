@@ -194,6 +194,13 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
     return 'gpt-5.2-codex'
   }
 
+  // CrewCentral: requests go through CrewProxy which routes by model name.
+  // Claude model IDs are intercepted as SDK-internal stubs by the proxy,
+  // so default to the CrewProxy-routable model instead.
+  if ((process.env.AUTH_MODE || '').toLowerCase() === 'central') {
+    return process.env.ANTHROPIC_MODEL || 'MiniMax-M2.7-highspeed'
+  }
+
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (

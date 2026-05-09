@@ -4,12 +4,13 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { useTranslation } from '../../i18n'
 import type { SkillMeta, SkillSource } from '../../types/skill'
 
-const SOURCE_ORDER: SkillSource[] = ['user', 'project', 'plugin', 'mcp', 'bundled']
+const SOURCE_ORDER: SkillSource[] = ['user', 'project', 'plugin', 'crewcentral', 'mcp', 'bundled']
 
 const SOURCE_ICONS: Record<SkillSource, string> = {
   user: 'person',
   project: 'folder',
   plugin: 'extension',
+  crewcentral: 'cloud_sync',
   mcp: 'hub',
   bundled: 'inventory_2',
 }
@@ -18,6 +19,7 @@ const SOURCE_ACCENT_CLASSES: Record<SkillSource, string> = {
   user: 'bg-[var(--color-primary-fixed)] text-[var(--color-brand)]',
   project: 'bg-[var(--color-success-container)] text-[var(--color-success)]',
   plugin: 'bg-[var(--color-warning-container)] text-[var(--color-warning)]',
+  crewcentral: 'bg-[var(--color-tertiary-container)] text-[var(--color-tertiary)]',
   mcp: 'bg-[var(--color-info-container)] text-[var(--color-info)]',
   bundled: 'bg-[var(--color-surface-container-high)] text-[var(--color-text-tertiary)]',
 }
