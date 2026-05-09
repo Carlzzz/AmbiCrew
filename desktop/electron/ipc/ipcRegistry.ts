@@ -13,6 +13,12 @@ const WHITELIST_INVOKE_CHANNELS = new Set([
   'shell:showOpenDialog',
   'shell:getAppVersion',
   'server:getBaseUrl',
+  'terminal:spawn',
+  'terminal:write',
+  'terminal:resize',
+  'terminal:kill',
+  'notification:send',
+  'notification:flashFrame',
 ])
 
 export function registerWhitelistedInvoke(channel: string, handler: InvokeHandler): void {

@@ -19,40 +19,46 @@ export type TerminalExitPayload = {
 
 type Unlisten = () => void
 
-async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (!isDesktopRuntime()) {
-    throw new Error('Terminal is available in the desktop app runtime.')
-  }
-  const api = await import('@tauri-apps/api/core')
-  return api.invoke<T>(command, args)
+function getElectronTerminal() {
+  return (window as unknown as { electron: { terminal: ElectronTerminalAPI } }).electron.terminal
+}
+
+interface ElectronTerminalAPI {
+  spawn: (opts: { cols: number; rows: number; cwd?: string }) => Promise<TerminalSpawnResult>
+  write: (sessionId: number, data: string) => Promise<void>
+  resize: (sessionId: number, cols: number, rows: number) => Promise<void>
+  kill: (sessionId: number) => Promise<void>
+  onOutput: (callback: (payload: TerminalOutputPayload) => void) => Unlisten
+  onExit: (callback: (payload: TerminalExitPayload) => void) => Unlisten
 }
 
 export const terminalApi = {
   isAvailable: isDesktopRuntime,
 
-  spawn(input: { cols: number; rows: number; cwd?: string }) {
-    return invoke<TerminalSpawnResult>('terminal_spawn', input)
+  spawn(input: { cols: number; rows: number; cwd?: string }): Promise<TerminalSpawnResult> {
+    if (!isDesktopRuntime()) {
+      return Promise.reject(new Error('Terminal is available in the desktop app runtime.'))
+    }
+    return getElectronTerminal().spawn(input)
   },
 
-  write(sessionId: number, data: string) {
-    return invoke<void>('terminal_write', { sessionId, data })
+  write(sessionId: number, data: string): Promise<void> {
+    return getElectronTerminal().write(sessionId, data)
   },
 
-  resize(sessionId: number, cols: number, rows: number) {
-    return invoke<void>('terminal_resize', { sessionId, cols, rows })
+  resize(sessionId: number, cols: number, rows: number): Promise<void> {
+    return getElectronTerminal().resize(sessionId, cols, rows)
   },
 
-  kill(sessionId: number) {
-    return invoke<void>('terminal_kill', { sessionId })
+  kill(sessionId: number): Promise<void> {
+    return getElectronTerminal().kill(sessionId)
   },
 
-  async onOutput(handler: (payload: TerminalOutputPayload) => void): Promise<Unlisten> {
-    const events = await import('@tauri-apps/api/event')
-    return events.listen<TerminalOutputPayload>('terminal-output', (event) => handler(event.payload))
+  onOutput(handler: (payload: TerminalOutputPayload) => void): Unlisten {
+    return getElectronTerminal().onOutput(handler)
   },
 
-  async onExit(handler: (payload: TerminalExitPayload) => void): Promise<Unlisten> {
-    const events = await import('@tauri-apps/api/event')
-    return events.listen<TerminalExitPayload>('terminal-exit', (event) => handler(event.payload))
+  onExit(handler: (payload: TerminalExitPayload) => void): Unlisten {
+    return getElectronTerminal().onExit(handler)
   },
 }

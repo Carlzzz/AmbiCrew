@@ -8,40 +8,52 @@ let serverUrl: string | null = null
 
 const SERVER_PORT = 43124
 
+function serverExePath(): string {
+  if (process.platform === 'win32') {
+    return path.join(process.resourcesPath, 'server.exe')
+  }
+  return path.join(process.resourcesPath, 'server')
+}
+
 function findBunExe(): string {
   if (process.platform === 'win32') return 'bun.exe'
   return 'bun'
 }
 
 function serverEntryPath(): string {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'server', 'index.ts')
-  }
   return path.join(app.getAppPath(), '..', 'src', 'server', 'index.ts')
 }
 
 function serverCwd(): string {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath)
-  }
   return path.join(app.getAppPath(), '..')
 }
 
 export function startServer(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const bunExe = findBunExe()
-    const entryPath = serverEntryPath()
-    const cwd = serverCwd()
-
-    serverProcess = spawn(bunExe, ['run', entryPath], {
-      cwd,
-      env: {
-        ...process.env,
-        SERVER_PORT: String(SERVER_PORT),
-        DESKTOP_MODE: '1',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    if (app.isPackaged) {
+      const exePath = serverExePath()
+      serverProcess = spawn(exePath, [], {
+        env: {
+          ...process.env,
+          SERVER_PORT: String(SERVER_PORT),
+          DESKTOP_MODE: '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } else {
+      const bunExe = findBunExe()
+      const entryPath = serverEntryPath()
+      const cwd = serverCwd()
+      serverProcess = spawn(bunExe, ['run', entryPath], {
+        cwd,
+        env: {
+          ...process.env,
+          SERVER_PORT: String(SERVER_PORT),
+          DESKTOP_MODE: '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    }
 
     let resolved = false
     const timeout = setTimeout(() => {

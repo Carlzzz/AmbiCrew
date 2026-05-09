@@ -9,6 +9,8 @@ import { setAppMenu } from './shell/appMenu.js'
 import { registerShellIpc } from './ipc/shellIpc.js'
 import { registerWhitelistedInvoke } from './ipc/ipcRegistry.js'
 import { registerAuthIpc, registerOpenUrlHandler, findProtocolUrlInArgv, dispatchCentralAuthUrl } from './ipc/authIpc.js'
+import { registerTerminalIpc } from './ipc/terminalIpc.js'
+import { registerNotificationIpc } from './ipc/notificationIpc.js'
 import { AuthController } from './auth/authController.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -138,6 +140,8 @@ app.whenReady().then(async () => {
   }
 
   registerShellIpc()
+  registerTerminalIpc()
+  registerNotificationIpc()
 
   registerWhitelistedInvoke('server:getBaseUrl', async () => {
     const url = getServerUrl()

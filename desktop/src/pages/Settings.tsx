@@ -3,6 +3,7 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useTranslation } from '../i18n'
 import { Input } from '../components/shared/Input'
 import { Button } from '../components/shared/Button'
+import { Textarea } from '../components/shared/Textarea'
 import type { PermissionMode, EffortLevel, ThemeMode, WebSearchMode } from '../types/settings'
 import type { Locale } from '../i18n'
 import { AdapterSettings } from './AdapterSettings'
@@ -551,6 +552,9 @@ function AgentsSettings() {
     selectedAgentReturnTab,
     fetchAgents,
     selectAgent,
+    createAgent,
+    isCreating,
+    createError,
   } = useAgentStore()
   const sessions = useSessionStore((s) => s.sessions)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
@@ -572,6 +576,33 @@ function AgentsSettings() {
   }, [allAgents])
 
   const sourceCount = AGENT_SOURCE_ORDER.filter((source) => (groupedAgents[source] ?? []).length > 0).length
+
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [newModel, setNewModel] = useState('')
+  const [newSystemPrompt, setNewSystemPrompt] = useState('')
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return
+    const ok = await createAgent({
+      name: newName.trim(),
+      description: newDescription.trim() || undefined,
+      model: newModel.trim() || undefined,
+      systemPrompt: newSystemPrompt.trim() || undefined,
+    })
+    if (ok) {
+      const msg = t('settings.agents.createSuccess')
+      setSuccessMessage(msg)
+      setShowCreateForm(false)
+      setNewName('')
+      setNewDescription('')
+      setNewModel('')
+      setNewSystemPrompt('')
+      setTimeout(() => setSuccessMessage(null), 3000)
+    }
+  }
 
   const handleAgentBack = () => {
     const returnTab = selectedAgentReturnTab
@@ -606,11 +637,21 @@ function AgentsSettings() {
             {t('common.retry')}
           </button>
         </div>
-      ) : allAgents.length === 0 ? (
-        <div className="text-center py-12 px-4 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-container-low)]">
-          <span className="material-symbols-outlined text-[40px] text-[var(--color-text-tertiary)] mb-3 block">smart_toy</span>
-          <p className="text-sm text-[var(--color-text-secondary)] mb-1">{t('settings.agents.empty')}</p>
-          <p className="text-xs text-[var(--color-text-tertiary)]">{t('settings.agents.emptyHint')}</p>
+      ) : allAgents.length === 0 && !showCreateForm ? (
+        <div className="flex flex-col gap-6 min-w-0">
+          <div className="text-center py-12 px-4 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-container-low)]">
+            <span className="material-symbols-outlined text-[40px] text-[var(--color-text-tertiary)] mb-3 block">smart_toy</span>
+            <p className="text-sm text-[var(--color-text-secondary)] mb-1">{t('settings.agents.empty')}</p>
+            <p className="text-xs text-[var(--color-text-tertiary)] mb-4">{t('settings.agents.emptyHint')}</p>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<span className="material-symbols-outlined text-[16px]">add</span>}
+              onClick={() => setShowCreateForm(true)}
+            >
+              {t('settings.agents.create')}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-6 min-w-0">
@@ -652,7 +693,96 @@ function AgentsSettings() {
                 />
               </div>
             </div>
+
+            <div className="flex items-center gap-3 border-t border-[var(--color-border)] px-5 py-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<span className="material-symbols-outlined text-[16px]">add</span>}
+                onClick={() => {
+                  setShowCreateForm(!showCreateForm)
+                  setSuccessMessage(null)
+                }}
+              >
+                {t('settings.agents.create')}
+              </Button>
+            </div>
           </section>
+
+          {successMessage && (
+            <div className="rounded-xl border border-[var(--color-success)]/20 bg-[var(--color-success)]/10 px-4 py-3 text-sm text-[var(--color-success)] flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">check_circle</span>
+              {successMessage}
+            </div>
+          )}
+
+          {showCreateForm && (
+            <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="material-symbols-outlined text-[20px] text-[var(--color-brand)]">note_add</span>
+                <h3 className="text-base font-semibold text-[var(--color-text-primary)]">{t('settings.agents.createTitle')}</h3>
+              </div>
+              <p className="text-sm text-[var(--color-text-tertiary)] mb-4">{t('settings.agents.createDescription')}</p>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label={t('settings.agents.createName')}
+                  required
+                  placeholder={t('settings.agents.createNamePlaceholder')}
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                />
+                <Input
+                  label={t('settings.agents.createModel')}
+                  placeholder={t('settings.agents.createModelPlaceholder')}
+                  value={newModel}
+                  onChange={(e) => setNewModel(e.target.value)}
+                />
+                <div className="sm:col-span-2">
+                  <Input
+                    label={t('settings.agents.createDescriptionLabel')}
+                    placeholder={t('settings.agents.createDescriptionPlaceholder')}
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Textarea
+                    label={t('settings.agents.createSystemPrompt')}
+                    placeholder={t('settings.agents.createSystemPromptPlaceholder')}
+                    value={newSystemPrompt}
+                    onChange={(e) => setNewSystemPrompt(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {createError && (
+                <p className="mt-3 text-sm text-[var(--color-error)]">{createError}</p>
+              )}
+
+              <div className="flex items-center gap-2 mt-4">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={isCreating}
+                  disabled={!newName.trim()}
+                  onClick={() => void handleCreate()}
+                >
+                  {t('settings.agents.createSubmit')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowCreateForm(false)
+                    setSuccessMessage(null)
+                  }}
+                >
+                  {t('settings.agents.createCancel')}
+                </Button>
+              </div>
+            </section>
+          )}
 
           <div className={`grid gap-4 ${sourceCount >= 2 ? 'xl:grid-cols-2' : ''}`}>
             {AGENT_SOURCE_ORDER.map((source) => {
@@ -760,11 +890,24 @@ function AgentsSettings() {
 
 function AgentDetailView({ agent, onBack }: { agent: AgentDefinition; onBack: () => void }) {
   const t = useTranslation()
+  const deleteAgent = useAgentStore((s) => s.deleteAgent)
+  const isDeleting = useAgentStore((s) => s.isDeleting)
+  const sessions = useSessionStore((s) => s.sessions)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const activeSession = sessions.find((s) => s.id === activeSessionId)
+  const cwd = activeSession?.workDir || undefined
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const sourceLabel = t(`settings.agents.source.${agent.source}`)
+  const isUserCreated = agent.source === 'userSettings'
+
+  const handleDelete = async () => {
+    const ok = await deleteAgent(agent.agentType, cwd)
+    if (ok) onBack()
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 min-w-0">
-      <div>
+      <div className="flex items-center justify-between">
         <button
           onClick={onBack}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]"
@@ -772,7 +915,42 @@ function AgentDetailView({ agent, onBack }: { agent: AgentDefinition; onBack: ()
           <span className="material-symbols-outlined text-[16px]">arrow_back</span>
           {t('settings.agents.backToList')}
         </button>
+        {isUserCreated && !showDeleteConfirm && (
+          <Button
+            variant="danger"
+            size="sm"
+            icon={<span className="material-symbols-outlined text-[16px]">delete</span>}
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            {t('settings.agents.delete')}
+          </Button>
+        )}
       </div>
+
+      {showDeleteConfirm && (
+        <div className="rounded-xl border border-[var(--color-error)]/20 bg-[var(--color-error)]/10 px-5 py-4">
+          <p className="text-sm text-[var(--color-text-primary)] mb-3">
+            {t('settings.agents.deleteConfirm', { name: agent.agentType })}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              loading={isDeleting}
+              onClick={() => void handleDelete()}
+            >
+              {t('settings.agents.deleteBtn')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              {t('settings.agents.createCancel')}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] overflow-hidden">
         <div className="grid gap-4 px-5 py-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.9fr)] lg:items-start">
@@ -1084,14 +1262,28 @@ function AboutSettings() {
   useEffect(() => {
     let cancelled = false
 
-    import('@tauri-apps/api/app')
-      .then((mod) => mod.getVersion())
-      .then((value) => {
+    const fetchVersion = async () => {
+      if (typeof window !== 'undefined' && 'electron' in window) {
+        try {
+          const electron = (window as unknown as { electron: { shell: { getAppVersion: () => Promise<{ ok: boolean; version?: string }> } } }).electron
+          const result = await electron.shell.getAppVersion()
+          if (!cancelled && result.ok && result.version) {
+            setVersion(result.version)
+            return
+          }
+        } catch { /* fallback below */ }
+      }
+
+      try {
+        const mod = await import('@tauri-apps/api/app')
+        const value = await mod.getVersion()
         if (!cancelled) setVersion(value)
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setVersion('0.1.0')
-      })
+      }
+    }
+
+    void fetchVersion()
 
     return () => {
       cancelled = true

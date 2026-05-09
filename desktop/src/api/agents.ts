@@ -28,9 +28,27 @@ export type AgentListResponse = {
   allAgents: AgentDefinition[]
 }
 
+export type CreateAgentInput = {
+  name: string
+  description?: string
+  model?: string
+  tools?: string[]
+  systemPrompt?: string
+  color?: string
+}
+
 export const agentsApi = {
   list: (cwd?: string) => {
     const query = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''
     return api.get<AgentListResponse>(`/api/agents${query}`)
   },
+
+  create: (input: CreateAgentInput) =>
+    api.post<{ ok: boolean }>('/api/agents', input),
+
+  update: (name: string, input: Partial<CreateAgentInput>) =>
+    api.put<{ agent: AgentDefinition }>(`/api/agents/${encodeURIComponent(name)}`, input),
+
+  remove: (name: string) =>
+    api.delete<{ ok: boolean }>(`/api/agents/${encodeURIComponent(name)}`),
 }

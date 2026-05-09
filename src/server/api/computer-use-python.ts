@@ -28,9 +28,25 @@ export type PythonRuntimeResolution = {
   source: 'system' | 'venv' | null
 }
 
+const KNOWN_PYTHON_PATHS_DARWIN = [
+  '/opt/homebrew/bin/python3',
+  '/usr/local/bin/python3',
+  '/usr/bin/python3',
+]
+
+const KNOWN_PYTHON_PATHS_WIN32 = [
+  `${process.env.LOCALAPPDATA || 'C:\\Users\\Default\\AppData\\Local'}\\Programs\\Python\\Python313\\python.exe`,
+  `${process.env.LOCALAPPDATA || 'C:\\Users\\Default\\AppData\\Local'}\\Programs\\Python\\Python312\\python.exe`,
+  `${process.env.LOCALAPPDATA || 'C:\\Users\\Default\\AppData\\Local'}\\Programs\\Python\\Python311\\python.exe`,
+  `${process.env.LOCALAPPDATA || 'C:\\Users\\zhaocao\\AppData\\Local'}\\miniconda3\\python.exe`,
+  'C:\\Python313\\python.exe',
+  'C:\\Python312\\python.exe',
+  'C:\\Python311\\python.exe',
+]
+
 function getPythonCandidates(platform: NodeJS.Platform): PythonCandidate[] {
   if (platform === 'win32') {
-    return [
+    const candidates: PythonCandidate[] = [
       {
         command: 'python3',
         prefixArgs: [],
@@ -52,15 +68,36 @@ function getPythonCandidates(platform: NodeJS.Platform): PythonCandidate[] {
         locator: { command: 'where', args: ['py'] },
       },
     ]
+    // Append known absolute paths as fallback candidates
+    for (const absPath of KNOWN_PYTHON_PATHS_WIN32) {
+      candidates.push({
+        command: absPath,
+        prefixArgs: [],
+        locator: null,
+      })
+    }
+    return candidates
   }
 
-  return [
+  const candidates: PythonCandidate[] = [
     {
       command: 'python3',
       prefixArgs: [],
       locator: { command: 'which', args: ['python3'] },
     },
   ]
+
+  // On macOS GUI apps, PATH does not include Homebrew directories.
+  // Append known absolute paths as fallback candidates.
+  for (const absPath of KNOWN_PYTHON_PATHS_DARWIN) {
+    candidates.push({
+      command: absPath,
+      prefixArgs: [],
+      locator: null,
+    })
+  }
+
+  return candidates
 }
 
 function extractPythonVersion(output: string): string | null {
@@ -98,7 +135,7 @@ export async function detectPythonRuntime(
     return {
       installed: true,
       version: extractPythonVersion(`${versionResult.stdout}\n${versionResult.stderr}`),
-      path: await locateCandidatePath(candidate, runCommand),
+      path: (await locateCandidatePath(candidate, runCommand)) ?? (candidate.locator === null ? candidate.command : null),
       command: candidate.command,
       prefixArgs: candidate.prefixArgs,
       source: 'system',

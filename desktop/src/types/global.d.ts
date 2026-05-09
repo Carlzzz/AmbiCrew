@@ -10,11 +10,23 @@ interface ElectronAPI {
   }
   shell: {
     openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>
-    showOpenDialog: (opts: { properties?: string[] }) => Promise<{ ok: boolean; canceled?: boolean; filePaths?: string[] }>
+    showOpenDialog: (opts: { properties?: string[]; title?: string; defaultPath?: string }) => Promise<{ ok: boolean; canceled?: boolean; filePaths?: string[] }>
     getAppVersion: () => Promise<{ ok: boolean; version?: string }>
   }
   server: {
     getBaseUrl: () => Promise<{ ok: boolean; baseUrl?: string; error?: string }>
+  }
+  terminal: {
+    spawn: (opts: { cols: number; rows: number; cwd?: string }) => Promise<{ session_id: number; shell: string; cwd: string }>
+    write: (sessionId: number, data: string) => Promise<void>
+    resize: (sessionId: number, cols: number, rows: number) => Promise<void>
+    kill: (sessionId: number) => Promise<void>
+    onOutput: (callback: (payload: { session_id: number; data: string }) => void) => () => void
+    onExit: (callback: (payload: { session_id: number; code: number; signal: string | null }) => void) => () => void
+  }
+  notification: {
+    send: (opts: { title: string; body?: string }) => Promise<boolean>
+    flashFrame: () => Promise<void>
   }
 }
 

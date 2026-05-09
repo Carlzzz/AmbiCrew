@@ -11,10 +11,8 @@ asar: true
 extraResources:
   - from: ../.env
     to: .env
-  - from: ../src/server
-    to: server
-    filter:
-      - "**/*"
+  - from: resources/server*
+    to: .
 win:
   target:
     - target: nsis
