@@ -44,6 +44,7 @@ desktop/out/
 desktop/resources/MinGit/
 desktop/resources/python/
 desktop/resources/.tmp/
+desktop/resources/*.exe
 
 # Misc
 .cache/

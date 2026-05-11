@@ -9,9 +9,13 @@ files:
   - package.json
 asar: true
 extraResources:
+  - from: public/app-icon.png
+    to: app-icon.png
   - from: ../.env
     to: .env
-  - from: resources/server*
+  - from: resources/claude-sidecar.exe
+    to: .
+  - from: resources/claude-sidecar
     to: .
   - from: resources/MinGit
     to: MinGit

@@ -29,7 +29,7 @@ export function AppShell() {
       try {
         await initializeDesktopServerUrl()
         await fetchSettings()
-        void useCentralOAuthStore.getState().fetchStatus()
+        await useCentralOAuthStore.getState().fetchStatus()
 
         if (!cancelled) {
           setReady(true)

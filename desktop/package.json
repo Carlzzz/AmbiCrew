@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:electron": "tsc -p electron-tsconfig.json",
-    "build:server": "bun run scripts/build-server.mjs",
+    "build:server": "bun run scripts/build-server.ts",
     "download:deps": "node scripts/download-deps.mjs",
     "build:all": "npm run build && npm run build:electron && npm run build:server",
     "build:all:pack": "npm run download:deps && npm run build:all",

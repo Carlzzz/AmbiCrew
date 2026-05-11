@@ -62,7 +62,7 @@ export const computerUseApi = {
     return api.post<SetupResult>('/api/computer-use/setup', undefined, { timeout: 300_000 })
   },
   getInstalledApps() {
-    return api.get<{ apps: InstalledApp[] }>('/api/computer-use/apps')
+    return api.get<{ apps: InstalledApp[] }>('/api/computer-use/apps', { timeout: 60_000 })
   },
   getAuthorizedApps() {
     return api.get<ComputerUseConfig>('/api/computer-use/authorized-apps')

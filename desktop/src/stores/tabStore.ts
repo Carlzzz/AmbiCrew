@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { sessionsApi } from '../api/sessions'
 
 const TAB_STORAGE_KEY = 'cc-haha-open-tabs'
 

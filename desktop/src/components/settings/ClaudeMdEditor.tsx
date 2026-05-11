@@ -10,7 +10,6 @@ const LEVEL_LABELS: Record<FileLevel, { label: string; color: string }> = {
 }
 
 export function ClaudeMdEditor({ file }: { file: FileInfo }) {
-  const fileContent = useClaudeMdStore((s) => s.fileContent)
   const editedContent = useClaudeMdStore((s) => s.editedContent)
   const isLoadingContent = useClaudeMdStore((s) => s.isLoadingContent)
   const isDirty = useClaudeMdStore((s) => s.isDirty)

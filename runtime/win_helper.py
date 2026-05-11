@@ -299,7 +299,12 @@ _WELL_KNOWN_WINDOWS_APPS: list[dict[str, str]] = [
 
 
 def _scan_start_menu(results: dict[str, dict[str, Any]]) -> None:
-    """Scan Start Menu .lnk shortcuts for apps not already found."""
+    """Scan Start Menu .lnk shortcuts for apps not already found.
+
+    Resolves ALL shortcuts in a single PowerShell invocation to avoid the
+    ~1 s process-creation overhead per .lnk file (which on machines with 60+
+    shortcuts could exceed 60 s and cause API timeouts).
+    """
     import glob as glob_mod
 
     start_menu_roots = [
@@ -307,49 +312,62 @@ def _scan_start_menu(results: dict[str, dict[str, Any]]) -> None:
         os.path.join(os.environ.get("PROGRAMDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
     ]
 
+    lnk_paths: list[str] = []
     for root in start_menu_roots:
         if not os.path.isdir(root):
             continue
         for lnk_path in glob_mod.glob(os.path.join(root, "**", "*.lnk"), recursive=True):
-            try:
-                target = _resolve_lnk_target(lnk_path)
-            except Exception:
-                continue
-            if not target or not target.lower().endswith(".exe"):
-                continue
-            target_path = Path(target)
-            exe_stem = target_path.stem
-            # Deduplicate by exe stem — keep the Start Menu display name if it's more descriptive
-            display_name = os.path.splitext(os.path.basename(lnk_path))[0]
-            if exe_stem in results:
-                # Update display name if existing is less descriptive
-                existing = results[exe_stem]
-                if len(display_name) > len(existing["displayName"]):
-                    existing["displayName"] = display_name
-                continue
-            results[exe_stem] = {
-                "bundleId": exe_stem,
-                "displayName": display_name,
-                "path": target,
-            }
+            lnk_paths.append(lnk_path)
+
+    if not lnk_paths:
+        return
+
+    resolved = _resolve_lnk_targets_batch(lnk_paths)
+    for lnk_path, target in zip(lnk_paths, resolved):
+        if not target or not target.lower().endswith(".exe"):
+            continue
+        target_path = Path(target)
+        exe_stem = target_path.stem
+        display_name = os.path.splitext(os.path.basename(lnk_path))[0]
+        if exe_stem in results:
+            existing = results[exe_stem]
+            if len(display_name) > len(existing["displayName"]):
+                existing["displayName"] = display_name
+            continue
+        results[exe_stem] = {
+            "bundleId": exe_stem,
+            "displayName": display_name,
+            "path": target,
+        }
 
 
-def _resolve_lnk_target(lnk_path: str) -> str | None:
-    """Resolve a .lnk shortcut to its target path using PowerShell."""
+def _resolve_lnk_targets_batch(lnk_paths: list[str]) -> list[str | None]:
+    """Resolve multiple .lnk shortcut targets in a single PowerShell invocation."""
+    if not lnk_paths:
+        return []
     try:
+        escaped = [p.replace('"', '""') for p in lnk_paths]
+        paths_json = json.dumps(escaped)
         script = (
-            f'$w = New-Object -ComObject WScript.Shell; '
-            f'$s = $w.CreateShortcut({chr(34)}{lnk_path}{chr(34)}); '
-            f'Write-Output $s.TargetPath'
+            '$w = New-Object -ComObject WScript.Shell; '
+            '$paths = ' + paths_json + ' | ConvertFrom-Json; '
+            '$results = foreach ($p in $paths) { '
+            '  try { $s = $w.CreateShortcut($p); Write-Output $s.TargetPath } '
+            '  catch { Write-Output "" } '
+            '}; '
+            '$results'
         )
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", script],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=60,
         )
-        target = result.stdout.strip()
-        return target if target else None
+        targets = [t.strip() or None for t in result.stdout.strip().splitlines()]
+        # Pad to match input length in case of partial output
+        while len(targets) < len(lnk_paths):
+            targets.append(None)
+        return targets[:len(lnk_paths)]
     except Exception:
-        return None
+        return [None] * len(lnk_paths)
 
 
 def _add_well_known_apps(results: dict[str, dict[str, Any]]) -> None:

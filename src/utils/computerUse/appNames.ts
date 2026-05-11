@@ -29,8 +29,12 @@ type InstalledAppLike = {
  *
  * ~/Applications is checked at call time via the `homeDir` arg (HOME isn't
  * reliably known at module load in all environments).
+ *
+ * macOS only — on Windows the registry-based enumeration already returns only
+ * user-installed applications, so the path check is bypassed in
+ * `isUserFacingPath`.
  */
-const PATH_ALLOWLIST: readonly string[] = [
+const MAC_PATH_ALLOWLIST: readonly string[] = [
   '/Applications/',
   '/System/Applications/',
 ]
@@ -50,13 +54,17 @@ const NAME_PATTERN_BLOCKLIST: readonly RegExp[] = [
   /^\./,
 ]
 
+const isWindows = process.platform === 'win32'
+
 /**
  * Apps commonly requested for CU automation. ALWAYS included if installed,
  * bypassing path check + count cap — the model needs these exact names even
  * when the machine has 200+ apps. Bundle IDs (locale-invariant), not display
  * names. Keep <30 — each entry is a guaranteed token in the description.
+ *
+ * Dual-platform: macOS uses reverse-domain IDs; Windows uses EXE stems.
  */
-const ALWAYS_KEEP_BUNDLE_IDS: ReadonlySet<string> = new Set([
+const ALWAYS_KEEP_BUNDLE_IDS_MAC: ReadonlySet<string> = new Set([
   // Browsers
   'com.apple.Safari',
   'com.google.Chrome',
@@ -96,6 +104,47 @@ const ALWAYS_KEEP_BUNDLE_IDS: ReadonlySet<string> = new Set([
   'com.apple.systempreferences',
 ])
 
+// Windows EXE stems — derived from DisplayIcon / InstallLocation by win_helper.py
+const ALWAYS_KEEP_BUNDLE_IDS_WIN: ReadonlySet<string> = new Set([
+  // Browsers
+  'chrome',
+  'firefox',
+  'msedge',
+  // Communication
+  'slack',
+  'Zoom',
+  'Teams',
+  // Productivity
+  'WINWORD',
+  'EXCEL',
+  'POWERPNT',
+  'OUTLOOK',
+  // Notes / PM
+  'Notion',
+  'Obsidian',
+  'Figma',
+  // Dev
+  'Code',        // VS Code
+  'devenv',      // Visual Studio
+  'GitHubDesktop',
+  // System
+  'notepad',
+  'calc',
+  'SnippingTool',
+  'Taskmgr',
+  'explorer',
+  'WindowsTerminal',
+  'pwsh',
+  'powershell',
+  'cmd',
+  'mspaint',
+  'control',
+])
+
+const ALWAYS_KEEP_BUNDLE_IDS: ReadonlySet<string> = isWindows
+  ? ALWAYS_KEEP_BUNDLE_IDS_WIN
+  : ALWAYS_KEEP_BUNDLE_IDS_MAC
+
 // ── Prompt-injection hardening ───────────────────────────────────────────
 
 /**
@@ -110,7 +159,10 @@ const APP_NAME_MAX_LEN = 40
 const APP_NAME_MAX_COUNT = 50
 
 function isUserFacingPath(path: string, homeDir: string | undefined): boolean {
-  if (PATH_ALLOWLIST.some(root => path.startsWith(root))) return true
+  // On Windows the registry-based enumeration already returns only user-installed
+  // programs — no Spotlight-style daemon noise to filter out.
+  if (isWindows) return true
+  if (MAC_PATH_ALLOWLIST.some(root => path.startsWith(root))) return true
   if (homeDir) {
     const userApps = homeDir.endsWith('/')
       ? `${homeDir}Applications/`

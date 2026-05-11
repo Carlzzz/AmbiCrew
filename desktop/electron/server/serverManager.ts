@@ -9,10 +9,12 @@ let serverUrl: string | null = null
 const SERVER_PORT = 43124
 
 function serverExePath(): string {
-  if (process.platform === 'win32') {
-    return path.join(process.resourcesPath, 'server.exe')
-  }
-  return path.join(process.resourcesPath, 'server')
+  const ext = process.platform === 'win32' ? '.exe' : ''
+  return path.join(process.resourcesPath, `claude-sidecar${ext}`)
+}
+
+function sidecarArgs(): string[] {
+  return ['server', '--app-root', process.resourcesPath]
 }
 
 function findBunExe(): string {
@@ -32,12 +34,13 @@ export function startServer(): Promise<string> {
   return new Promise((resolve, reject) => {
     if (app.isPackaged) {
       const exePath = serverExePath()
-      serverProcess = spawn(exePath, [], {
+      serverProcess = spawn(exePath, sidecarArgs(), {
         env: {
           ...process.env,
           SERVER_PORT: String(SERVER_PORT),
           DESKTOP_MODE: '1',
           CLAUDE_RUNTIME_DIR: path.join(process.resourcesPath, 'runtime'),
+          CLAUDE_APP_ROOT: process.resourcesPath,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })

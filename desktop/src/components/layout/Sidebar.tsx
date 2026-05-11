@@ -144,7 +144,7 @@ export function Sidebar() {
                 className={`sidebar-copy ${sidebarOpen ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} text-xs text-[var(--color-text-secondary)]`}
                 title={centralDisplayName}
               >
-                {centralDisplayName || 'CrewCentral'}
+                {centralDisplayName || ''}
               </span>
             ) : (
               <button

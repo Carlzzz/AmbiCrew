@@ -12,8 +12,7 @@
  *   desktop/resources/python/   - Embedded Python with pip
  */
 
-import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { unlink } from 'node:fs/promises'
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { get } from 'node:https'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,12 +24,13 @@ const desktopDir = join(__dirname, '..')
 const resourcesDir = join(desktopDir, 'resources')
 const tmpDir = join(resourcesDir, '.tmp')
 
-const MINGIT_VERSION = '2.47.1.windows.1'
+const MINGIT_TAG = '2.54.0.windows.1'
+const MINGIT_FILE_VERSION = '2.54.0' // filename omits .windows.N suffix
 const PYTHON_VERSION = '3.12.8'
 
 const DOWNLOADS = {
   mingit: {
-    url: `https://github.com/git-for-windows/git/releases/download/v${MINGIT_VERSION}/MinGit-${MINGIT_VERSION}-64-bit.zip`,
+    url: `https://github.com/git-for-windows/git/releases/download/v${MINGIT_TAG}/MinGit-${MINGIT_FILE_VERSION}-64-bit.zip`,
     dest: join(tmpDir, 'mingit.zip'),
     extractDir: join(resourcesDir, 'MinGit'),
   },
@@ -45,7 +45,9 @@ const DOWNLOADS = {
   },
 }
 
-async function download(url, dest) {
+import { setTimeout as sleep } from 'node:timers/promises'
+
+async function download(url, dest, retries = 3) {
   if (existsSync(dest)) {
     console.log(`  Skip download (exists): ${dest}`)
     return
@@ -53,25 +55,44 @@ async function download(url, dest) {
   console.log(`  Downloading ${url}`)
   console.log(`    → ${dest}`)
 
-  await new Promise((resolve, reject) => {
-    const file = createWriteStream(dest)
-    get(url, (response) => {
-      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        file.close()
-        unlink(dest).catch(() => {})
-        download(response.headers.location, dest).then(resolve, reject)
-        return
+  const partFile = dest + '.part'
+  // Remove any leftover partial download
+  try { rmSync(partFile, { force: true }) } catch {}
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      let redirected = false
+      await new Promise((resolve, reject) => {
+        get(url, (response) => {
+          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+            redirected = true
+            download(response.headers.location, dest, retries).then(resolve, reject)
+            return
+          }
+          if (response.statusCode !== 200) {
+            reject(new Error(`HTTP ${response.statusCode} for ${url}`))
+            return
+          }
+          const file = createWriteStream(partFile)
+          response.pipe(file)
+          file.on('finish', () => file.close(() => resolve()))
+          file.on('error', reject)
+        }).on('error', reject)
+      })
+      if (!redirected) {
+        renameSync(partFile, dest)
       }
-      if (response.statusCode !== 200) {
-        file.close()
-        reject(new Error(`HTTP ${response.statusCode} for ${url}`))
-        return
+      return
+    } catch (err) {
+      try { rmSync(partFile, { force: true }) } catch {}
+      if (attempt < retries) {
+        console.log(`  Retry ${attempt}/${retries}: ${err.message}`)
+        await sleep(2000)
+      } else {
+        throw err
       }
-      response.pipe(file)
-      file.on('finish', () => file.close(() => resolve()))
-      file.on('error', reject)
-    }).on('error', reject)
-  })
+    }
+  }
 }
 
 function bootstrapPip() {

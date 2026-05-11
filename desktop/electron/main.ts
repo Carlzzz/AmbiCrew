@@ -115,6 +115,9 @@ function createWindow(): BrowserWindow {
     minWidth: 800,
     minHeight: 600,
     title: 'AmbiCrew',
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, 'app-icon.png')
+      : path.join(__dirname, '..', 'public', 'app-icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

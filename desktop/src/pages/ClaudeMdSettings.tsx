@@ -2,14 +2,7 @@ import { useEffect, useState } from 'react'
 import { useClaudeMdStore } from '../stores/claudeMdStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { ClaudeMdEditor } from '../components/settings/ClaudeMdEditor'
-import type { FileInfo, FileLevel } from '../api/claudeMd'
-
-const LEVEL_ICONS: Record<FileLevel, string> = {
-  user: 'person',
-  project: 'description',
-  'project-local': 'lock',
-  rules: 'rule',
-}
+import type { FileInfo } from '../api/claudeMd'
 
 function FileTreeItem({
   file,
