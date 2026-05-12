@@ -800,6 +800,14 @@ export async function runHeadless(
   )
   let filteredTools = [...tools, ...allowedMcpTools]
 
+  // Diagnostic: log all tool names to confirm AskUserQuestion is present
+  console.warn(
+    `[print:AskUserQuestion] filteredTools count=${filteredTools.length}, names=${filteredTools.map(t => t.name).sort().join(', ')}`,
+  )
+  console.warn(
+    `[print:AskUserQuestion] hasAskUserQuestion=${filteredTools.some(t => t.name === 'AskUserQuestion')}, sdkUrl=${!!options.sdkUrl}`,
+  )
+
   // When using SDK URL, always use stdio permission prompting to delegate to the SDK
   const effectivePermissionPromptToolName = options.sdkUrl
     ? 'stdio'

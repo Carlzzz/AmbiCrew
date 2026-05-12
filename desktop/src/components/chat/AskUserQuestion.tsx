@@ -60,7 +60,16 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const composingRef = useRef(false)
 
-  if (questions.length === 0) return null
+  console.log(
+    `[AskUserQuestion] render toolUseId=${toolUseId} pendingToolUseId=${pendingPermission?.toolUseId} questionsLen=${questions.length} hasPending=${!!pendingPermission}`,
+  )
+
+  if (questions.length === 0) {
+    console.log(
+      `[AskUserQuestion] returning null — questions.length === 0, input type=${typeof input}`,
+    )
+    return null
+  }
 
   const resultAnswers = useMemo(() => {
     if (!result || typeof result !== 'object') return {}

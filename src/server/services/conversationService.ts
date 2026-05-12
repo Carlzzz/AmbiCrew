@@ -549,6 +549,11 @@ export class ConversationService {
           msg.request?.subtype === 'can_use_tool' &&
           typeof msg.request_id === 'string'
         ) {
+          if (msg.request.tool_name === 'AskUserQuestion') {
+            console.warn(
+              `[ConversationService:AskUserQuestion] handleSdkPayload received control_request toolUseId=${msg.request.tool_use_id} requestId=${msg.request_id} callbackCount=${session.outputCallbacks.length}`,
+            )
+          }
           session.pendingPermissionRequests.set(msg.request_id, {
             toolName:
               typeof msg.request.tool_name === 'string'

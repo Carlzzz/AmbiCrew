@@ -93,25 +93,20 @@ function resolveDefaultRuntimeSelection(
   activeProviderName: string | null,
   providers: SavedProvider[],
   currentModelId: string | undefined,
-  availableModelIds: string[],
+  availableModels: ModelInfo[],
 ): RuntimeSelection {
+  const availableModelIds = availableModels.map((m) => m.id)
   const inferredProviderId = activeId ?? (
     activeProviderName
       ? providers.find((provider) => provider.name === activeProviderName)?.id ?? null
       : null
   )
 
-  // For CrewCentral, prefer the provider's default model over the first
-  // available proxy model (which may be a different upstream).
-  const inferredProvider = inferredProviderId
-    ? providers.find((p) => p.id === inferredProviderId)
-    : null
-  const providerDefault = inferredProvider?.models.main
-  const isProviderDefaultAvailable = providerDefault && availableModelIds.includes(providerDefault)
+  const isCurrentModelValid = currentModelId && availableModelIds.includes(currentModelId)
 
   return {
     providerId: inferredProviderId,
-    modelId: currentModelId || (isProviderDefaultAvailable ? providerDefault : availableModelIds[0]) || '',
+    modelId: isCurrentModelValid ? currentModelId : '',
   }
 }
 
@@ -209,15 +204,13 @@ export function ModelSelector({
     : storeModel
 
   const activeRuntimeSelection = isRuntimeScoped
-    ? runtimeSelection ?? (isCrewCentralActive
-      ? null
-      : resolveDefaultRuntimeSelection(
+    ? runtimeSelection ?? resolveDefaultRuntimeSelection(
         activeId,
         activeProviderName,
         providers,
         storeModel?.id,
-        availableModels.map(m => m.id),
-      ))
+        availableModels,
+      )
     : null
 
   const selectedProviderChoice = activeRuntimeSelection

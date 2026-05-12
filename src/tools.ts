@@ -324,7 +324,19 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
   }
 
   const isEnabled = allowedTools.map(_ => _.isEnabled())
-  return allowedTools.filter((_, i) => isEnabled[i])
+  const result = allowedTools.filter((_, i) => isEnabled[i])
+  // Diagnostic: log AskUserQuestion tool status
+  const auqTool = allowedTools.find(t => t.name === 'AskUserQuestion')
+  if (auqTool) {
+    console.warn(
+      `[tools:getTools] AskUserQuestion isEnabled=${auqTool.isEnabled()}, inResult=${result.some(t => t.name === 'AskUserQuestion')}`,
+    )
+  } else {
+    console.warn(
+      `[tools:getTools] AskUserQuestion NOT in allowedTools (before isEnabled filter), total=${allowedTools.length}`,
+    )
+  }
+  return result
 }
 
 /**

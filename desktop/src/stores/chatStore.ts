@@ -26,6 +26,10 @@ import type {
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 
+function isAskUserQuestion(toolName: string): boolean {
+  return toolName.toLowerCase() === 'askuserquestion'
+}
+
 export type PerSessionState = {
   messages: UIMessage[]
   chatState: ChatState
@@ -668,6 +672,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       case 'tool_use_complete': {
         const session = get().sessions[sessionId]
         const toolName = msg.toolName || session?.activeToolName || 'unknown'
+        if (isAskUserQuestion(toolName)) {
+          console.log(
+            `[chatStore:AskUserQuestion] tool_use_complete received toolUseId=${msg.toolUseId} hasInput=${!!msg.input} inputKeys=${msg.input ? Object.keys(msg.input as object).join(',') : 'none'}`,
+          )
+        }
         update((s) => ({
           messages: [...s.messages, {
             id: nextId(), type: 'tool_use', toolName,
@@ -700,6 +709,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         break
 
       case 'permission_request':
+        if (isAskUserQuestion(msg.toolName)) {
+          console.log(
+            `[chatStore:AskUserQuestion] permission_request received toolUseId=${msg.toolUseId} requestId=${msg.requestId}`,
+          )
+        }
         notifyDesktop({
           dedupeKey: `permission:${msg.requestId}`,
           cooldownScope: 'permission-prompt',
@@ -721,7 +735,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           chatState: 'permission_pending',
           activeThinkingId: null,
           messages:
-            msg.toolName === 'AskUserQuestion'
+            isAskUserQuestion(msg.toolName)
               ? s.messages
               : [...s.messages, {
                   id: nextId(),
@@ -763,15 +777,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         let completionMessages = session.messages
         if (text.trim()) {
           completionMessages = appendAssistantTextMessage(session.messages, text, Date.now())
-          update(() => ({
-            messages: completionMessages,
-            streamingText: '',
-          }))
-        } else if (text !== session.streamingText) {
-          update(() => ({ streamingText: text }))
         }
         if (session.elapsedTimer) clearInterval(session.elapsedTimer)
         update(() => ({
+          messages: text.trim() ? completionMessages : session.messages,
+          streamingText: '',
           tokenUsage: msg.usage,
           chatState: 'idle',
           activeThinkingId: null,

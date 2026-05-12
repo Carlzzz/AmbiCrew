@@ -35,4 +35,14 @@ export type SkillDetail = {
   tree: FileTreeNode[]
   files: SkillFile[]
   skillRoot: string
+  installable?: boolean
+  hubItem?: {
+    id: string
+    name?: string
+    version?: string
+    description?: string
+    author?: string
+    category?: string
+    downloadUrl: string
+  }
 }

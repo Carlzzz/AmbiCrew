@@ -20,6 +20,9 @@ import { ApiError, errorResponse } from '../middleware/errorHandler.js'
 import { getSlashCommands } from '../ws/handler.js'
 import { getCommandName } from '../../commands.js'
 import { getSkillDirCommands } from '../../skills/loadSkillsDir.js'
+import { getBundledSkills } from '../../skills/bundledSkills.js'
+import { getBuiltinPluginSkillCommands } from '../../plugins/builtinPlugins.js'
+import { getPluginSkills } from '../../utils/plugins/loadPluginCommands.js'
 import { WorkspaceService } from '../services/workspaceService.js'
 import {
   executeSessionRewind,
@@ -336,8 +339,19 @@ async function getSessionSlashCommands(sessionId: string): Promise<Response> {
     throw ApiError.notFound(`Session not found: ${sessionId}`)
   }
 
-  const commands = await getSkillDirCommands(workDir)
-  const slashCommands = commands
+  const [skillDirCommands, pluginSkills, bundledSkills, builtinPluginSkills] = await Promise.all([
+    getSkillDirCommands(workDir).catch(() => []),
+    getPluginSkills().catch(() => []),
+    Promise.resolve(getBundledSkills()),
+    Promise.resolve(getBuiltinPluginSkillCommands()),
+  ])
+  const allCommands = [
+    ...skillDirCommands,
+    ...pluginSkills,
+    ...bundledSkills,
+    ...builtinPluginSkills,
+  ]
+  const slashCommands = allCommands
     .filter((command) => command.userInvocable !== false)
     .map((command) => ({
       name: getCommandName(command),

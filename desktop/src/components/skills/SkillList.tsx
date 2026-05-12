@@ -177,14 +177,17 @@ export function SkillList() {
               </div>
 
               <div className="flex flex-col p-2">
-                {group.map((skill) => (
+                {group.map((skill) => {
+                  const isCrewCentralUnavailable = skill.source === 'crewcentral' && !skill.hasDirectory
+                  return (
                   <button
                     key={`${skill.source}-${skill.name}`}
-                    onClick={() =>
-                      skill.hasDirectory &&
-                      fetchSkillDetail(skill.source, skill.name, currentWorkDir, 'skills')
-                    }
-                    disabled={!skill.hasDirectory}
+                    onClick={() => {
+                      if (skill.hasDirectory || skill.source === 'crewcentral') {
+                        fetchSkillDetail(skill.source, skill.name, currentWorkDir, 'skills')
+                      }
+                    }}
+                    disabled={!skill.hasDirectory && skill.source !== 'crewcentral'}
                     className="group rounded-xl border border-transparent px-3 py-3 text-left transition-all hover:border-[var(--color-border-focus)] hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)] disabled:opacity-60 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:border-transparent"
                   >
                     <div className="flex items-start gap-3">
@@ -213,7 +216,13 @@ export function SkillList() {
                         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--color-text-tertiary)]">
                           <span>{sourceLabel}</span>
                           <span>{t('settings.skills.tokenEstimateShort', { count: String(estimateTokens(skill.contentLength)) })}</span>
-                          <span>{skill.hasDirectory ? t('settings.skills.ready') : t('settings.skills.unavailable')}</span>
+                          {skill.hasDirectory ? (
+                            <span className="text-[var(--color-success)]">{t('settings.skills.ready')}</span>
+                          ) : isCrewCentralUnavailable ? (
+                            <span className="text-[var(--color-warning)]">{t('settings.skills.notInstalled')}</span>
+                          ) : (
+                            <span>{t('settings.skills.unavailable')}</span>
+                          )}
                         </div>
                       </div>
                       <span className="material-symbols-outlined text-[18px] text-[var(--color-text-tertiary)] opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100">
@@ -221,7 +230,8 @@ export function SkillList() {
                       </span>
                     </div>
                   </button>
-                ))}
+                  )
+                })}
               </div>
             </section>
           )

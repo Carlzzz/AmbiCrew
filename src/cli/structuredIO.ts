@@ -474,6 +474,7 @@ export class StructuredIO {
   ): Promise<Response> {
     const message: SDKControlRequest = {
       type: 'control_request',
+      uuid: requestId,
       request_id: requestId,
       request,
     }
@@ -490,6 +491,7 @@ export class StructuredIO {
     const aborted = () => {
       this.outbound.enqueue({
         type: 'control_cancel_request',
+        uuid: requestId,
         request_id: requestId,
       })
       // Immediately reject the outstanding promise, without

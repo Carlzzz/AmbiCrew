@@ -24,6 +24,10 @@ import { ConfirmDialog } from '../shared/ConfirmDialog'
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
 
+function isAskUserQuestion(toolName: string): boolean {
+  return toolName.toLowerCase() === 'askuserquestion'
+}
+
 type RenderItem =
   | { kind: 'tool_group'; toolCalls: ToolCall[]; id: string }
   | { kind: 'message'; message: UIMessage }
@@ -107,7 +111,7 @@ export function buildRenderModel(messages: UIMessage[]): RenderModel {
         appendChildToolCall(childToolCallsByParent, msg.parentToolUseId, msg)
         continue
       }
-      if (msg.toolName === 'AskUserQuestion') {
+      if (isAskUserQuestion(msg.toolName)) {
         flushGroup()
         items.push({ kind: 'message', message: msg })
       } else {
@@ -575,7 +579,7 @@ export const MessageBlock = memo(function MessageBlock({
     case 'thinking':
       return <ThinkingBlock content={message.content} isActive={message.id === activeThinkingId} />
     case 'tool_use':
-      if (message.toolName === 'AskUserQuestion') {
+      if (isAskUserQuestion(message.toolName)) {
         return (
           <AskUserQuestion
             toolUseId={message.toolUseId}

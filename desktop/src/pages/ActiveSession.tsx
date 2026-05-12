@@ -21,6 +21,8 @@ import { useTranslation } from '../i18n'
 import { MessageList } from '../components/chat/MessageList'
 import { ChatInput } from '../components/chat/ChatInput'
 import { ComputerUsePermissionModal } from '../components/chat/ComputerUsePermissionModal'
+import { AskUserQuestionModal } from '../components/chat/AskUserQuestionModal'
+import { TextQuestionModal } from '../components/chat/TextQuestionModal'
 import { SessionTaskBar } from '../components/chat/SessionTaskBar'
 import { WorkspacePanel } from '../components/workspace/WorkspacePanel'
 import { TeamStatusBar } from '../components/teams/TeamStatusBar'
@@ -461,10 +463,14 @@ export function ActiveSession() {
       </div>
 
       {!isMemberSession && activeTabId ? (
-        <ComputerUsePermissionModal
-          sessionId={activeTabId}
-          request={pendingComputerUsePermission?.request ?? null}
-        />
+        <>
+          <ComputerUsePermissionModal
+            sessionId={activeTabId}
+            request={pendingComputerUsePermission?.request ?? null}
+          />
+          <AskUserQuestionModal />
+          <TextQuestionModal />
+        </>
       ) : null}
     </div>
   )

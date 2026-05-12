@@ -890,6 +890,11 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
             if (block.type === 'tool_use' && streamState.pendingToolBlocks.has(block.id)) {
               const pending = streamState.pendingToolBlocks.get(block.id)!
               streamState.pendingToolBlocks.delete(block.id)
+              if (pending.toolName === 'AskUserQuestion' || block.name === 'AskUserQuestion') {
+                console.warn(
+                  `[WS:AskUserQuestion] assistant message deferred tool_use_complete toolUseId=${block.id}`,
+                )
+              }
               messages.push({
                 type: 'tool_use_complete',
                 toolName: pending.toolName || block.name,
@@ -906,6 +911,11 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
               messages.push({ type: 'content_start', blockType: 'text' })
               messages.push({ type: 'content_delta', text: block.text })
             } else if (block.type === 'tool_use') {
+              if (block.name === 'AskUserQuestion') {
+                console.warn(
+                  `[WS:AskUserQuestion] assistant message (no stream_events) tool_use_complete toolUseId=${block.id}`,
+                )
+              }
               messages.push({
                 type: 'tool_use_complete',
                 toolName: block.name,
@@ -985,6 +995,11 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
               toolUseId: contentBlock.id || '',
               inputJson: '',
             })
+            if (contentBlock.name === 'AskUserQuestion') {
+              console.warn(
+                `[WS:AskUserQuestion] content_block_start toolUseId=${contentBlock.id} index=${index}`,
+              )
+            }
             return [{
               type: 'content_start',
               blockType: 'tool_use',
@@ -1036,6 +1051,11 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
               try { parsedInput = JSON.parse(toolBlock.inputJson) } catch {}
 
               if (parsedInput !== null) {
+                if (toolBlock.toolName === 'AskUserQuestion') {
+                  console.warn(
+                    `[WS:AskUserQuestion] content_block_stop → tool_use_complete toolUseId=${toolBlock.toolUseId} inputKeys=${Object.keys(parsedInput).join(',')}`,
+                  )
+                }
                 return [{
                   type: 'tool_use_complete',
                   toolName: toolBlock.toolName,
@@ -1078,14 +1098,20 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
     case 'control_request': {
       // 权限请求 — CLI 需要用户授权才能执行工具
       if (cliMsg.request?.subtype === 'can_use_tool') {
+        const toolUseId =
+          typeof cliMsg.request.tool_use_id === 'string'
+            ? cliMsg.request.tool_use_id
+            : undefined
+        if (cliMsg.request.tool_name === 'AskUserQuestion') {
+          console.warn(
+            `[WS:AskUserQuestion] control_request → permission_request toolUseId=${toolUseId} requestId=${cliMsg.request_id}`,
+          )
+        }
         return [{
           type: 'permission_request',
           requestId: cliMsg.request_id,
           toolName: cliMsg.request.tool_name || 'Unknown',
-          toolUseId:
-            typeof cliMsg.request.tool_use_id === 'string'
-              ? cliMsg.request.tool_use_id
-              : undefined,
+          toolUseId,
           input: cliMsg.request.input || {},
           description: cliMsg.request.description,
         }]
@@ -1303,6 +1329,24 @@ function rebindSessionOutput(
   conversationService.clearOutputCallbacks(sessionId)
   conversationService.onOutput(sessionId, (cliMsg) => {
     if (options?.shouldForward && !options.shouldForward(cliMsg)) {
+      if (cliMsg.type === 'control_request' && cliMsg.request?.tool_name === 'AskUserQuestion') {
+        console.warn(
+          `[WS:AskUserQuestion] control_request FILTERED by shouldForward`,
+        )
+      }
+      if (cliMsg.type === 'stream_event') {
+        const event = cliMsg.event
+        if (event?.type === 'content_block_start' && event?.content_block?.name === 'AskUserQuestion') {
+          console.warn(
+            `[WS:AskUserQuestion] content_block_start FILTERED by shouldForward`,
+          )
+        }
+        if (event?.type === 'content_block_stop') {
+          console.warn(
+            `[WS:AskUserQuestion] content_block_stop FILTERED by shouldForward`,
+          )
+        }
+      }
       return
     }
 
@@ -1363,7 +1407,9 @@ async function getRuntimeSettings(sessionId?: string): Promise<RuntimeSettings> 
  * Fetch model IDs from CrewProxy for runtime default fallback.
  * Returns an array of model ID strings, or null on failure.
  */
-async function tryFetchProxyModelsForRuntime(): Promise<string[] | null> {
+type ProxyModelEntry = { id: string; alias: string }
+
+async function tryFetchProxyModelsForRuntime(): Promise<ProxyModelEntry[] | null> {
   const proxyBaseUrl =
     process.env.LLM_PROXY_BASE_URL?.trim() ||
     process.env.ANTHROPIC_BASE_URL?.trim()
@@ -1383,11 +1429,12 @@ async function tryFetchProxyModelsForRuntime(): Promise<string[] | null> {
       token,
     })
 
-    return result.items.map((m) => m.modelId)
+    return result.items.map((m) => ({ id: m.modelId, alias: m.modelAlias }))
   } catch {
     return null
   }
 }
+
 
 async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
   // Check if a custom provider is active
@@ -1440,9 +1487,8 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     model = baseModel ? (modelContext ? `${baseModel}:${modelContext}` : baseModel) : undefined
   } else if (isCrewCentral) {
     // CrewCentral: clear stale model from a previous provider, then fallback
-    // to the provider's default model (if available on the proxy) or the first
-    // proxy model so the CLI doesn't fall through to Anthropic's built-in
-    // default (which CrewProxy doesn't recognise).
+    // to the provider's default model (if available on the proxy) or the
+    // preferred CrewProxy default, or the first proxy model.
     const staleModel = typeof modelSettings.model === 'string' && modelSettings.model.trim()
     if (staleModel) {
       console.warn(
@@ -1452,10 +1498,13 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     }
     const proxyModels = await tryFetchProxyModelsForRuntime()
     if (proxyModels && proxyModels.length > 0) {
-      const defaultModel = activeProvider?.models.main
-      model = (defaultModel && proxyModels.includes(defaultModel))
-        ? defaultModel
-        : proxyModels[0]
+      const proxyIds = proxyModels.map((m) => m.id)
+      const providerDefault = activeProvider?.models.main
+      if (providerDefault && proxyIds.includes(providerDefault)) {
+        model = providerDefault
+      } else {
+        model = proxyModels[0].id
+      }
     }
   }
 

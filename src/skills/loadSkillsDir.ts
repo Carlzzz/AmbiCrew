@@ -449,7 +449,13 @@ async function loadSkillsFromSkillsDir(
           skillFilePath,
         )
 
-        const skillName = entry.name
+        // CrewCentral skills are stored on disk with "_" instead of ":"
+        // because : is invalid in Windows directory names.
+        // crewcentral_slug → crewcentral:slug
+        const diskName = entry.name
+        const skillName = diskName.startsWith('crewcentral_')
+          ? 'crewcentral:' + diskName.slice('crewcentral_'.length)
+          : diskName
         const parsed = parseSkillFrontmatterFields(
           frontmatter,
           markdownContent,

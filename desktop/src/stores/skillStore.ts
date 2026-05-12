@@ -10,6 +10,8 @@ type SkillStore = {
   selectedSkillReturnTab: SkillDetailReturnTab
   isLoading: boolean
   isDetailLoading: boolean
+  isInstalling: boolean
+  installError: string | null
   error: string | null
 
   fetchSkills: (cwd?: string) => Promise<void>
@@ -19,15 +21,18 @@ type SkillStore = {
     cwd?: string,
     returnTab?: SkillDetailReturnTab,
   ) => Promise<void>
+  installSkill: (skillSlug: string, cwd?: string) => Promise<void>
   clearSelection: () => void
 }
 
-export const useSkillStore = create<SkillStore>((set) => ({
+export const useSkillStore = create<SkillStore>((set, get) => ({
   skills: [],
   selectedSkill: null,
   selectedSkillReturnTab: 'skills',
   isLoading: false,
   isDetailLoading: false,
+  isInstalling: false,
+  installError: null,
   error: null,
 
   fetchSkills: async (cwd) => {
@@ -56,6 +61,25 @@ export const useSkillStore = create<SkillStore>((set) => ({
       set({
         error: err instanceof Error ? err.message : String(err),
         isDetailLoading: false,
+      })
+    }
+  },
+
+  installSkill: async (skillSlug, cwd) => {
+    set({ isInstalling: true, installError: null })
+    try {
+      await skillsApi.install(skillSlug)
+      // Refresh the skill list and the detail view if we're looking at this skill
+      await get().fetchSkills(cwd)
+      const current = get().selectedSkill
+      if (current?.meta.name === `crewcentral:${skillSlug}`) {
+        await get().fetchSkillDetail('crewcentral', `crewcentral:${skillSlug}`, cwd)
+      }
+      set({ isInstalling: false })
+    } catch (err) {
+      set({
+        installError: err instanceof Error ? err.message : String(err),
+        isInstalling: false,
       })
     }
   },

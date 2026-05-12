@@ -286,8 +286,6 @@ async function handleCurrentModel(req: Request): Promise<Response> {
         if (proxyModels && proxyModels.length > 0) {
           const isValid = proxyModels.some((m) => m.id === currentModelId)
           if (!isValid || !currentModelId) {
-            // Prefer the provider's default model if it's available on the proxy,
-            // otherwise fall back to the first proxy model
             const defaultModel = activeProvider.models.main
             const defaultIsValid = defaultModel && proxyModels.some((m) => m.id === defaultModel)
             const resolved = defaultIsValid ? defaultModel : proxyModels[0].id

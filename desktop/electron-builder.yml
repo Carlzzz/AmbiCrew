@@ -9,8 +9,6 @@ files:
   - package.json
 asar: true
 extraResources:
-  - from: public/app-icon.png
-    to: app-icon.png
   - from: ../.env
     to: .env
   - from: resources/claude-sidecar.exe

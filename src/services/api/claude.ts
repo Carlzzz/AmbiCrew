@@ -1181,6 +1181,12 @@ async function* queryModel(
       if (isDeferredTool(t)) deferredToolNames.add(t.name);
     }
   }
+  console.warn(
+    `[claude:deferredTools] useToolSearch=${useToolSearch}, deferredCount=${deferredToolNames.size}, deferredNames=${[...deferredToolNames].sort().join(', ')}`,
+  );
+  console.warn(
+    `[claude:deferredTools] AskUserQuestion in tools=${tools.some(t => t.name === 'AskUserQuestion')}, in deferred=${deferredToolNames.has('AskUserQuestion')}`,
+  );
 
   // Even if tool search mode is enabled, skip if there are no deferred tools
   // AND no MCP servers are still connecting. When servers are pending, keep
@@ -1219,6 +1225,13 @@ async function* queryModel(
       (t) => !toolMatchesName(t, TOOL_SEARCH_TOOL_NAME),
     );
   }
+
+  console.warn(
+    `[claude:finalTools] useToolSearch=${useToolSearch}, finalToolsCount=${filteredTools.length}, names=${filteredTools.map(t => t.name).sort().join(', ')}`,
+  );
+  console.warn(
+    `[claude:finalTools] AskUserQuestion in final=${filteredTools.some(t => t.name === 'AskUserQuestion')}`,
+  );
 
   // Add tool search beta header if enabled - required for defer_loading to be accepted
   // Header differs by provider: 1P/Foundry use advanced-tool-use, Vertex/Bedrock use tool-search-tool

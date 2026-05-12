@@ -21,7 +21,7 @@ const META_PRIORITY = [
 ] as const
 
 export function SkillDetail() {
-  const { selectedSkill, selectedSkillReturnTab, isDetailLoading, clearSelection } = useSkillStore()
+  const { selectedSkill, selectedSkillReturnTab, isDetailLoading, isInstalling, installError, clearSelection, installSkill } = useSkillStore()
   const t = useTranslation()
   const [selectedFile, setSelectedFile] = useState<string>('SKILL.md')
 
@@ -32,12 +32,25 @@ export function SkillDetail() {
       : selectedSkill.files[0]?.path || 'SKILL.md'
   }, [selectedFile, selectedSkill])
 
+  const isInstallable = selectedSkill?.installable === true
+  const skillSlug = useMemo(() => {
+    if (!selectedSkill?.meta.name) return ''
+    const name = selectedSkill.meta.name
+    if (name.startsWith('crewcentral:')) return name.slice('crewcentral:'.length)
+    return name
+  }, [selectedSkill?.meta.name])
+
   const handleBack = () => {
     const returnTab = selectedSkillReturnTab
     clearSelection()
     if (returnTab === 'plugins') {
       useUIStore.getState().setPendingSettingsTab('plugins')
     }
+  }
+
+  const handleInstall = async () => {
+    if (!skillSlug || !selectedSkill) return
+    await installSkill(skillSlug)
   }
 
   if (isDetailLoading) {
@@ -66,6 +79,44 @@ export function SkillDetail() {
           {t('settings.skills.back')}
         </button>
       </div>
+
+      {isInstallable && (
+        <section className="rounded-2xl border border-[var(--color-warning)] bg-[var(--color-warning-container)] px-5 py-4">
+          <div className="flex items-start gap-4 flex-wrap">
+            <span className="material-symbols-outlined text-[28px] text-[var(--color-warning)]">
+              cloud_download
+            </span>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                {t('settings.skills.installPromptTitle')}
+              </h4>
+              <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
+                {t('settings.skills.installPromptDescription')}
+              </p>
+              {installError && (
+                <p className="mt-2 text-xs text-[var(--color-error)]">{installError}</p>
+              )}
+            </div>
+            <button
+              onClick={handleInstall}
+              disabled={isInstalling}
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--color-warning)] px-4 py-2.5 text-sm font-semibold text-[var(--color-text-on-primary)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-warning)] focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-default"
+            >
+              {isInstalling ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  {t('settings.skills.installing')}
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-[18px]">download</span>
+                  {t('settings.skills.install')}
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] overflow-hidden">
         <div className="grid gap-4 px-5 py-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.9fr)] lg:items-start">

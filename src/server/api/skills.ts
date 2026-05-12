@@ -375,6 +375,14 @@ async function collectPluginSkills(): Promise<SkillMeta[]> {
   return skills
 }
 
+// ─── CrewCentral: encode : in dir names for Windows compatibility ────────────
+
+// CrewCentral skill names use the form "crewcentral:<slug>", but : is not
+// valid in Windows directory names. Encode it as "_" on disk.
+function crewcentralNameToDir(name: string): string {
+  return name.replace(':', '_')
+}
+
 // ─── CrewCentral hub skills ──────────────────────────────────────────────────
 
 async function getAccessTokenForHub(): Promise<string | null> {
@@ -425,7 +433,7 @@ async function fetchHubItems(): Promise<HubSkillItem[]> {
 
 async function hubItemToSkillMeta(item: HubSkillItem): Promise<SkillMeta> {
   const name = `crewcentral:${item.id}`
-  const existingDir = path.join(getUserSkillsDir(), name)
+  const existingDir = path.join(getUserSkillsDir(), crewcentralNameToDir(name))
   let hasDirectory = false
   try {
     const stat = await fs.stat(existingDir)
@@ -521,7 +529,7 @@ async function getSkillDetail(url: URL): Promise<Response> {
     const meta = await hubItemToSkillMeta(item)
     // If installed locally, return full detail
     if (meta.hasDirectory) {
-      const skillDir = path.join(getUserSkillsDir(), name)
+      const skillDir = path.join(getUserSkillsDir(), crewcentralNameToDir(name))
       const { tree, files } = await buildFileTree(skillDir)
       return Response.json({ detail: { meta, tree, files, skillRoot: skillDir }, hubItem: item })
     }
@@ -622,9 +630,9 @@ async function installHubSkill(req: Request): Promise<Response> {
     throw new ApiError(502, `Failed to download skill: ${err instanceof Error ? err.message : String(err)}`, 'DOWNLOAD_FAILED')
   }
 
-  // Extract to user skills directory
+  // Extract to user skills directory (encode : for Windows compatibility)
   const skillName = `crewcentral:${skillSlug}`
-  const targetDir = path.join(getUserSkillsDir(), skillName)
+  const targetDir = path.join(getUserSkillsDir(), crewcentralNameToDir(skillName))
   await fs.mkdir(targetDir, { recursive: true })
 
   // Write ZIP to temp file and extract

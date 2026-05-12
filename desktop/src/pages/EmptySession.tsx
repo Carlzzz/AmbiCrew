@@ -9,7 +9,6 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../stores/tabStore'
 import { useCentralOAuthStore } from '../stores/centralOAuthStore'
-import { OFFICIAL_DEFAULT_MODEL_ID } from '../constants/modelCatalog'
 import { DirectoryPicker } from '../components/shared/DirectoryPicker'
 import { PermissionModeSelector } from '../components/controls/PermissionModeSelector'
 import { ModelSelector } from '../components/controls/ModelSelector'
@@ -189,15 +188,10 @@ export function EmptySession() {
     // (e.g. MiniMax-M2.7-highspeed) over availableModels[0] which may be a
     // different model (e.g. doubao-seed-2.0-pro). currentModel may also hold a
     // stale value from a previous provider (e.g. "haiku") that isn't valid on CrewProxy.
-    const isProviderManaged = !!inferredProviderId
-    const inferredProvider = inferredProviderId
-      ? providerState.providers.find((p) => p.id === inferredProviderId)
-      : null
-    const providerDefault = inferredProvider?.models.main
-    const isProviderDefaultAvailable = providerDefault && settings.availableModels.some((m) => m.id === providerDefault)
-    const modelId = isProviderManaged
-      ? (isProviderDefaultAvailable ? providerDefault : settings.availableModels[0]?.id || settings.currentModel?.id || OFFICIAL_DEFAULT_MODEL_ID)
-      : (settings.currentModel?.id || settings.availableModels[0]?.id || OFFICIAL_DEFAULT_MODEL_ID)
+    const availableIds = settings.availableModels.map((m) => m.id)
+    const isCurrentModelValid = settings.currentModel?.id && availableIds.includes(settings.currentModel.id)
+
+    const modelId = isCurrentModelValid ? settings.currentModel!.id : ''
 
     return (
       useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]

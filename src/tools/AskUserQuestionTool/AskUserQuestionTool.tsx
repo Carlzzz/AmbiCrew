@@ -110,7 +110,7 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
   name: ASK_USER_QUESTION_TOOL_NAME,
   searchHint: 'prompt the user with a multiple-choice question',
   maxResultSizeChars: 100_000,
-  shouldDefer: true,
+  shouldDefer: false,
   async description() {
     return DESCRIPTION;
   },
@@ -138,8 +138,10 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     // the keyboard. Channel permission relay already skips
     // requiresUserInteraction() tools (interactiveHandler.ts) so there's
     // no alternate approval path.
-    if ((feature('KAIROS') || feature('KAIROS_CHANNELS')) && getAllowedChannels().length > 0) {
-      return false;
+    if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
+      if (getAllowedChannels().length > 0) {
+        return false;
+      }
     }
     return true;
   },
