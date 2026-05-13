@@ -7,6 +7,7 @@ export const PANEL_SLASH_COMMANDS = [
   { name: 'status', description: 'Show session status, usage, and context' },
   { name: 'cost', description: 'Show session usage and costs' },
   { name: 'context', description: 'Show current context usage' },
+  { name: 'rewind', description: 'Restore the code and/or conversation to a previous point' },
 ] as const
 
 export const SETTINGS_SLASH_COMMANDS = [
@@ -22,20 +23,11 @@ export const FALLBACK_SLASH_COMMANDS = [
   ...SETTINGS_SLASH_COMMANDS.map(({ name, description }) => ({ name, description })),
   { name: 'compact', description: 'Compact conversation context' },
   { name: 'clear', description: 'Clear conversation history' },
-  { name: 'review', description: 'Review code changes' },
   { name: 'commit', description: 'Create a git commit' },
-  { name: 'pr', description: 'Create a pull request' },
+  { name: 'pr-comments', description: 'Get comments from a GitHub pull request' },
+  { name: 'review', description: 'Review code changes' },
+  { name: 'security-review', description: 'Complete a security review of the pending changes' },
   { name: 'init', description: 'Initialize project CLAUDE.md' },
-  { name: 'bug', description: 'Report a bug' },
-  { name: 'config', description: 'Open configuration' },
-  { name: 'doctor', description: 'Diagnose installation issues' },
-  { name: 'login', description: 'Switch Anthropic accounts' },
-  { name: 'logout', description: 'Sign out of current account' },
-  { name: 'memory', description: 'Edit CLAUDE.md memory files' },
-  { name: 'model', description: 'Switch AI model' },
-  { name: 'permissions', description: 'View or manage tool permissions' },
-  { name: 'terminal-setup', description: 'Set up terminal integration' },
-  { name: 'vim', description: 'Toggle vim editing mode' },
 ]
 
 export type SlashCommandOption = {

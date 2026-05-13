@@ -1,22 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { skillsApi } from '../../api/skills'
 import { mcpApi } from '../../api/mcp'
 import {
   sessionsApi,
   type SessionContextSnapshot,
   type SessionInspectionResponse,
+  type SessionTurnCheckpoint,
   type SessionUsageSnapshot,
 } from '../../api/sessions'
 import { useTranslation, type TranslationKey } from '../../i18n'
 import { useUIStore } from '../../stores/uiStore'
+import { useChatStore } from '../../stores/chatStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../../stores/tabStore'
 import { useMcpStore } from '../../stores/mcpStore'
 import { useSkillStore } from '../../stores/skillStore'
 import type { McpServerRecord } from '../../types/mcp'
 import type { SkillMeta } from '../../types/skill'
 import type { SlashCommandOption } from './composerUtils'
+import { getCompletedTurnTargets, normalizeTurnCheckpoints, type RewindTurnTarget } from './MessageList'
 
-export type LocalSlashCommandName = 'mcp' | 'skills' | 'help' | 'status' | 'cost' | 'context'
+export type LocalSlashCommandName = 'mcp' | 'skills' | 'help' | 'status' | 'cost' | 'context' | 'rewind'
 
 type Props = {
   command: LocalSlashCommandName
@@ -1034,9 +1037,219 @@ function HelpPanel({
   )
 }
 
+type RewindCardModel = {
+  target: RewindTurnTarget
+  checkpoint: SessionTurnCheckpoint
+  isLatest: boolean
+}
+
+function formatTimeAgo(timestamp: number, t: Translate) {
+  const diff = Date.now() - timestamp
+  if (diff < 60_000) return t('session.timeJustNow')
+  if (diff < 3_600_000) return t('session.timeMinutes', { n: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('session.timeHours', { n: Math.floor(diff / 3_600_000) })
+  return t('session.timeDays', { n: Math.floor(diff / 86_400_000) })
+}
+
+function RewindPanel({ sessionId, onClose }: { sessionId?: string; onClose: () => void }) {
+  const t = useTranslation()
+  const messages = useChatStore((s) => sessionId ? s.sessions[sessionId]?.messages ?? [] : [])
+  const chatState = useChatStore((s) => sessionId ? s.sessions[sessionId]?.chatState ?? 'idle' : 'idle')
+  const stopGeneration = useChatStore((s) => s.stopGeneration)
+  const reloadHistory = useChatStore((s) => s.reloadHistory)
+  const queueComposerPrefill = useChatStore((s) => s.queueComposerPrefill)
+  const addToast = useUIStore((s) => s.addToast)
+
+  const [cards, setCards] = useState<RewindCardModel[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedCard, setSelectedCard] = useState<RewindCardModel | null>(null)
+  const [isRewinding, setIsRewinding] = useState(false)
+
+  const completedTurnTargets = useMemo(() => getCompletedTurnTargets(messages), [messages])
+
+  useEffect(() => {
+    if (!sessionId || completedTurnTargets.length === 0) {
+      setCards([])
+      return
+    }
+
+    let cancelled = false
+    sessionsApi.getTurnCheckpoints(sessionId)
+      .then((response) => {
+        if (cancelled) return
+        const targetByMessageId = new Map(
+          completedTurnTargets.map((target) => [target.messageId, target] as const),
+        )
+        const targetByUserMessageIndex = new Map(
+          completedTurnTargets.map((target) => [target.userMessageIndex, target] as const),
+        )
+        const latestId = completedTurnTargets[completedTurnTargets.length - 1]?.messageId ?? null
+
+        const result = normalizeTurnCheckpoints(response).flatMap((checkpoint) => {
+          const target =
+            targetByMessageId.get(checkpoint.target.targetUserMessageId) ??
+            targetByUserMessageIndex.get(checkpoint.target.userMessageIndex)
+          if (!target || !checkpoint.code.available || checkpoint.code.filesChanged.length === 0) {
+            return []
+          }
+          return [{
+            target,
+            checkpoint,
+            isLatest: target.messageId === latestId,
+          }]
+        })
+
+        setCards(result.reverse())
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : String(err))
+      })
+
+    return () => { cancelled = true }
+  }, [sessionId, completedTurnTargets])
+
+  const handleRewind = useCallback(async (card: RewindCardModel) => {
+    if (!sessionId || isRewinding) return
+    setIsRewinding(true)
+
+    try {
+      if (chatState !== 'idle') {
+        stopGeneration(sessionId)
+      }
+
+      const result = await sessionsApi.rewind(sessionId, {
+        targetUserMessageId: card.target.messageId,
+        userMessageIndex: card.target.userMessageIndex,
+        expectedContent: card.target.expectedContent,
+      })
+
+      await reloadHistory(sessionId)
+      queueComposerPrefill(sessionId, {
+        text: card.target.content,
+        attachments: card.target.attachments,
+      })
+
+      addToast({
+        type: 'success',
+        message: result.code.available
+          ? t('chat.rewindSuccessWithCode', { count: result.conversation.messagesRemoved })
+          : t('chat.rewindSuccessConversationOnly', { count: result.conversation.messagesRemoved }),
+      })
+
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setSelectedCard(null)
+    } finally {
+      setIsRewinding(false)
+    }
+  }, [addToast, chatState, isRewinding, onClose, queueComposerPrefill, reloadHistory, sessionId, stopGeneration, t])
+
+  if (selectedCard) {
+    const { checkpoint, target } = selectedCard
+    return (
+      <PanelShell
+        title={t('slash.rewind.confirmTitle')}
+        subtitle={t('slash.rewind.subtitle')}
+        onClose={onClose}
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+            <div className="text-sm text-[var(--color-text-primary)]">
+              {target.content.length > 200 ? `${target.content.slice(0, 200)}…` : target.content}
+            </div>
+            <div className="mt-2 flex items-center gap-3 text-xs text-[var(--color-text-tertiary)]">
+              <span>{t('slash.rewind.filesChanged', { count: checkpoint.code.filesChanged.length })}</span>
+              <span>{t('slash.rewind.stats', { insertions: checkpoint.code.insertions, deletions: checkpoint.code.deletions })}</span>
+            </div>
+          </div>
+
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {checkpoint.code.available ? t('slash.rewind.confirmBody') : t('slash.rewind.confirmConversationOnly')}
+          </p>
+
+          {error && <ErrorState message={error} />}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={isRewinding}
+              onClick={() => handleRewind(selectedCard)}
+              className="rounded-lg bg-[var(--color-error-container)] px-4 py-2 text-sm font-semibold text-[var(--color-on-error-container)] transition-colors hover:brightness-95 disabled:opacity-50"
+            >
+              {isRewinding
+                ? t('common.loading')
+                : checkpoint.code.available
+                  ? t('slash.rewind.actionBoth')
+                  : t('slash.rewind.actionConversationOnly')}
+            </button>
+            <button
+              type="button"
+              disabled={isRewinding}
+              onClick={() => { setSelectedCard(null); setError(null) }}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+            >
+              {t('slash.rewind.back')}
+            </button>
+          </div>
+        </div>
+      </PanelShell>
+    )
+  }
+
+  return (
+    <PanelShell
+      title={t('slash.rewind.title')}
+      subtitle={t('slash.rewind.subtitle')}
+      onClose={onClose}
+    >
+      {error ? (
+        <ErrorState message={error} />
+      ) : cards === null ? (
+        <LoadingState label={t('slash.rewind.loading')} />
+      ) : cards.length === 0 ? (
+        <EmptyState title={t('slash.rewind.emptyTitle')} body={t('slash.rewind.emptyBody')} />
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          {cards.map((card) => {
+            const msg = messages.find((m) => m.id === card.target.messageId)
+            const timestamp = msg?.timestamp ?? 0
+            return (
+              <button
+                type="button"
+                key={card.target.messageId}
+                onClick={() => setSelectedCard(card)}
+                className="block w-full border-t border-[var(--color-border)] px-4 py-4 text-left first:border-t-0 hover:bg-[var(--color-surface-hover)] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--color-text-primary)]">
+                    {card.target.content.length > 80 ? `${card.target.content.slice(0, 80)}…` : card.target.content}
+                  </div>
+                  {card.isLatest && (
+                    <span className="shrink-0 rounded-full bg-[var(--color-brand)]/10 px-2 py-0.5 text-[11px] font-semibold text-[var(--color-brand)]">
+                      {t('slash.rewind.latest')}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center gap-3 text-xs text-[var(--color-text-tertiary)]">
+                  {timestamp > 0 && <span>{formatTimeAgo(timestamp, t)}</span>}
+                  <span>{t('slash.rewind.filesChanged', { count: card.checkpoint.code.filesChanged.length })}</span>
+                  <span>{t('slash.rewind.stats', { insertions: card.checkpoint.code.insertions, deletions: card.checkpoint.code.deletions })}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </PanelShell>
+  )
+}
+
 export function LocalSlashCommandPanel({ command, sessionId, cwd, commands, onClose }: Props) {
   if (command === 'mcp') return <McpPanel cwd={cwd} onClose={onClose} />
   if (command === 'skills') return <SkillsPanel cwd={cwd} onClose={onClose} />
+  if (command === 'rewind') return <RewindPanel sessionId={sessionId} onClose={onClose} />
   if (command === 'status' || command === 'cost' || command === 'context') {
     return <SessionInspectorPanel command={command} sessionId={sessionId} commands={commands} onClose={onClose} />
   }

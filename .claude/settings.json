@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/hxvp0g/desktop/src/pages/**)",
+      "Read(//c/Users/hxvp0g/desktop/src/pages/**)",
+      "Read(//Users/hxvp0g/desktop/src/stores/**)",
+      "Read(//c/Users/hxvp0g/desktop/src/stores/**)",
+      "Bash(xargs grep -l \"rewind\")",
+      "Read(//Users/sf74t9/src/**)",
+      "Read(//c/Users/sf74t9/src/**)",
+      "Read(//Users/sf74t9/desktop/src/components/chat/**)",
+      "Read(//c/Users/sf74t9/desktop/src/components/chat/**)",
+      "Bash(grep -E \"\\\\.ts$|\\\\.js$\")",
+      "Bash(awk '{print $1}')",
+      "Read(//Users/itsbsd/src/commands/commit/**)",
+      "Read(//c/Users/itsbsd/src/commands/commit/**)",
+      "Read(//Users/itsbsd/src/commands/pr/**)",
+      "Read(//c/Users/itsbsd/src/commands/pr/**)",
+      "Read(//Users/itsbsd/src/commands/pr_comments/**)",
+      "Read(//c/Users/itsbsd/src/commands/pr_comments/**)",
+      "Read(//Users/itsbsd/src/commands/review/**)",
+      "Read(//c/Users/itsbsd/src/commands/review/**)",
+      "Read(//Users/itsbsd/src/commands/security-review/**)",
+      "Read(//c/Users/itsbsd/src/commands/security-review/**)",
+      "Read(//Users/itsbsd/src/commands/init/**)",
+      "Read(//c/Users/itsbsd/src/commands/init/**)",
+      "Read(//Users/itsbsd/src/commands/compact/**)",
+      "Read(//c/Users/itsbsd/src/commands/compact/**)",
+      "Read(//Users/itsbsd/src/commands/clear/**)",
+      "Read(//c/Users/itsbsd/src/commands/clear/**)",
+      "Read(//Users/itsbsd/src/commands/plan/**)",
+      "Read(//c/Users/itsbsd/src/commands/plan/**)",
+      "Read(//Users/itsbsd/src/commands/bug/**)",
+      "Read(//c/Users/itsbsd/src/commands/bug/**)",
+      "Bash(xargs grep -l \"type: '.*'\")",
+      "Bash(grep -r \"\\\\\\\\bpr\\\\\\\\b\" src/commands/index.ts -A 5 -B 5)",
+      "Read(//Users/zhaocao/Documents/GitHub/AmbiCrew/desktop/**)",
+      "Read(//c/Users/zhaocao/Documents/GitHub/AmbiCrew/desktop/**)",
+      "Read(//Users/zhaocao/Documents/GitHub/AmbiCrew/desktop/electron/**)",
+      "Read(//c/Users/zhaocao/Documents/GitHub/AmbiCrew/desktop/electron/**)"
+    ]
+  }
+}

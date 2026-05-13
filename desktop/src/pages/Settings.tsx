@@ -1333,7 +1333,7 @@ function AboutSettings() {
   return (
     <div className="w-full min-w-0 max-w-lg mx-auto flex flex-col items-center py-6">
       {/* Logo + App Name + Version */}
-      <img src="/app-icon.png" alt="AmbiCrew" className="w-20 h-20 mb-4" />
+      <img src="./app-icon.png" alt="AmbiCrew" className="w-20 h-20 mb-4" />
       <h1 className="text-xl font-bold text-[var(--color-text-primary)]">AmbiCrew</h1>
       {version && (
         <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
@@ -1354,7 +1354,7 @@ function AboutSettings() {
           onClick={() => openUrl(GITHUB_REPO)}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
         >
-          <img src="/icons/github.svg" alt="GitHub" className="w-5 h-5 opacity-70" />
+          <img src="./icons/github.svg" alt="GitHub" className="w-5 h-5 opacity-70" />
           <div className="flex-1 text-left">
             <div className="text-sm font-medium text-[var(--color-text-primary)]">NanmiCoder/AmbiCrew</div>
             <div className="text-xs text-[var(--color-text-tertiary)]">{t('settings.about.starHint')}</div>
@@ -1471,7 +1471,7 @@ function AboutSettings() {
           onClick={() => openUrl(AUTHOR_GITHUB)}
           className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
         >
-          <img src="/icons/github.svg" alt="GitHub" className="w-4 h-4 opacity-60" />
+          <img src="./icons/github.svg" alt="GitHub" className="w-4 h-4 opacity-60" />
           <span className="text-sm text-[var(--color-text-primary)]">程序员阿江-Relakkes</span>
           <span className="text-xs text-[var(--color-text-tertiary)] ml-auto">GitHub</span>
         </button>

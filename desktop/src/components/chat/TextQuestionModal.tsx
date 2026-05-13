@@ -4,6 +4,7 @@ import { useTabStore } from '../../stores/tabStore'
 import { useTranslation } from '../../i18n'
 import { Button } from '../shared/Button'
 import { Modal } from '../shared/Modal'
+import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 
 type ExtractedQuestion = {
   question: string
@@ -297,7 +298,7 @@ export function TextQuestionModal() {
     <Modal
       open
       onClose={handleDismiss}
-      title={extractedQuestions.length > 1 ? t('question.needsInput') : extractedQuestions[0]?.question}
+      title={t('question.needsInput')}
       width={560}
       footer={
         <div className="flex items-center gap-2 w-full">
@@ -334,12 +335,9 @@ export function TextQuestionModal() {
           const isUsingFreeText = hasOptions && !hasAnyOptionSelected && (answers[i]?.trim().length ?? 0) > 0
           return (
             <div key={i}>
-              {/* Show question text in body only for multi-question; single question uses modal title */}
-              {extractedQuestions.length > 1 && (
-                <p className="text-sm font-medium text-[var(--color-text-primary)] mb-3">
-                  {eq.question}
-                </p>
-              )}
+              <div className="text-sm text-[var(--color-text-primary)] mb-3">
+                <MarkdownRenderer content={eq.question} />
+              </div>
 
               {/* Selectable option cards */}
               {hasOptions && (

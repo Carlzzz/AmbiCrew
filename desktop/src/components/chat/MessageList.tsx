@@ -38,7 +38,7 @@ type RenderModel = {
   childToolCallsByParent: Map<string, ToolCall[]>
 }
 
-type RewindTurnTarget = {
+export type RewindTurnTarget = {
   messageId: string
   userMessageIndex: number
   content: string
@@ -237,7 +237,7 @@ function isSessionTurnCheckpoint(value: unknown): value is SessionTurnCheckpoint
   )
 }
 
-function normalizeTurnCheckpoints(response: unknown): SessionTurnCheckpoint[] {
+export function normalizeTurnCheckpoints(response: unknown): SessionTurnCheckpoint[] {
   if (!response || typeof response !== 'object') return []
   const checkpoints = (response as { checkpoints?: unknown }).checkpoints
   if (!Array.isArray(checkpoints)) return []
