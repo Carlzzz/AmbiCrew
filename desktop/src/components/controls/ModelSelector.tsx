@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { OFFICIAL_MODELS } from '../../constants/modelCatalog'
 import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chatStore'
 import { useProviderStore } from '../../stores/providerStore'
@@ -22,15 +21,6 @@ type Props = {
   runtimeKey?: string
   disabled?: boolean
   compact?: boolean
-}
-
-function officialChoices(availableModels: ModelInfo[], isDefault: boolean, officialName: string): ProviderChoice {
-  return {
-    providerId: null,
-    providerName: officialName,
-    isDefault,
-    models: availableModels.length > 0 ? availableModels : OFFICIAL_MODELS,
-  }
 }
 
 function buildProviderModels(
@@ -74,18 +64,14 @@ function buildProviderChoices(
   providers: SavedProvider[],
   activeId: string | null,
   availableModels: ModelInfo[],
-  officialName: string,
   labels: Record<'main' | 'haiku' | 'sonnet' | 'opus', string>,
 ): ProviderChoice[] {
-  return [
-    officialChoices(availableModels, activeId === null, officialName),
-    ...providers.map((provider) => ({
-      providerId: provider.id,
-      providerName: provider.name,
-      isDefault: activeId === provider.id,
-      models: buildProviderModels(provider, labels, availableModels),
-    })),
-  ]
+  return providers.map((provider) => ({
+    providerId: provider.id,
+    providerName: provider.name,
+    isDefault: activeId === provider.id,
+    models: buildProviderModels(provider, labels, availableModels),
+  }))
 }
 
 function resolveDefaultRuntimeSelection(
@@ -203,11 +189,10 @@ export function ModelSelector({
     () => buildProviderChoices(
       providers,
       activeId,
-      activeId === null || isCrewCentralActive ? availableModels : OFFICIAL_MODELS,
-      t('settings.providers.officialName'),
+      availableModels,
       roleLabels,
     ),
-    [activeId, availableModels, providers, roleLabels, t, isCrewCentralActive],
+    [activeId, availableModels, providers, roleLabels],
   )
 
   const selectedModel = isControlled

@@ -1,5 +1,7 @@
 # Dependencies
+node_modules/
 desktop/node_modules/
+adapters/node_modules/
 
 # Build output
 desktop/dist-electron/

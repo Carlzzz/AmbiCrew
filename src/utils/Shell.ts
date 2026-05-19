@@ -39,7 +39,7 @@ import { getCachedPowerShellPath } from './shell/powershellDetection.js'
 import { createPowerShellProvider } from './shell/powershellProvider.js'
 import type { ShellProvider, ShellType } from './shell/shellProvider.js'
 import { subprocessEnv } from './subprocessEnv.js'
-import { posixPathToWindowsPath } from './windowsPaths.js'
+import { posixPathToWindowsPath, tryFindGitBashPath } from './windowsPaths.js'
 
 const DEFAULT_TIMEOUT = 30 * 60 * 1000 // 30 minutes
 
@@ -71,6 +71,14 @@ function isExecutable(shellPath: string): boolean {
  * Determines the best available shell to use.
  */
 export async function findSuitableShell(): Promise<string> {
+  if (getPlatform() === 'windows') {
+    const gitBashPath = tryFindGitBashPath()
+    if (gitBashPath && isExecutable(gitBashPath)) {
+      logForDebugging(`Using Windows Git Bash path: ${gitBashPath}`)
+      return gitBashPath
+    }
+  }
+
   // Check for explicit shell override first
   const shellOverride = process.env.CLAUDE_CODE_SHELL
   if (shellOverride) {
