@@ -210,7 +210,7 @@ async function tryFetchProxyModels(): Promise<ApiModelInfo[] | null> {
   const proxyBaseUrl =
     process.env.LLM_PROXY_BASE_URL?.trim() ||
     process.env.ANTHROPIC_BASE_URL?.trim()
-  if (!proxyBaseUrl) return null
+  if (!proxyBaseUrl) return tryGetDirectModels()
 
   try {
     const token = (await getCentralAccessToken()) ||

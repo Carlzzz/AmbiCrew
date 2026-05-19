@@ -844,7 +844,7 @@ describe('WebSocket Chat Integration', () => {
       const messages = await runTurn(sessionId, 'Hello without thinking')
 
       expect(messages.some((m) => m.type === 'message_complete')).toBe(true)
-      expect(startOptions).toEqual([{ thinking: 'disabled', model: undefined }])
+      expect(startOptions).toEqual([{ thinking: 'disabled', model: 'MiniMax-M2.7-highspeed' }])
     } finally {
       conversationService.startSession = originalStartSession as typeof conversationService.startSession
       conversationService.stopSession(sessionId)
@@ -1394,6 +1394,56 @@ describe('WebSocket Chat Integration', () => {
     }
   }, 20_000)
 
+  it('should use CrewCentral MiniMax default for sessions without runtime override', async () => {
+    const previousDirectModels = process.env.LLM_DIRECT_MODELS
+    process.env.LLM_DIRECT_MODELS = 'Other:other-model,MiniMax-M2.7-highspeed:MiniMax-M2.7-highspeed'
+
+    const createRes = await fetch(`${baseUrl}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workDir: process.cwd() }),
+    })
+    expect(createRes.status).toBe(201)
+    const { sessionId } = await createRes.json() as { sessionId: string }
+
+    const originalStartSession = conversationService.startSession.bind(conversationService)
+    const startCalls: Array<{
+      sessionId: string
+      options: { permissionMode?: string; model?: string; effort?: string; providerId?: string | null } | undefined
+    }> = []
+
+    conversationService.startSession = (async function patchedStartSession(
+      sid: string,
+      workDir: string,
+      sdkUrl: string,
+      options?: { permissionMode?: string; model?: string; effort?: string; thinking?: 'enabled' | 'adaptive' | 'disabled'; providerId?: string | null },
+    ) {
+      startCalls.push({ sessionId: sid, options })
+      return originalStartSession(sid, workDir, sdkUrl, options)
+    }) as typeof conversationService.startSession
+
+    try {
+      const messages = await runTurn(sessionId, 'default crewcentral model')
+      expect(messages.some((msg) => msg.type === 'message_complete')).toBe(true)
+      expect(startCalls).toHaveLength(1)
+      expect(startCalls[0]).toMatchObject({
+        sessionId,
+        options: {
+          providerId: 'crewcentral-default',
+          model: 'MiniMax-M2.7-highspeed',
+        },
+      })
+    } finally {
+      if (previousDirectModels === undefined) {
+        delete process.env.LLM_DIRECT_MODELS
+      } else {
+        process.env.LLM_DIRECT_MODELS = previousDirectModels
+      }
+      conversationService.startSession = originalStartSession
+      conversationService.stopSession(sessionId)
+    }
+  }, 20_000)
+
   it('should pass the active provider id into default desktop sessions', async () => {
     const providerService = new ProviderService()
     const provider = await providerService.addProvider({
@@ -1545,8 +1595,13 @@ describe('WebSocket Chat Integration', () => {
         `runtime restart idle status for ${sessionId}`,
       )
 
-      expect(startCalls[0]).toMatchObject({ sessionId })
-      expect(startCalls[0]?.options?.providerId).toBeNull()
+      expect(startCalls[0]).toMatchObject({
+        sessionId,
+        options: {
+          providerId: 'crewcentral-default',
+          model: 'MiniMax-M2.7-highspeed',
+        },
+      })
       expect(startCalls[1]).toMatchObject({
         sessionId,
         options: {

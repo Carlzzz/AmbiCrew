@@ -54,4 +54,8 @@ contextBridge.exposeInMainWorld('electron', {
     flashFrame: () =>
       ipcRenderer.invoke('notification:flashFrame'),
   },
+
+  adapters: {
+    restart: () => ipcRenderer.invoke('adapters:restart'),
+  },
 })

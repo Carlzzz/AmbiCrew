@@ -190,8 +190,19 @@ export function EmptySession() {
     // stale value from a previous provider (e.g. "haiku") that isn't valid on CrewProxy.
     const availableIds = settings.availableModels.map((m) => m.id)
     const isCurrentModelValid = settings.currentModel?.id && availableIds.includes(settings.currentModel.id)
+    const inferredProvider = inferredProviderId
+      ? providerState.providers.find((provider) => provider.id === inferredProviderId) ?? null
+      : null
+    const defaultProviderModel = inferredProvider?.models.main.trim()
+    const isDefaultProviderModelValid = defaultProviderModel && (
+      availableIds.length === 0 || availableIds.includes(defaultProviderModel)
+    )
 
-    const modelId = isCurrentModelValid ? settings.currentModel!.id : ''
+    const modelId = isCurrentModelValid
+      ? settings.currentModel!.id
+      : inferredProvider?.presetId === 'crewcentral' && isDefaultProviderModelValid
+        ? defaultProviderModel
+        : ''
 
     return (
       useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
@@ -302,7 +313,10 @@ export function EmptySession() {
     setIsSubmitting(true)
     try {
       const draftSelection = await resolveDraftRuntimeSelection()
-      if (!draftSelection.modelId) {
+      const draftProvider = draftSelection.providerId
+        ? useProviderStore.getState().providers.find((provider) => provider.id === draftSelection.providerId) ?? null
+        : null
+      if (!draftSelection.modelId && draftProvider?.presetId !== 'crewcentral') {
         addToast({ type: 'warning', message: t('model.selectModel') })
         setIsSubmitting(false)
         return

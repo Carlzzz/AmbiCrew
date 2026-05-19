@@ -11,8 +11,10 @@ import {
   splitMessage,
 } from '../common/format.js'
 import {
+  formatAskUserQuestion,
   formatPermissionDecisionStatus,
   formatPermissionInstructions,
+  parseAskUserQuestionAnswer,
   parsePermissionCommand,
 } from '../common/permission.js'
 import { SessionStore } from '../common/session-store.js'
@@ -57,6 +59,7 @@ const blockBuffers = new Map<string, MessageBuffer>()
 const contextTokens = new Map<string, string>()
 const typingTickets = new Map<string, string>()
 const pendingPermissions = new Map<string, Set<string>>()
+const pendingAskUserInputs = new Map<string, unknown>()
 const typingController = new WechatTypingController(sendTypingIndicator)
 
 let getUpdatesBuf = ''
@@ -178,6 +181,7 @@ function clearTransientChatState(chatId: string): void {
   blockBuffers.get(chatId)?.reset()
   blockBuffers.delete(chatId)
   pendingPermissions.delete(chatId)
+  pendingAskUserInputs.clear()
   typingController.stop(chatId)
   const runtime = getRuntimeState(chatId)
   runtime.state = 'idle'
@@ -405,7 +409,17 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
         pendingPermissions.set(chatId, pending)
       }
       pending.add(msg.requestId)
+      if (msg.toolName === 'AskUserQuestion') {
+        pendingAskUserInputs.set(msg.requestId, msg.input)
+      }
       typingController.stop(chatId)
+      if (msg.toolName === 'AskUserQuestion') {
+        const formatted = formatAskUserQuestion(msg.input)
+        if (formatted) {
+          await sendText(chatId, formatted)
+          break
+        }
+      }
       await sendText(
         chatId,
         `${formatPermissionRequest(msg.toolName, msg.input, msg.requestId)}\n\n${formatPermissionInstructions(msg.requestId)}`,
@@ -502,15 +516,49 @@ async function routeUserMessage(message: WechatMessage): Promise<void> {
       await sendText(chatId, sent ? '已清空当前会话上下文。' : '无法发送 /clear，请先发送 /new 重新连接会话。')
       return
     }
+    // Check for AskUserQuestion answer first
+    let handledAskUser = false
+    if (!hasAttachments) {
+      const pending = pendingPermissions.get(chatId)
+      if (pending) {
+        for (const rid of pending) {
+          const input = pendingAskUserInputs.get(rid)
+          if (input) {
+            const updatedInput = parseAskUserQuestionAnswer(text, input)
+            if (updatedInput) {
+              const sent = bridge.sendPermissionResponse(chatId, rid, true, undefined, updatedInput)
+              if (sent) {
+                pending.delete(rid)
+                pendingAskUserInputs.delete(rid)
+                const rt = getRuntimeState(chatId)
+                rt.pendingPermissionCount = Math.max(0, rt.pendingPermissionCount - 1)
+                const answerSummary = Object.entries(updatedInput.answers as Record<string, string> ?? {})
+                  .map(([q, a]) => `${a}`)
+                  .join(', ')
+                await sendText(chatId, `已选择：${answerSummary}`)
+              }
+              handledAskUser = true
+              break
+            }
+          }
+        }
+      }
+    }
+    if (handledAskUser) return
+
     const permissionDecision = !hasAttachments ? parsePermissionCommand(text, pendingPermissions.get(chatId)) : null
     if (permissionDecision) {
-      const { requestId, allowed, rule } = permissionDecision
+      const { requestId, allowed, rule, updatedInput } = permissionDecision
       const pending = pendingPermissions.get(chatId)
       if (!pending?.has(requestId)) {
         await sendText(chatId, `未找到待确认的权限请求：${requestId}`)
         return
       }
-      const sent = bridge.sendPermissionResponse(chatId, requestId, allowed, rule)
+      const sent = bridge.sendPermissionResponse(chatId, requestId, allowed, rule, updatedInput)
+      if (sent) {
+        pending.delete(requestId)
+        pendingAskUserInputs.delete(requestId)
+      }
       const runtime = getRuntimeState(chatId)
       if (sent) {
         runtime.pendingPermissionCount = Math.max(0, runtime.pendingPermissionCount - 1)

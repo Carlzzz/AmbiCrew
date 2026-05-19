@@ -88,10 +88,22 @@ describe('ProviderService', () => {
   // ─── listProviders ───────────────────────────────────────────────────────
 
   describe('listProviders', () => {
-    test('should return empty array when no providers exist', async () => {
+    test('should return CrewCentral as the default provider when no providers exist', async () => {
       const svc = new ProviderService()
       const result = await svc.listProviders()
-      expect(result).toEqual({ providers: [], activeId: null })
+      expect(result.activeId).toBe('crewcentral-default')
+      expect(result.providers).toHaveLength(1)
+      expect(result.providers[0]).toMatchObject({
+        id: 'crewcentral-default',
+        presetId: 'crewcentral',
+        name: 'CrewCentral',
+        models: {
+          main: 'MiniMax-M2.7-highspeed',
+          haiku: 'MiniMax-M2.7-highspeed',
+          sonnet: 'MiniMax-M2.7-highspeed',
+          opus: 'MiniMax-M2.7-highspeed',
+        },
+      })
     })
 
     test('should return all added providers', async () => {
@@ -100,10 +112,11 @@ describe('ProviderService', () => {
       await svc.addProvider(sampleInput({ name: 'Provider B' }))
 
       const { providers, activeId } = await svc.listProviders()
-      expect(providers).toHaveLength(2)
-      expect(providers[0].name).toBe('Provider A')
-      expect(providers[1].name).toBe('Provider B')
-      expect(activeId).toBeNull()
+      expect(providers).toHaveLength(3)
+      expect(providers[0].name).toBe('CrewCentral')
+      expect(providers[1].name).toBe('Provider A')
+      expect(providers[2].name).toBe('Provider B')
+      expect(activeId).toBe('crewcentral-default')
     })
   })
 
@@ -127,7 +140,7 @@ describe('ProviderService', () => {
 
       expect(provider.id).toBeDefined()
       const { activeId } = await svc.listProviders()
-      expect(activeId).toBeNull()
+      expect(activeId).toBe('crewcentral-default')
     })
 
     test('adding a provider should not sync settings until activated', async () => {
@@ -144,7 +157,7 @@ describe('ProviderService', () => {
 
       expect(second.id).toBeDefined()
       const { activeId } = await svc.listProviders()
-      expect(activeId).toBeNull()
+      expect(activeId).toBe('crewcentral-default')
     })
 
     test('should preserve optional notes field', async () => {
@@ -315,8 +328,9 @@ describe('ProviderService', () => {
       await svc.deleteProvider(second.id)
 
       const { providers } = await svc.listProviders()
-      expect(providers).toHaveLength(1)
-      expect(providers[0].name).toBe('First')
+      expect(providers).toHaveLength(2)
+      expect(providers[0].name).toBe('CrewCentral')
+      expect(providers[1].name).toBe('First')
     })
 
     test('should throw 409 when deleting an active provider', async () => {
@@ -591,10 +605,14 @@ describe('ProviderService', () => {
   // ─── getProviderForProxy ─────────────────────────────────────────────────
 
   describe('getProviderForProxy', () => {
-    test('should return null when no provider is active', async () => {
+    test('should return the default CrewCentral proxy config when no provider was configured', async () => {
       const svc = new ProviderService()
       const active = await svc.getProviderForProxy()
-      expect(active).toBeNull()
+      expect(active).toEqual({
+        baseUrl: '',
+        apiKey: '',
+        apiFormat: 'anthropic',
+      })
     })
 
     test('should return the active provider proxy config', async () => {
@@ -722,8 +740,9 @@ describe('Providers API', () => {
     const res = await handleProvidersApi(req, url, segments)
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { providers: unknown[] }
-    expect(body.providers).toEqual([])
+    const body = (await res.json()) as { providers: Array<{ name: string; presetId: string }> }
+    expect(body.providers).toHaveLength(1)
+    expect(body.providers[0]).toMatchObject({ name: 'CrewCentral', presetId: 'crewcentral' })
   })
 
   test('GET /api/providers should list added providers', async () => {
@@ -736,9 +755,10 @@ describe('Providers API', () => {
 
     expect(res.status).toBe(200)
     const body = (await res.json()) as { providers: { name: string; apiKey: string }[] }
-    expect(body.providers).toHaveLength(1)
-    expect(body.providers[0].name).toBe('Test Provider')
-    expect(body.providers[0].apiKey).toBe('sk-test-key-123')
+    expect(body.providers).toHaveLength(2)
+    expect(body.providers[0].name).toBe('CrewCentral')
+    expect(body.providers[1].name).toBe('Test Provider')
+    expect(body.providers[1].apiKey).toBe('sk-test-key-123')
   })
 
   // ─── POST /api/providers ─────────────────────────────────────────────────
@@ -760,11 +780,9 @@ describe('Providers API', () => {
     })
     const res = await handleProvidersApi(req, url, segments)
 
-    expect(res.status).toBe(201)
-    const body = (await res.json()) as { provider: { name: string; models: { main: string }; autoCompactWindow: number } }
-    expect(body.provider.name).toBe('New Provider')
-    expect(body.provider.models.main).toBe('gpt-4')
-    expect(body.provider.autoCompactWindow).toBe(64000)
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string; message: string }
+    expect(body.error).toBe('PROVIDER_MANAGED_BY_PROXY')
   })
 
   test('POST /api/providers should return 400 for invalid input', async () => {
@@ -773,7 +791,7 @@ describe('Providers API', () => {
     })
     const res = await handleProvidersApi(req, url, segments)
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(403)
   })
 
   test('POST /api/providers should return 400 for invalid auto compact window', async () => {
@@ -793,7 +811,7 @@ describe('Providers API', () => {
     })
     const res = await handleProvidersApi(req, url, segments)
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(403)
   })
 
   // ─── GET /api/providers/:id ──────────────────────────────────────────────

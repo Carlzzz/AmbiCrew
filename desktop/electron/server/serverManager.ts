@@ -42,7 +42,7 @@ export function startServer(): Promise<string> {
           CLAUDE_RUNTIME_DIR: path.join(process.resourcesPath, 'runtime'),
           CLAUDE_APP_ROOT: process.resourcesPath,
         },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
       })
     } else {
       const bunExe = findBunExe()
@@ -56,15 +56,18 @@ export function startServer(): Promise<string> {
           DESKTOP_MODE: '1',
           CLAUDE_RUNTIME_DIR: path.join(cwd, 'runtime'),
         },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
       })
     }
 
     let resolved = false
+    const stderrChunks: string[] = []
+
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true
-        reject(new Error('Server startup timed out after 30s'))
+        const stderrTail = stderrChunks.join('').slice(-1000)
+        reject(new Error(`Server startup timed out after 30s. stderr: ${stderrTail || '(empty)'}`))
       }
     }, 30_000)
 
@@ -80,7 +83,9 @@ export function startServer(): Promise<string> {
     })
 
     serverProcess.stderr?.on('data', (data: Buffer) => {
-      console.error('[server]', data.toString().trim())
+      const text = data.toString()
+      stderrChunks.push(text)
+      console.error('[server]', text.trim())
     })
 
     serverProcess.on('error', (err) => {
@@ -93,6 +98,14 @@ export function startServer(): Promise<string> {
 
     serverProcess.on('exit', (code, signal) => {
       console.log(`[server] exited with code=${code} signal=${signal}`)
+      if (!resolved) {
+        resolved = true
+        clearTimeout(timeout)
+        const stderrTail = stderrChunks.join('').slice(-1000)
+        reject(new Error(
+          `Server exited unexpectedly with code ${code} signal ${signal}. stderr: ${stderrTail || '(empty)'}`,
+        ))
+      }
       serverProcess = null
     })
   })

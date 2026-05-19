@@ -46,7 +46,40 @@ const MANAGED_ENV_KEYS = [
 ] as const
 
 const DEFAULT_INDEX: ProvidersIndex = { activeId: null, providers: [] }
+const DEFAULT_CREWCENTRAL_PROVIDER_ID = 'crewcentral-default'
 const AUTH_ENV_KEYS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
+
+function buildDefaultCrewCentralProvider(): SavedProvider {
+  const preset = PROVIDER_PRESETS.find((p) => p.id === 'crewcentral')
+  if (!preset) throw ApiError.internal('CrewCentral provider preset is missing')
+
+  return {
+    id: DEFAULT_CREWCENTRAL_PROVIDER_ID,
+    presetId: preset.id,
+    name: preset.name,
+    apiKey: '',
+    baseUrl: preset.baseUrl,
+    apiFormat: preset.apiFormat,
+    models: preset.defaultModels,
+    ...(preset.modelContextWindows && { modelContextWindows: preset.modelContextWindows }),
+  }
+}
+
+function withDefaultCrewCentralProvider(index: ProvidersIndex): ProvidersIndex {
+  const providers = [...index.providers]
+  const existingCrewCentral = providers.find((provider) => provider.presetId === 'crewcentral')
+  const defaultProvider = existingCrewCentral ?? buildDefaultCrewCentralProvider()
+
+  if (!existingCrewCentral) {
+    providers.unshift(defaultProvider)
+  }
+
+  const activeId = providers.some((provider) => provider.id === index.activeId)
+    ? index.activeId
+    : defaultProvider.id
+
+  return { providers, activeId }
+}
 
 function getPresetDefaultEnv(presetId: string): Record<string, string> {
   return PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.defaultEnv ?? {}
@@ -134,10 +167,10 @@ export class ProviderService {
   private async readIndex(): Promise<ProvidersIndex> {
     try {
       const raw = await fs.readFile(this.getIndexPath(), 'utf-8')
-      return JSON.parse(raw) as ProvidersIndex
+      return withDefaultCrewCentralProvider(JSON.parse(raw) as ProvidersIndex)
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { ...DEFAULT_INDEX, providers: [] }
+        return withDefaultCrewCentralProvider({ ...DEFAULT_INDEX, providers: [] })
       }
       throw ApiError.internal(`Failed to read providers index: ${err}`)
     }

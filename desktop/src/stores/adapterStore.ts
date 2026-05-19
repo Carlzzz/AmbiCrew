@@ -4,22 +4,26 @@ import type { AdapterFileConfig } from '../types/adapter'
 import type { DingtalkRegistrationBegin, DingtalkRegistrationPoll } from '../api/adapters'
 
 /**
- * Tauri command 触发器：让主进程 kill + respawn adapter sidecar，
- * 让 ~/.claude/adapters.json 里的最新凭据被新进程读到，建立飞书 / Telegram / 微信 / 钉钉
- * 的 WebSocket 连接。
+ * 让主进程 kill + respawn adapter sidecar，
+ * 让 ~/.claude/adapters.json 里的最新凭据被新进程读到。
  *
- * 在非 Tauri 环境（纯浏览器调试 / 单元测试）这会安静失败 —— 那种场景下
- * 本来也没有 sidecar 可重启。
+ * 优先走 Electron IPC；非桌面环境回退到 Tauri invoke；
+ * 都不满足时安静失败。
  */
-async function notifyTauriRestartAdapters(): Promise<void> {
+async function notifyRestartAdapters(): Promise<void> {
   try {
-    // 用 dynamic import 避开 SSR / non-tauri 测试环境的硬依赖
+    const electron = (window as unknown as { electron?: { adapters?: { restart: () => Promise<{ ok: boolean; error?: string }> } } }).electron
+    if (electron?.adapters?.restart) {
+      await electron.adapters.restart()
+      return
+    }
+    // Fallback: Tauri environments
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('restart_adapters_sidecar')
   } catch (err) {
     // 不阻塞保存流程 —— 配置文件已经写入，下次启动 App 也会生效
     if (typeof console !== 'undefined') {
-      console.warn('[adapterStore] restart_adapters_sidecar failed:', err)
+      console.warn('[adapterStore] restart adapters failed:', err)
     }
   }
 }
@@ -77,11 +81,10 @@ export const useAdapterStore = create<AdapterStore>((set, get) => ({
   updateConfig: async (patch) => {
     const config = await adaptersApi.updateConfig(patch)
     set({ config })
-    // 配置文件已写入磁盘，让 Tauri 主进程 kill + respawn adapter sidecar，
-    // 触发飞书 / Telegram WebSocket 用新凭据重连。pairing code / paired users
-    // 这种轻量更新也会触发重启 —— 这是个有意为之的简化：保证"任何配置变更
-    // 都立刻生效"，比起精细判断哪些字段值得重启更可靠。
-    void notifyTauriRestartAdapters()
+    // 配置文件已写入磁盘，重启 adapter sidecar 让新凭据被新进程读到。
+    // pairing code / paired users 这种轻量更新也会触发重启 ——
+    // 这是个有意为之的简化：保证"任何配置变更都立刻生效"。
+    void notifyRestartAdapters()
   },
 
   generatePairingCode: async () => {
@@ -108,7 +111,7 @@ export const useAdapterStore = create<AdapterStore>((set, get) => ({
     }
     if ('wechat' in result || 'telegram' in result || 'feishu' in result || 'dingtalk' in result) {
       set({ config: result })
-      void notifyTauriRestartAdapters()
+      void notifyRestartAdapters()
       return { connected: true }
     }
     return { connected: false }
@@ -120,7 +123,7 @@ export const useAdapterStore = create<AdapterStore>((set, get) => ({
     const result = await adaptersApi.pollDingtalkRegistration(deviceCode)
     if (result.config) {
       set({ config: result.config })
-      void notifyTauriRestartAdapters()
+      void notifyRestartAdapters()
     }
     return result
   },
@@ -128,13 +131,13 @@ export const useAdapterStore = create<AdapterStore>((set, get) => ({
   unbindWechatAccount: async () => {
     const config = await adaptersApi.unbindWechat()
     set({ config })
-    void notifyTauriRestartAdapters()
+    void notifyRestartAdapters()
   },
 
   unbindDingtalkBot: async () => {
     const config = await adaptersApi.unbindDingtalk()
     set({ config })
-    void notifyTauriRestartAdapters()
+    void notifyRestartAdapters()
   },
 
   removePairedUser: async (platform, userId) => {

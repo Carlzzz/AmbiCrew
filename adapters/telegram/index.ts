@@ -19,8 +19,10 @@ import {
   splitMessage,
 } from '../common/format.js'
 import {
+  formatAskUserQuestion,
   formatPermissionDecisionStatus,
   formatPermissionInstructions,
+  parseAskUserQuestionAnswer,
   parsePermissionCommand,
   parsePermitCallbackData,
   type PermissionDecision,
@@ -68,6 +70,7 @@ const buffers = new Map<string, MessageBuffer>()
 const pendingProjectSelection = new Map<string, boolean>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const pendingPermissions = new Map<string, Set<string>>()
+const pendingAskUserInputs = new Map<string, unknown>()
 /** Per-chat outbound image watcher for Agent-produced markdown images. */
 const tgImageWatchers = new Map<string, ImageBlockWatcher>()
 
@@ -118,6 +121,7 @@ function clearTransientChatState(chatId: string): void {
   runtime.verb = undefined
   runtime.pendingPermissionCount = 0
   pendingPermissions.delete(chatId)
+  pendingAskUserInputs.clear()
   tgImageWatchers.delete(chatId)
 }
 
@@ -128,9 +132,10 @@ async function handlePermissionDecision(chatId: string, decision: PermissionDeci
     return
   }
 
-  const sent = bridge.sendPermissionResponse(chatId, decision.requestId, decision.allowed, decision.rule)
+  const sent = bridge.sendPermissionResponse(chatId, decision.requestId, decision.allowed, decision.rule, decision.updatedInput)
   if (sent) {
     pending.delete(decision.requestId)
+    pendingAskUserInputs.delete(decision.requestId)
     const runtime = getRuntimeState(chatId)
     runtime.pendingPermissionCount = Math.max(0, runtime.pendingPermissionCount - 1)
   }
@@ -439,6 +444,18 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       const pending = pendingPermissions.get(chatId) ?? new Set<string>()
       pending.add(msg.requestId)
       pendingPermissions.set(chatId, pending)
+      if (msg.toolName === 'AskUserQuestion') {
+        pendingAskUserInputs.set(msg.requestId, msg.input)
+      }
+      if (msg.toolName === 'AskUserQuestion') {
+        const formatted = formatAskUserQuestion(msg.input)
+        if (formatted) {
+          const keyboard = new InlineKeyboard()
+            .text('❌ 跳过', `permit:${msg.requestId}:no`)
+          await bot.api.sendMessage(numericChatId, formatted, { reply_markup: keyboard })
+          break
+        }
+      }
       const text = `${formatPermissionRequest(msg.toolName, msg.input, msg.requestId)}\n\n${formatPermissionInstructions(msg.requestId)}`
       const keyboard = new InlineKeyboard()
         .text('✅ 允许', `permit:${msg.requestId}:yes`)
@@ -647,6 +664,24 @@ async function routeUserMessage(
   }
 
   enqueue(chatId, async () => {
+    // Check for AskUserQuestion answer first
+    if (attachments.length === 0) {
+      const pending = pendingPermissions.get(chatId)
+      if (pending) {
+        for (const rid of pending) {
+          const input = pendingAskUserInputs.get(rid)
+          if (input) {
+            const updatedInput = parseAskUserQuestionAnswer(text, input)
+            if (updatedInput) {
+              const decision: PermissionDecision = { requestId: rid, allowed: true, updatedInput }
+              await handlePermissionDecision(chatId, decision)
+              return
+            }
+          }
+        }
+      }
+    }
+
     const permissionDecision = attachments.length === 0
       ? parsePermissionCommand(text, pendingPermissions.get(chatId))
       : null

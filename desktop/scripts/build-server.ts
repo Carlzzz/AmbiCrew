@@ -47,13 +47,18 @@ if (!target) {
 const ext = PLATFORM_EXTS[targetPlatform]
 const sidecarName = `claude-sidecar${ext}`
 const outfile = path.join(resourcesDir, sidecarName)
+const adapterSidecarName = `adapter-sidecar${ext}`
+const adapterOutfile = path.join(resourcesDir, adapterSidecarName)
 
 // Ensure output directory exists
 mkdirSync(resourcesDir, { recursive: true })
 
-// Remove old binary if it exists
+// Remove old binaries if they exist
 if (existsSync(outfile)) {
   rmSync(outfile)
+}
+if (existsSync(adapterOutfile)) {
+  rmSync(adapterOutfile)
 }
 
 /** Packages loaded via dynamic import() for optional platform features.
@@ -122,6 +127,13 @@ console.log(`Building sidecar for ${targetPlatform} (${target})...`)
 console.log(`  Entry:  desktop/sidecars/desktop-sidecar.ts`)
 console.log(`  Output: ${outfile}`)
 
+// Phase 0: Download ripgrep for the target platform
+console.log('[build-server] Downloading ripgrep...')
+execSync(`bun run desktop/scripts/download-ripgrep.ts ${targetPlatform}`, {
+  cwd: repoRoot,
+  stdio: 'inherit',
+})
+
 // Phase 1: Create stubs for missing optional dependencies
 const stubDirs: string[] = []
 for (const pkg of EXTERNAL_PACKAGES) {
@@ -144,6 +156,35 @@ try {
     },
   )
   console.log('Sidecar binary built successfully.')
+
+  // Phase 2b: Build adapter sidecar
+  const ADAPTER_EXTERNAL_PACKAGES = [
+    ...EXTERNAL_PACKAGES,
+    // Adapter-specific dependencies — pulled from adapters/package.json
+    'dingtalk-stream',
+    '@larksuiteoapi/node-sdk',
+    'grammy',
+  ]
+
+  // Ensure adapter dependencies have stubs if missing
+  for (const pkg of ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']) {
+    const pkgDir = path.join(repoRoot, 'node_modules', ...pkg.split('/'))
+    if (!existsSync(pkgDir)) {
+      console.log(`  Creating stub: ${pkg}`)
+      stubDirs.push(createStub(pkg))
+    }
+  }
+
+  const adapterExternalFlags = ADAPTER_EXTERNAL_PACKAGES.map((p) => `--external:${p}`).join(' ')
+
+  execSync(
+    `bun build --compile --target=${target} ${adapterExternalFlags} desktop/sidecars/adapter-sidecar.ts --outfile="${adapterOutfile}"`,
+    {
+      cwd: repoRoot,
+      stdio: 'inherit',
+    },
+  )
+  console.log('Adapter sidecar binary built successfully.')
 } finally {
   // Phase 3: Clean up stubs
   for (const dir of stubDirs) {

@@ -11,6 +11,8 @@ import { registerWhitelistedInvoke } from './ipc/ipcRegistry.js'
 import { registerAuthIpc, registerOpenUrlHandler, findProtocolUrlInArgv, dispatchCentralAuthUrl } from './ipc/authIpc.js'
 import { registerTerminalIpc } from './ipc/terminalIpc.js'
 import { registerNotificationIpc } from './ipc/notificationIpc.js'
+import { registerAdapterIpc } from './ipc/adapterIpc.js'
+import { startAdapters, stopAdapters } from './server/adapterManager.js'
 import { AuthController } from './auth/authController.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -168,9 +170,17 @@ app.whenReady().then(async () => {
     console.error('[main] Server start failed:', err)
   }
 
+  try {
+    await startAdapters()
+    console.log('[main] Adapters started')
+  } catch (err) {
+    console.error('[main] Adapter start failed:', err)
+  }
+
   registerShellIpc()
   registerTerminalIpc()
   registerNotificationIpc()
+  registerAdapterIpc()
 
   registerWhitelistedInvoke('server:getBaseUrl', async () => {
     const url = getServerUrl()
@@ -197,12 +207,14 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  stopAdapters()
   stopServer()
   closeDatabase()
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {
+  stopAdapters()
   stopServer()
   closeDatabase()
 })

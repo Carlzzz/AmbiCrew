@@ -133,16 +133,6 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     return '';
   },
   isEnabled() {
-    // When --channels is active the user is likely on Telegram/Discord, not
-    // watching the TUI. The multiple-choice dialog would hang with nobody at
-    // the keyboard. Channel permission relay already skips
-    // requiresUserInteraction() tools (interactiveHandler.ts) so there's
-    // no alternate approval path.
-    if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
-      if (getAllowedChannels().length > 0) {
-        return false;
-      }
-    }
     return true;
   },
   isConcurrencySafe() {

@@ -14,8 +14,10 @@ import { enqueue } from '../common/chat-queue.js'
 import { getConfiguredWorkDir, loadConfig } from '../common/config.js'
 import { formatImHelp, formatImStatus, formatPermissionRequest, splitMessage } from '../common/format.js'
 import {
+  formatAskUserQuestion,
   formatPermissionDecisionStatus,
   formatPermissionInstructions,
+  parseAskUserQuestionAnswer,
   parsePermissionCommand,
   type PermissionDecision,
 } from '../common/permission.js'
@@ -54,6 +56,7 @@ if (!config.dingtalk.clientId || !config.dingtalk.clientSecret) {
   process.exit(1)
 }
 const defaultWorkDir = getConfiguredWorkDir(config, config.dingtalk)
+console.log(`[DingTalk] Server URL: ${config.serverUrl}, defaultWorkDir: ${defaultWorkDir}`)
 
 const bridge = new WsBridge(config.serverUrl, 'dingtalk')
 const dedup = new MessageDedup()
@@ -71,6 +74,7 @@ const streamingCards = new Map<string, Promise<DingTalkAiCardInstance | null>>()
 const streamingCardText = new Map<string, string>()
 const pendingPermissions = new Map<string, Set<string>>()
 const pendingPermissionChats = new Map<string, string>()
+const pendingAskUserInputs = new Map<string, unknown>()
 
 let accessTokenCache: { token: string; expiresAt: number } | null = null
 
@@ -183,7 +187,12 @@ async function flushToAiCard(chatId: string, newText: string, isComplete: boolea
   const cardPromise = getOrCreateAiCard(chatId)
   const card = cardPromise ? await cardPromise : null
   if (!card) {
-    if (isComplete) await sendText(chatId, fullText)
+    if (isComplete) {
+      await sendText(chatId, fullText)
+      streamingCardText.delete(chatId)
+      aiCardBuffers.get(chatId)?.reset()
+      aiCardBuffers.delete(chatId)
+    }
     return
   }
 
@@ -200,7 +209,12 @@ async function flushToAiCard(chatId: string, newText: string, isComplete: boolea
   } catch (err) {
     console.warn('[DingTalk][AICard] stream failed, falling back to markdown:', err instanceof Error ? err.message : err)
     streamingCards.delete(chatId)
-    if (isComplete) await sendText(chatId, fullText)
+    if (isComplete) {
+      await sendText(chatId, fullText)
+      streamingCardText.delete(chatId)
+      aiCardBuffers.get(chatId)?.reset()
+      aiCardBuffers.delete(chatId)
+    }
   }
 }
 
@@ -216,7 +230,10 @@ function clearTransientChatState(chatId: string): void {
 function clearPendingPermissions(chatId: string): void {
   const pending = pendingPermissions.get(chatId)
   if (pending) {
-    for (const requestId of pending) pendingPermissionChats.delete(requestId)
+    for (const requestId of pending) {
+      pendingPermissionChats.delete(requestId)
+      pendingAskUserInputs.delete(requestId)
+    }
   }
   pendingPermissions.delete(chatId)
 }
@@ -315,6 +332,7 @@ async function createSessionForChat(chatId: string, workDir: string): Promise<bo
     }
     return true
   } catch (err) {
+    console.error(`[DingTalk] createSessionForChat failed: workDir=${JSON.stringify(workDir)}, error=`, err instanceof Error ? err.message : err)
     await sendText(chatId, `❌ 无法创建会话: ${err instanceof Error ? err.message : String(err)}`)
     return false
   }
@@ -432,6 +450,20 @@ async function sendPermissionRequest(chatId: string, msg: ServerMessage): Promis
   pendingPermissions.set(chatId, set)
   pendingPermissionChats.set(msg.requestId, chatId)
 
+  // Track AskUserQuestion input for answer parsing
+  if (msg.toolName === 'AskUserQuestion') {
+    pendingAskUserInputs.set(msg.requestId, msg.input)
+  }
+
+  // Format AskUserQuestion requests so users can pick an option
+  if (msg.toolName === 'AskUserQuestion') {
+    const formatted = formatAskUserQuestion(msg.input)
+    if (formatted) {
+      await sendText(chatId, formatted)
+      return
+    }
+  }
+
   const requestText = formatPermissionRequest(msg.toolName, msg.input, msg.requestId)
   const instructions = formatPermissionInstructions(msg.requestId)
   const templateId = config.dingtalk.permissionCardTemplateId.trim()
@@ -454,7 +486,23 @@ async function sendPermissionRequest(chatId: string, msg: ServerMessage): Promis
 }
 
 function handlePermissionCommand(chatId: string, text: string): boolean {
-  const decision = parsePermissionCommand(text, pendingPermissions.get(chatId))
+  // First, check if there's a pending AskUserQuestion and the text looks like
+  // an answer selection (single letter like "A" or "B")
+  const pending = pendingPermissions.get(chatId)
+  if (pending) {
+    for (const requestId of pending) {
+      const input = pendingAskUserInputs.get(requestId)
+      if (input) {
+        const updatedInput = parseAskUserQuestionAnswer(text, input)
+        if (updatedInput) {
+          applyAskUserAnswer(chatId, requestId, updatedInput)
+          return true
+        }
+      }
+    }
+  }
+
+  const decision = parsePermissionCommand(text, pending)
   if (!decision) return false
 
   const sent = applyPermissionDecision(chatId, decision)
@@ -464,15 +512,41 @@ function handlePermissionCommand(chatId: string, text: string): boolean {
   return true
 }
 
+function applyAskUserAnswer(
+  chatId: string,
+  requestId: string,
+  updatedInput: Record<string, unknown>,
+): void {
+  const pending = pendingPermissions.get(chatId)
+  if (!pending?.has(requestId)) return
+
+  const sent = bridge.sendPermissionResponse(chatId, requestId, true, undefined, updatedInput)
+  if (!sent) {
+    void sendText(chatId, '回答发送失败，请检查会话状态。')
+    return
+  }
+
+  pending.delete(requestId)
+  pendingPermissionChats.delete(requestId)
+  pendingAskUserInputs.delete(requestId)
+  const runtime = getRuntimeState(chatId)
+  runtime.pendingPermissionCount = Math.max(0, runtime.pendingPermissionCount - 1)
+
+  const answerSummary = Object.entries(updatedInput.answers as Record<string, string> ?? {})
+    .map(([q, a]) => `${a}`)
+    .join(', ')
+  void sendText(chatId, `✅ 已选择：${answerSummary}`)
+}
+
 function applyPermissionDecision(chatId: string, decision: PermissionDecision): boolean {
-  const { requestId, allowed, rule } = decision
+  const { requestId, allowed, rule, updatedInput } = decision
   const pending = pendingPermissions.get(chatId)
   if (!pending?.has(requestId)) {
     void sendText(chatId, `未找到待确认的权限请求：${requestId}`)
     return false
   }
 
-  const sent = bridge.sendPermissionResponse(chatId, requestId, allowed, rule)
+  const sent = bridge.sendPermissionResponse(chatId, requestId, allowed, rule, updatedInput)
   if (!sent) {
     void sendText(chatId, '权限响应发送失败，请检查会话状态。')
     return false
@@ -480,6 +554,7 @@ function applyPermissionDecision(chatId: string, decision: PermissionDecision): 
 
   pending.delete(requestId)
   pendingPermissionChats.delete(requestId)
+  pendingAskUserInputs.delete(requestId)
   const runtime = getRuntimeState(chatId)
   runtime.pendingPermissionCount = Math.max(0, runtime.pendingPermissionCount - 1)
   return sent

@@ -103,10 +103,21 @@ function resolveDefaultRuntimeSelection(
   )
 
   const isCurrentModelValid = currentModelId && availableModelIds.includes(currentModelId)
+  const inferredProvider = inferredProviderId
+    ? providers.find((provider) => provider.id === inferredProviderId) ?? null
+    : null
+  const defaultProviderModel = inferredProvider?.models.main.trim()
+  const isDefaultProviderModelValid = defaultProviderModel && (
+    availableModelIds.length === 0 || availableModelIds.includes(defaultProviderModel)
+  )
 
   return {
     providerId: inferredProviderId,
-    modelId: isCurrentModelValid ? currentModelId : '',
+    modelId: isCurrentModelValid
+      ? currentModelId
+      : inferredProvider?.presetId === 'crewcentral' && isDefaultProviderModelValid
+        ? defaultProviderModel
+        : '',
   }
 }
 

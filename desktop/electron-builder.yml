@@ -15,6 +15,12 @@ extraResources:
     to: .
   - from: resources/claude-sidecar
     to: .
+  - from: resources/adapter-sidecar.exe
+    to: .
+  - from: resources/adapter-sidecar
+    to: .
+  - from: resources/ripgrep
+    to: ripgrep
   - from: resources/MinGit
     to: MinGit
   - from: resources/python

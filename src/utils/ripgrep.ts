@@ -103,6 +103,26 @@ function systemRipgrepCandidates(): string[] {
   return candidates
 }
 
+function desktopBundledRipgrepConfig(): RipgrepConfig | null {
+  const appRoot = process.env.CLAUDE_APP_ROOT
+  if (!appRoot) return null
+
+  const platform = process.platform === 'win32' ? 'win32' : process.platform
+  const ext = process.platform === 'win32' ? '.exe' : ''
+  const command = path.resolve(
+    appRoot,
+    'ripgrep',
+    `${platform}-${process.arch}`,
+    `rg${ext}`,
+  )
+
+  if (isUsableBuiltinRipgrepPath(command)) {
+    return { mode: 'builtin', command, args: [] }
+  }
+
+  return null
+}
+
 function builtinRipgrepConfig(): RipgrepConfig {
   const rgRoot = path.resolve(__dirname, 'vendor', 'ripgrep')
   const command =
@@ -127,6 +147,14 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
         args: [],
       }
     )
+  }
+
+  // In desktop bundled mode (Electron app), ripgrep is shipped alongside the
+  // sidecar binary in the resources/ripgrep directory. Check BEFORE embedded
+  // mode because the sidecar binary doesn't handle argv0='rg'.
+  const desktopConfig = desktopBundledRipgrepConfig()
+  if (desktopConfig) {
+    return desktopConfig
   }
 
   // In bundled (native) mode, ripgrep is statically compiled into bun-internal

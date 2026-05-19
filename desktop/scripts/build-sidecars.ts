@@ -26,6 +26,24 @@ if (scanExit !== 0) {
 
 await mkdir(binariesDir, { recursive: true })
 
+// Download ripgrep for the target platform before building
+console.log('[build-sidecars] Downloading ripgrep...')
+const platformMap: Record<string, string> = {
+  'bun-darwin-arm64': 'darwin',
+  'bun-darwin-x64': 'darwin',
+  'bun-windows-x64': 'win32',
+  'bun-windows-arm64': 'win32',
+  'bun-linux-x64-baseline': 'linux',
+  'bun-linux-arm64': 'linux',
+  'bun-linux-x64-musl': 'linux',
+  'bun-linux-arm64-musl': 'linux',
+}
+const rgPlatform = platformMap[bunTarget] || process.platform
+Bun.spawnSync(
+  ['bun', 'run', path.join(desktopRoot, 'scripts/download-ripgrep.ts'), rgPlatform],
+  { cwd: repoRoot, stdout: 'inherit', stderr: 'inherit' },
+)
+
 // 单一合并 sidecar：server / cli 共享一份 bun runtime + 共享依赖代码。
 // 调用方（Tauri lib.rs / conversationService）通过第一个 positional 参数
 // 选择 'server' 或 'cli' 模式，详见 desktop/sidecars/claude-sidecar.ts。

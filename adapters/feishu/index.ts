@@ -22,8 +22,10 @@ import {
   splitMessage,
 } from '../common/format.js'
 import {
+  formatAskUserQuestion,
   formatPermissionDecisionStatus,
   formatPermissionInstructions,
+  parseAskUserQuestionAnswer,
   parsePermissionCommand,
   type PermissionDecision,
 } from '../common/permission.js'
@@ -71,6 +73,7 @@ const streamingCards = new Map<string, StreamingCard>()
 const pendingProjectSelection = new Map<string, boolean>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const pendingPermissions = new Map<string, Set<string>>()
+const pendingAskUserInputs = new Map<string, unknown>()
 
 // Per-chat outbound watchers for Agent-produced markdown image references.
 // `imageWatchers` extracts `![alt](src)` from streaming text;
@@ -213,6 +216,10 @@ function clearTransientChatState(chatId: string): void {
   runtime.state = 'idle'
   runtime.verb = undefined
   runtime.pendingPermissionCount = 0
+  const pending = pendingPermissions.get(chatId)
+  if (pending) {
+    for (const rid of pending) pendingAskUserInputs.delete(rid)
+  }
   pendingPermissions.delete(chatId)
 }
 
@@ -737,6 +744,10 @@ async function startNewSession(chatId: string, query?: string): Promise<void> {
   imageWatchers.delete(chatId)
   uploadedImageKeys.delete(chatId)
   pendingProjectSelection.delete(chatId)
+  const pending = pendingPermissions.get(chatId)
+  if (pending) {
+    for (const rid of pending) pendingAskUserInputs.delete(rid)
+  }
   pendingPermissions.delete(chatId)
   runtimeStates.delete(chatId)
 
@@ -868,6 +879,14 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       const pending = pendingPermissions.get(chatId) ?? new Set<string>()
       pending.add(msg.requestId)
       pendingPermissions.set(chatId, pending)
+      if (msg.toolName === 'AskUserQuestion') {
+        pendingAskUserInputs.set(msg.requestId, msg.input)
+        const formatted = formatAskUserQuestion(msg.input)
+        if (formatted) {
+          await sendText(chatId, formatted)
+          break
+        }
+      }
       const stored = sessionStore.get(chatId)
       const card = buildPermissionCard(
         msg.toolName,
@@ -1017,6 +1036,36 @@ async function handleMessage(data: any): Promise<void> {
   enqueue(chatId, async () => {
     // ----- Commands (only when there are no attachments — `command + image`
     //       isn't a meaningful combo, so attachments always take precedence) -----
+
+    // Check for AskUserQuestion answer first
+    let handledAskUser = false
+    if (!hasAttachments) {
+      const pending = pendingPermissions.get(chatId)
+      if (pending) {
+        for (const rid of pending) {
+          const input = pendingAskUserInputs.get(rid)
+          if (input) {
+            const updatedInput = parseAskUserQuestionAnswer(msgText, input)
+            if (updatedInput) {
+              const sent = bridge.sendPermissionResponse(chatId, rid, true, undefined, updatedInput)
+              if (sent) {
+                pending.delete(rid)
+                pendingAskUserInputs.delete(rid)
+                const rt = getRuntimeState(chatId)
+                rt.pendingPermissionCount = Math.max(0, rt.pendingPermissionCount - 1)
+                const answerSummary = Object.entries(updatedInput.answers as Record<string, string> ?? {})
+                  .map(([q, a]) => `${a}`)
+                  .join(', ')
+                await sendText(chatId, `已选择：${answerSummary}`)
+              }
+              handledAskUser = true
+              break
+            }
+          }
+        }
+      }
+    }
+    if (handledAskUser) return
 
     const permissionDecision = !hasAttachments ? parsePermissionCommand(msgText, pendingPermissions.get(chatId)) : null
     if (permissionDecision) {
@@ -1168,20 +1217,21 @@ async function handleMessage(data: any): Promise<void> {
 }
 
 function applyPermissionDecision(chatId: string, decision: PermissionDecision): boolean {
-  const { requestId, allowed, rule } = decision
+  const { requestId, allowed, rule, updatedInput } = decision
   const pending = pendingPermissions.get(chatId)
   if (!pending?.has(requestId)) {
     void sendText(chatId, `未找到待确认的权限请求：${requestId}`)
     return false
   }
 
-  const sent = bridge.sendPermissionResponse(chatId, requestId, allowed, rule)
+  const sent = bridge.sendPermissionResponse(chatId, requestId, allowed, rule, updatedInput)
   if (!sent) {
     void sendText(chatId, '权限响应发送失败，请检查会话状态。')
     return false
   }
 
   pending.delete(requestId)
+  pendingAskUserInputs.delete(requestId)
   const runtime = getRuntimeState(chatId)
   runtime.pendingPermissionCount = Math.max(0, runtime.pendingPermissionCount - 1)
   return true
@@ -1225,6 +1275,7 @@ async function handleCardAction(data: any): Promise<any> {
     })
     if (!sent) return { toast: { type: 'warning', content: '权限响应发送失败' } }
 
+    // Card buttons only apply to non-AskUserQuestion permissions
     const statusText = allowed
       ? rule === 'always'
         ? '♾️ 已永久允许（本次会话内不再询问相同操作）'

@@ -19,6 +19,7 @@ const WHITELIST_INVOKE_CHANNELS = new Set([
   'terminal:kill',
   'notification:send',
   'notification:flashFrame',
+  'adapters:restart',
 ])
 
 export function registerWhitelistedInvoke(channel: string, handler: InvokeHandler): void {

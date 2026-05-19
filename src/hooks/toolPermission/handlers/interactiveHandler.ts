@@ -304,19 +304,12 @@ function handleInteractivePermission(
   // handler (useManageMCPConnections.ts) BEFORE enqueue, so it never reaches
   // Claude as a conversation turn.
   //
-  // Unlike the bridge block, this still guards on `requiresUserInteraction` —
-  // channel replies are pure yes/no with no `updatedInput` path. In practice
-  // the guard is dead code today: all three `requiresUserInteraction` tools
-  // (ExitPlanMode, AskUserQuestion, ReviewArtifact) return `isEnabled()===false`
-  // when channels are configured, so they never reach this handler.
-  //
   // Fire-and-forget send: if callTool fails (channel down, tool missing),
   // the subscription never fires and another racer wins. Graceful degradation
   // — the local dialog is always there as the floor.
   if (
     (feature('KAIROS') || feature('KAIROS_CHANNELS')) &&
-    channelCallbacks &&
-    !ctx.tool.requiresUserInteraction?.()
+    channelCallbacks
   ) {
     const channelRequestId = shortRequestId(ctx.toolUseID)
     const allowedChannels = getAllowedChannels()

@@ -37,6 +37,10 @@ let originalAnthropicModel: string | undefined
 let originalAnthropicDefaultHaikuModel: string | undefined
 let originalAnthropicDefaultSonnetModel: string | undefined
 let originalAnthropicDefaultOpusModel: string | undefined
+let originalDirectModels: string | undefined
+let originalProxyBaseUrl: string | undefined
+let originalDirectApiKey: string | undefined
+let originalAnthropicAuthToken: string | undefined
 
 async function setup() {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-test-'))
@@ -52,6 +56,10 @@ async function setup() {
   originalAnthropicDefaultHaikuModel = process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
   originalAnthropicDefaultSonnetModel = process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   originalAnthropicDefaultOpusModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  originalDirectModels = process.env.LLM_DIRECT_MODELS
+  originalProxyBaseUrl = process.env.LLM_PROXY_BASE_URL
+  originalDirectApiKey = process.env.LLM_DIRECT_API_KEY
+  originalAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN
   process.env.CLAUDE_CONFIG_DIR = tmpDir
   process.env.HOME = tmpDir
   process.env.USERPROFILE = tmpDir
@@ -63,6 +71,10 @@ async function setup() {
   delete process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
   delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  delete process.env.LLM_DIRECT_MODELS
+  delete process.env.LLM_PROXY_BASE_URL
+  delete process.env.LLM_DIRECT_API_KEY
+  delete process.env.ANTHROPIC_AUTH_TOKEN
   clearKeychainCache()
   primeKeychainCacheFromPrefetch(null)
   clearOpenAIOAuthTokenCache()
@@ -143,6 +155,30 @@ async function teardown() {
     process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = originalAnthropicDefaultOpusModel
   } else {
     delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  }
+
+  if (originalDirectModels !== undefined) {
+    process.env.LLM_DIRECT_MODELS = originalDirectModels
+  } else {
+    delete process.env.LLM_DIRECT_MODELS
+  }
+
+  if (originalProxyBaseUrl !== undefined) {
+    process.env.LLM_PROXY_BASE_URL = originalProxyBaseUrl
+  } else {
+    delete process.env.LLM_PROXY_BASE_URL
+  }
+
+  if (originalDirectApiKey !== undefined) {
+    process.env.LLM_DIRECT_API_KEY = originalDirectApiKey
+  } else {
+    delete process.env.LLM_DIRECT_API_KEY
+  }
+
+  if (originalAnthropicAuthToken !== undefined) {
+    process.env.ANTHROPIC_AUTH_TOKEN = originalAnthropicAuthToken
+  } else {
+    delete process.env.ANTHROPIC_AUTH_TOKEN
   }
 
   await fs.rm(tmpDir, { recursive: true, force: true })
@@ -389,29 +425,37 @@ describe('Models API', () => {
   beforeEach(setup)
   afterEach(teardown)
 
-  it('GET /api/models should return available models', async () => {
+  it('GET /api/models should return CrewCentral proxy models by default', async () => {
+    process.env.LLM_DIRECT_MODELS = 'MiniMax-M2.7-highspeed:MiniMax-M2.7-highspeed,Other:other-model'
+
     const { req, url, segments } = makeRequest('GET', '/api/models')
     const res = await handleModelsApi(req, url, segments)
 
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.models).toBeArray()
-    expect(body.models.length).toBe(3)
-    expect(body.models[0].id).toContain('claude')
+    expect(body.provider?.id).toBe('crewcentral-default')
+    expect(body.models.map((model: { id: string }) => model.id)).toEqual([
+      'MiniMax-M2.7-highspeed',
+      'other-model',
+    ])
   })
 
-  it('GET /api/models should merge env-configured provider models with saved OpenAI OAuth models', async () => {
-    process.env.ANTHROPIC_API_KEY = 'deepseek-key'
-    process.env.ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
-    process.env.ANTHROPIC_MODEL = 'deepseek-v4-pro'
-    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-v4-flash'
-    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro'
-    process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-v4-pro'
-    saveTestOpenAIOAuthTokens({
-      accessToken: 'access-token',
-      refreshToken: 'refresh-token',
-      expiresAt: Date.now() + 60_000,
+  it('GET /api/models should return active custom provider models when a non-CrewCentral provider is active', async () => {
+    const providerSvc = new ProviderService()
+    const provider = await providerSvc.addProvider({
+      presetId: 'custom',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/anthropic',
+      apiKey: 'deepseek-key',
+      apiFormat: 'anthropic',
+      models: {
+        main: 'deepseek-v4-pro',
+        haiku: 'deepseek-v4-flash',
+        sonnet: 'deepseek-v4-pro',
+        opus: 'deepseek-v4-pro',
+      },
     })
+    await providerSvc.activateProvider(provider.id)
 
     const { req, url, segments } = makeRequest('GET', '/api/models')
     const res = await handleModelsApi(req, url, segments)
@@ -419,26 +463,38 @@ describe('Models API', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     const ids = body.models.map((model: { id: string }) => model.id)
-
     expect(ids).toContain('deepseek-v4-pro')
     expect(ids).toContain('deepseek-v4-flash')
-    expect(ids).toContain('gpt-5.3-codex')
-    expect(ids).toContain('gpt-5.4')
-    expect(ids).toContain('gpt-5.4-mini')
     expect(ids.filter((id: string) => id === 'deepseek-v4-pro')).toHaveLength(1)
   })
 
-  it('GET /api/models/current should return default model when not set', async () => {
+  it('GET /api/models/current should return CrewCentral default model when not set', async () => {
+    process.env.LLM_DIRECT_MODELS = 'MiniMax-M2.7-highspeed:MiniMax-M2.7-highspeed,Other:other-model'
+
     const { req, url, segments } = makeRequest('GET', '/api/models/current')
     const res = await handleModelsApi(req, url, segments)
 
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.model.id).toBe('claude-opus-4-7')
+    expect(body.model.id).toBe('MiniMax-M2.7-highspeed')
   })
 
-  it('GET /api/models/current should respect env-configured default model when no provider is active', async () => {
-    process.env.ANTHROPIC_MODEL = 'deepseek-v4-pro'
+  it('GET /api/models/current should return active custom provider default model when a non-CrewCentral provider is active', async () => {
+    const providerSvc = new ProviderService()
+    const provider = await providerSvc.addProvider({
+      presetId: 'custom',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/anthropic',
+      apiKey: 'deepseek-key',
+      apiFormat: 'anthropic',
+      models: {
+        main: 'deepseek-v4-pro',
+        haiku: 'deepseek-v4-flash',
+        sonnet: 'deepseek-v4-pro',
+        opus: 'deepseek-v4-pro',
+      },
+    })
+    await providerSvc.activateProvider(provider.id)
 
     const { req, url, segments } = makeRequest('GET', '/api/models/current')
     const res = await handleModelsApi(req, url, segments)
@@ -448,22 +504,23 @@ describe('Models API', () => {
     expect(body.model.id).toBe('deepseek-v4-pro')
   })
 
-  it('PUT /api/models/current should switch model', async () => {
+  it('PUT /api/models/current should switch CrewCentral model when it is in the proxy model list', async () => {
+    process.env.LLM_DIRECT_MODELS = 'MiniMax-M2.7-highspeed:MiniMax-M2.7-highspeed,MiniMax-M2.7:MiniMax-M2.7'
     const { req, url, segments } = makeRequest('PUT', '/api/models/current', {
-      modelId: 'claude-opus-4-7',
+      modelId: 'MiniMax-M2.7',
     })
     const res = await handleModelsApi(req, url, segments)
 
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
-    expect(body.model).toBe('claude-opus-4-7')
+    expect(body.model).toBe('MiniMax-M2.7')
 
     // Verify persisted
     const { req: r2, url: u2, segments: s2 } = makeRequest('GET', '/api/models/current')
     const res2 = await handleModelsApi(r2, u2, s2)
     const body2 = await res2.json()
-    expect(body2.model.id).toBe('claude-opus-4-7')
+    expect(body2.model.id).toBe('MiniMax-M2.7')
   })
 
   it('PUT /api/models/current should reject missing modelId', async () => {

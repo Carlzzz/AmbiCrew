@@ -1413,7 +1413,14 @@ async function tryFetchProxyModelsForRuntime(): Promise<ProxyModelEntry[] | null
   const proxyBaseUrl =
     process.env.LLM_PROXY_BASE_URL?.trim() ||
     process.env.ANTHROPIC_BASE_URL?.trim()
-  if (!proxyBaseUrl) return null
+  if (!proxyBaseUrl) {
+    const raw = process.env.LLM_DIRECT_MODELS?.trim()
+    if (!raw) return null
+    const { parseDirectModels } = await import('../../services/central/proxy-client.js')
+    const directModels = parseDirectModels(raw)
+    if (directModels.length === 0) return null
+    return directModels.map((m) => ({ id: m.modelId, alias: m.modelAlias }))
+  }
 
   try {
     const { getCentralAccessToken } = await import('../../utils/auth.js')
@@ -1440,14 +1447,16 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
   // Check if a custom provider is active
   const { providers, activeId } = await providerService.listProviders()
   let resolvedActiveId = activeId
+  let resolvedProviders = providers
   if (activeId && !providers.some((provider) => provider.id === activeId)) {
-    console.warn(`[WS] Active provider id is stale, falling back to official provider: ${activeId}`)
-    resolvedActiveId = null
-    await providerService.activateOfficial()
+    console.warn(`[WS] Active provider id is stale, falling back to default provider: ${activeId}`)
+    const refreshed = await providerService.listProviders()
+    resolvedProviders = refreshed.providers
+    resolvedActiveId = refreshed.activeId
   }
 
   const activeProvider = resolvedActiveId
-    ? providers.find((p) => p.id === resolvedActiveId) ?? null
+    ? resolvedProviders.find((p) => p.id === resolvedActiveId) ?? null
     : null
   const isCrewCentral = activeProvider?.presetId === 'crewcentral'
 
@@ -1483,7 +1492,7 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     const baseModel =
       typeof userSettings.model === 'string' && userSettings.model.trim()
         ? userSettings.model
-        : undefined
+        : ''
     model = baseModel ? (modelContext ? `${baseModel}:${modelContext}` : baseModel) : undefined
   } else if (isCrewCentral) {
     // CrewCentral: clear stale model from a previous provider, then fallback

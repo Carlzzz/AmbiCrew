@@ -28,6 +28,9 @@ interface ElectronAPI {
     send: (opts: { title: string; body?: string }) => Promise<boolean>
     flashFrame: () => Promise<void>
   }
+  adapters: {
+    restart: () => Promise<{ ok: boolean; error?: string }>
+  }
 }
 
 interface Window {

@@ -7,6 +7,8 @@
   </linearGradient>
 </defs>
 
+<rect width="1024" height="1024" rx="224" fill="#ffffff"/>
+
 <g>
 
   <path d="M310 350 L510 512 L310 674" stroke="#20242E" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
