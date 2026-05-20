@@ -16,9 +16,6 @@ release/
 .vite/
 
 # Environment files (contains secrets)
-.env
-.env.*
-!.env.example
 
 # Claude Code worktrees
 .claude/worktrees/
