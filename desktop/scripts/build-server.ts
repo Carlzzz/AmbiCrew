@@ -169,23 +169,24 @@ try {
   console.log('Sidecar binary built successfully.')
 
   // Phase 2b: Build adapter sidecar
+  // Adapter source files use static top-level imports of these packages.
+  // Unlike EXTERNAL_PACKAGES (which are only loaded via dynamic import()),
+  // Bun --compile must resolve the named exports at build time, so stubs
+  // are not sufficient — the real packages must be installed.
   const ADAPTER_EXTERNAL_PACKAGES = [
     ...EXTERNAL_PACKAGES,
-    // Adapter-specific dependencies — pulled from adapters/package.json
     'dingtalk-stream',
     '@larksuiteoapi/node-sdk',
     'grammy',
   ]
 
-  // Ensure adapter dependencies have stubs if missing in BOTH repoRoot/node_modules and adapters/node_modules
   const adaptersDir = path.join(repoRoot, 'adapters')
-  for (const pkg of ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']) {
-    const adaptersPkgDir = path.join(adaptersDir, 'node_modules', ...pkg.split('/'))
-    if (!existsSync(adaptersPkgDir) || !existsSync(path.join(adaptersPkgDir, 'package.json'))) {
-      console.log(`  Creating stub: ${pkg} in adapters/node_modules`)
-      stubDirs.push(createStub(pkg, adaptersDir))
-    }
+  console.log('  Installing adapter dependencies...')
+  execSync('bun install', { cwd: adaptersDir, stdio: 'inherit' })
 
+  // Ensure stubs in root node_modules so --external can locate the packages
+  // (Bun resolves from repoRoot as cwd and needs them in the root tree)
+  for (const pkg of ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']) {
     const rootPkgDir = path.join(repoRoot, 'node_modules', ...pkg.split('/'))
     if (!existsSync(rootPkgDir) || !existsSync(path.join(rootPkgDir, 'package.json'))) {
       console.log(`  Creating stub: ${pkg} in root node_modules`)
