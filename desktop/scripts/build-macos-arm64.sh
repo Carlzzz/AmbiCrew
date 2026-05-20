@@ -55,6 +55,9 @@ if [[ "${SKIP_INSTALL:-0}" != "1" ]]; then
   echo "[build-macos-arm64] Installing root dependencies..."
   (cd "${REPO_ROOT}" && bun install)
 
+  echo "[build-macos-arm64] Installing adapters dependencies..."
+  (cd "${REPO_ROOT}/adapters" && bun install)
+
   echo "[build-macos-arm64] Installing desktop dependencies..."
   (cd "${DESKTOP_DIR}" && bun install)
 fi

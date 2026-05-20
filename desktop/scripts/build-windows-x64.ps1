@@ -103,6 +103,18 @@ if ($env:SKIP_INSTALL -ne '1') {
     Pop-Location
   }
 
+  Write-Step 'Installing adapters dependencies...'
+  $adaptersDir = Join-Path $repoRoot 'adapters'
+  Push-Location $adaptersDir
+  try {
+    & bun install
+    if ($LASTEXITCODE -ne 0) {
+      throw "[build-windows-x64] bun install failed in adapters (exit $LASTEXITCODE)"
+    }
+  } finally {
+    Pop-Location
+  }
+
   Write-Step 'Installing desktop dependencies...'
   Push-Location $desktopDir
   try {
