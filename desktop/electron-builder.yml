@@ -42,6 +42,18 @@ mac:
       arch: [arm64, x64]
   icon: public/app-icon.png
   hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Code signing requires Apple Developer credentials. Set via environment:
+  #   APPLE_ID=your@email.com
+  #   APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
+  #   APPLE_TEAM_ID=XXXXXXXXXX
+  # Or use a signing identity from your keychain:
+  #   CSC_LINK=/path/to/cert.p12
+  #   CSC_KEY_PASSWORD=password
+  # For notarization (required for distribution outside App Store):
+  #   Add APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID,
+  #   then electron-builder will notarize automatically with notarize: true
 linux:
   target:
     - target: AppImage

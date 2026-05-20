@@ -6,8 +6,11 @@
  *   claude-sidecar cli      — runs the CLI
  *
  * Usage:
- *   bun run desktop/scripts/build-server.ts           # current platform
- *   bun run desktop/scripts/build-server.ts win32     # cross-compile (if supported)
+ *   bun run desktop/scripts/build-server.ts                    # current platform + arch
+ *   bun run desktop/scripts/build-server.ts win32              # Windows x64
+ *   bun run desktop/scripts/build-server.ts darwin             # macOS (host arch)
+ *   bun run desktop/scripts/build-server.ts darwin arm64       # macOS Apple Silicon
+ *   bun run desktop/scripts/build-server.ts darwin x64         # macOS Intel
  *
  * Output:
  *   desktop/resources/claude-sidecar.exe   (Windows)
@@ -25,11 +28,12 @@ const repoRoot = path.resolve(desktopDir, '..')
 const resourcesDir = path.join(desktopDir, 'resources')
 
 const targetPlatform = process.argv[2] || process.platform
+const targetArch = process.argv[3] || process.arch
 
-const PLATFORM_TARGETS: Record<string, string> = {
-  win32: 'bun-windows-x64',
-  darwin: 'bun-darwin-arm64',
-  linux: 'bun-linux-x64',
+const PLATFORM_TARGETS: Record<string, Record<string, string>> = {
+  win32: { x64: 'bun-windows-x64' },
+  darwin: { arm64: 'bun-darwin-arm64', x64: 'bun-darwin-x64' },
+  linux: { x64: 'bun-linux-x64' },
 }
 
 const PLATFORM_EXTS: Record<string, string> = {
@@ -38,9 +42,14 @@ const PLATFORM_EXTS: Record<string, string> = {
   linux: '',
 }
 
-const target = PLATFORM_TARGETS[targetPlatform]
-if (!target) {
+const platformTargets = PLATFORM_TARGETS[targetPlatform]
+if (!platformTargets) {
   console.error(`Unsupported platform: ${targetPlatform}`)
+  process.exit(1)
+}
+const target = platformTargets[targetArch]
+if (!target) {
+  console.error(`Unsupported arch: ${targetArch} for platform ${targetPlatform}`)
   process.exit(1)
 }
 
@@ -123,7 +132,7 @@ function removeStub(stubDir: string) {
   }
 }
 
-console.log(`Building sidecar for ${targetPlatform} (${target})...`)
+console.log(`Building sidecar for ${targetPlatform}-${targetArch} (${target})...`)
 console.log(`  Entry:  desktop/sidecars/desktop-sidecar.ts`)
 console.log(`  Output: ${outfile}`)
 

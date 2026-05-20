@@ -16,7 +16,7 @@ export function deriveApiBase(): string {
     return process.env.AUTH_SERVER_BASE_URL.replace(/\/+$/, '')
   }
   try {
-    const loginUrl = process.env.CREWCENTRAL_AUTH_LOGIN_URL || 'http://127.0.0.1:1420/woicrew/auth/login?client_label=AmbiCode&device_label=win32'
+    const loginUrl = process.env.CREWCENTRAL_AUTH_LOGIN_URL || `http://127.0.0.1:1420/woicrew/auth/login?client_label=AmbiCode&device_label=${process.platform}`
     const url = new URL(loginUrl)
     const parts = url.pathname.split('/auth/')
     return `${url.origin}${parts[0] || ''}`
@@ -125,7 +125,7 @@ export class AuthController {
    */
   async buildLoginUrl(): Promise<string> {
     const deviceInfo = await getDeviceInfo()
-    const loginUrl = process.env.CREWCENTRAL_AUTH_LOGIN_URL || 'http://127.0.0.1:1420/woicrew/auth/login?client_label=AmbiCode&device_label=win32'
+    const loginUrl = process.env.CREWCENTRAL_AUTH_LOGIN_URL || `http://127.0.0.1:1420/woicrew/auth/login?client_label=AmbiCode&device_label=${process.platform}`
     const u = new URL(loginUrl)
 
     // Ensure redirect_scheme is set so CrewCentral redirects to the custom protocol
