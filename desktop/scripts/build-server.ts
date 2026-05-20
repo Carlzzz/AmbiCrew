@@ -182,7 +182,11 @@ try {
 
   const adaptersDir = path.join(repoRoot, 'adapters')
   console.log('  Installing adapter dependencies...')
-  execSync('bun install', { cwd: adaptersDir, stdio: 'inherit' })
+  // Use --force to ensure a full install even when lockfile reports "no changes".
+  // Without it, Bun may skip extracting distribution files (out/, dist/) from its
+  // cache, leaving packages with only package.json/README — which causes the
+  // bundler to fail resolving named exports from adapter source files.
+  execSync('bun install --force', { cwd: adaptersDir, stdio: 'inherit' })
 
   // Link real adapter packages from adapters/node_modules into root node_modules
   // so bun build --compile can resolve named exports at build time.
