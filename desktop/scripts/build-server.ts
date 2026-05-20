@@ -107,8 +107,8 @@ const EXTERNAL_PACKAGES = [
 
 const STUB_INDEX = 'throw new Error("This package is a build-time stub; it must be installed at runtime for the feature to work.")'
 
-function createStub(pkgName: string): string {
-  const dir = path.join(repoRoot, 'node_modules', ...pkgName.split('/'))
+function createStub(pkgName: string, baseDir = repoRoot): string {
+  const dir = path.join(baseDir, 'node_modules', ...pkgName.split('/'))
   mkdirSync(dir, { recursive: true })
   const pkgJson = path.join(dir, 'package.json')
   if (!existsSync(pkgJson)) {
@@ -122,7 +122,9 @@ function removeStub(stubDir: string) {
   try { rmSync(stubDir, { recursive: true, force: true }) } catch {}
   // Clean up empty scope directories (e.g. node_modules/@aws-sdk)
   const parent = path.dirname(stubDir)
-  if (parent !== path.join(repoRoot, 'node_modules') && parent.startsWith(path.join(repoRoot, 'node_modules'))) {
+  const isRootNodeModules = parent.startsWith(path.join(repoRoot, 'node_modules'))
+  const isAdaptersNodeModules = parent.startsWith(path.join(repoRoot, 'adapters', 'node_modules'))
+  if (isRootNodeModules || isAdaptersNodeModules) {
     try {
       const remaining = readdirSync(parent)
       if (remaining.length === 0) rmSync(parent, { recursive: true, force: true })
@@ -175,12 +177,13 @@ try {
     'grammy',
   ]
 
-  // Ensure adapter dependencies have stubs if missing
+  // Ensure adapter dependencies have stubs if missing in adapters/node_modules
+  const adaptersDir = path.join(repoRoot, 'adapters')
   for (const pkg of ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']) {
-    const pkgDir = path.join(repoRoot, 'node_modules', ...pkg.split('/'))
+    const pkgDir = path.join(adaptersDir, 'node_modules', ...pkg.split('/'))
     if (!existsSync(pkgDir)) {
-      console.log(`  Creating stub: ${pkg}`)
-      stubDirs.push(createStub(pkg))
+      console.log(`  Creating stub: ${pkg} in adapters/node_modules`)
+      stubDirs.push(createStub(pkg, adaptersDir))
     }
   }
 
