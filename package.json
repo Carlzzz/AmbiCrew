@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "bin": {
-    "claude-haha": "./bin/claude-haha"
+    "ambi": "./bin/ambi"
   },
   "scripts": {
-    "claude-haha": "bun run ./bin/claude-haha",
-    "start": "bun run ./bin/claude-haha",
+    "ambi": "bun run ./bin/ambi",
+    "start": "bun run ./bin/ambi",
     "check:pr": "bun run scripts/pr/check-pr.ts",
     "check:impact": "bun run scripts/pr/impact-report.ts",
     "check:policy": "bun test scripts/pr/change-policy.test.ts scripts/pr/pr-triage-workflow.test.ts",

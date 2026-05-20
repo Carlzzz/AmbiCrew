@@ -1,7 +1,7 @@
 # 全局使用（任意目录启动）
 
 
-如果你希望在任意项目目录直接运行 `claude-haha`，可以通过以下方式配置。配置完成后，`claude-haha` 会自动识别你当前所在的工作目录。
+如果你希望在任意项目目录直接运行 `ambi`，可以通过以下方式配置。配置完成后，`ambi` 会自动识别你当前所在的工作目录。
 
 ## macOS / Linux
 
@@ -12,7 +12,7 @@
 export PATH="$HOME/path/to/claude-code-haha/bin:$PATH"
 
 # 方式二：alias
-alias claude-haha="$HOME/path/to/claude-code-haha/bin/claude-haha"
+alias ambi="$HOME/path/to/claude-code-haha/bin/ambi"
 ```
 
 然后重新加载配置：
@@ -35,6 +35,6 @@ export PATH="$HOME/path/to/claude-code-haha/bin:$PATH"
 
 ```bash
 cd ~/your-other-project
-claude-haha
+ambi
 # 启动后询问「当前目录是什么？」，应显示 ~/your-other-project
 ```

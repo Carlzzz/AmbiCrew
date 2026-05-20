@@ -1,4 +1,6 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import * as pty from 'node-pty'
 
 type SessionId = number
@@ -24,6 +26,21 @@ function getShellArgs(shell: string): string[] {
   return []
 }
 
+function buildSpawnEnv(): { [key: string]: string } {
+  const env = { ...process.env } as { [key: string]: string }
+
+  if (process.platform === 'win32') {
+    const userBin = join(homedir(), '.local', 'bin')
+    const currentPath = env.PATH || ''
+    const segments = currentPath.split(';').map(s => s.trim().toLowerCase())
+    if (!segments.includes(userBin.toLowerCase())) {
+      env.PATH = `${userBin};${currentPath}`
+    }
+  }
+
+  return env
+}
+
 export function registerTerminalIpc(): void {
   ipcMain.handle('terminal:spawn', (_event: IpcMainInvokeEvent, opts: { cols: number; rows: number; cwd?: string }) => {
     const shell = getDefaultShell()
@@ -35,7 +52,7 @@ export function registerTerminalIpc(): void {
       cols: opts.cols,
       rows: opts.rows,
       cwd,
-      env: process.env as { [key: string]: string },
+      env: buildSpawnEnv(),
     })
 
     sessions.set(sessionId, { ptyProcess, shell, cwd })

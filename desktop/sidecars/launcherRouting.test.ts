@@ -16,11 +16,11 @@ describe('resolveSidecarInvocation', () => {
     })
   })
 
-  it('defaults claude-haha invocations to cli mode', () => {
+  it('defaults ambi invocations to cli mode', () => {
     expect(
       resolveSidecarInvocation(
         ['plugin', 'install', 'demo'],
-        '/Users/demo/.local/bin/claude-haha',
+        '/Users/demo/.local/bin/ambi',
       ),
     ).toEqual({
       mode: 'cli',

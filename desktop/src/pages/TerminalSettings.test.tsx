@@ -90,7 +90,7 @@ describe('TerminalSettings', () => {
   it('shows a desktop-runtime empty state outside Tauri', () => {
     render(<TerminalSettings />)
 
-    expect(screen.getByText(/claude-haha/)).toBeInTheDocument()
+    expect(screen.getByText(/ambi/)).toBeInTheDocument()
     expect(screen.getByText('Desktop runtime required')).toBeInTheDocument()
     expect(terminalMocks.spawn).not.toHaveBeenCalled()
   })

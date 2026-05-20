@@ -102,9 +102,9 @@ cp .env.example .env
 #### macOS / Linux
 
 ```bash
-./bin/claude-haha                          # 交互 TUI 模式
-./bin/claude-haha -p "your prompt here"    # 无头模式
-./bin/claude-haha --help                   # 查看所有选项
+./bin/ambi                          # 交互 TUI 模式
+./bin/ambi -p "your prompt here"    # 无头模式
+./bin/ambi --help                   # 查看所有选项
 ```
 
 #### Windows
@@ -116,7 +116,7 @@ cp .env.example .env
 bun --env-file=.env ./src/entrypoints/cli.tsx
 
 # 或在 Git Bash 中运行
-./bin/claude-haha
+./bin/ambi
 ```
 
 ### 4. 全局使用（可选）

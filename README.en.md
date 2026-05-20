@@ -62,7 +62,7 @@ The Claude Code Haha desktop app brings sessions, multi-project navigation, code
 - **IM Integration** (remote chat, project switching, and permission approval via Telegram / Feishu / WeChat / DingTalk) — [Guide](docs/im/)
 - **Computer Use desktop control** — [Guide](docs/en/features/computer-use.md) | [Architecture](docs/en/features/computer-use-architecture.md)
 - **Desktop App** (Tauri 2 + React GUI client, multi-tab multi-session) — [Docs](docs/desktop/)
-- Fallback Recovery CLI mode (`CLAUDE_CODE_FORCE_RECOVERY_CLI=1 ./bin/claude-haha`)
+- Fallback Recovery CLI mode (`CLAUDE_CODE_FORCE_RECOVERY_CLI=1 ./bin/ambi`)
 
 ---
 
@@ -113,9 +113,9 @@ cp .env.example .env
 #### macOS / Linux
 
 ```bash
-./bin/claude-haha                          # Interactive TUI mode
-./bin/claude-haha -p "your prompt here"    # Headless mode
-./bin/claude-haha --help                   # Show all options
+./bin/ambi                          # Interactive TUI mode
+./bin/ambi -p "your prompt here"    # Headless mode
+./bin/ambi --help                   # Show all options
 ```
 
 #### Windows
@@ -127,7 +127,7 @@ cp .env.example .env
 bun --env-file=.env ./src/entrypoints/cli.tsx
 
 # Or run inside Git Bash
-./bin/claude-haha
+./bin/ambi
 ```
 
 ### 4. Global Usage (Optional)
@@ -267,7 +267,7 @@ If this project helps you, consider buying me a coffee — every bit of support 
 | [IM Integration](docs/im/) | Remote chat, project switching, and permission approval via Telegram / Feishu / WeChat / DingTalk |
 | [Computer Use](docs/en/features/computer-use.md) | Desktop control (screenshots, mouse, keyboard) — [Architecture](docs/en/features/computer-use-architecture.md) |
 | [Desktop App](docs/desktop/) | Tauri 2 + React GUI client — [Quick Start](docs/desktop/01-quick-start.md) \| [Architecture](docs/desktop/02-architecture.md) \| [Installation](docs/desktop/04-installation.md) |
-| [Global Usage](docs/en/guide/global-usage.md) | Run claude-haha from any directory |
+| [Global Usage](docs/en/guide/global-usage.md) | Run ambi from any directory |
 | [FAQ](docs/en/guide/faq.md) | Common error troubleshooting |
 | [Source Fixes](docs/en/reference/fixes.md) | Fixes compared with the original leaked source |
 | [Project Structure](docs/en/reference/project-structure.md) | Code directory structure |
