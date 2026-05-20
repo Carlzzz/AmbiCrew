@@ -177,13 +177,19 @@ try {
     'grammy',
   ]
 
-  // Ensure adapter dependencies have stubs if missing in adapters/node_modules
+  // Ensure adapter dependencies have stubs if missing in BOTH repoRoot/node_modules and adapters/node_modules
   const adaptersDir = path.join(repoRoot, 'adapters')
   for (const pkg of ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']) {
-    const pkgDir = path.join(adaptersDir, 'node_modules', ...pkg.split('/'))
-    if (!existsSync(pkgDir) || !existsSync(path.join(pkgDir, 'package.json'))) {
+    const adaptersPkgDir = path.join(adaptersDir, 'node_modules', ...pkg.split('/'))
+    if (!existsSync(adaptersPkgDir) || !existsSync(path.join(adaptersPkgDir, 'package.json'))) {
       console.log(`  Creating stub: ${pkg} in adapters/node_modules`)
       stubDirs.push(createStub(pkg, adaptersDir))
+    }
+
+    const rootPkgDir = path.join(repoRoot, 'node_modules', ...pkg.split('/'))
+    if (!existsSync(rootPkgDir) || !existsSync(path.join(rootPkgDir, 'package.json'))) {
+      console.log(`  Creating stub: ${pkg} in root node_modules`)
+      stubDirs.push(createStub(pkg, repoRoot))
     }
   }
 
