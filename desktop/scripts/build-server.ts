@@ -18,7 +18,7 @@
  */
 
 import { execSync } from 'node:child_process'
-import { mkdirSync, existsSync, rmSync, writeFileSync, readdirSync } from 'node:fs'
+import { mkdirSync, existsSync, rmSync, writeFileSync, readdirSync, symlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -184,13 +184,46 @@ try {
   console.log('  Installing adapter dependencies...')
   execSync('bun install', { cwd: adaptersDir, stdio: 'inherit' })
 
-  // Ensure stubs in root node_modules so --external can locate the packages
-  // (Bun resolves from repoRoot as cwd and needs them in the root tree)
-  for (const pkg of ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']) {
+  // Link real adapter packages from adapters/node_modules into root node_modules
+  // so bun build --compile can resolve named exports at build time.
+  // Simple stubs are NOT sufficient because the adapter source files use static
+  // top-level imports with named bindings (e.g. `import { Bot } from 'grammy'`)
+  // that Bun must resolve even when --external is specified.
+  const adapterPkgs = ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']
+  for (const pkg of adapterPkgs) {
     const rootPkgDir = path.join(repoRoot, 'node_modules', ...pkg.split('/'))
-    if (!existsSync(rootPkgDir) || !existsSync(path.join(rootPkgDir, 'package.json'))) {
-      console.log(`  Creating stub: ${pkg} in root node_modules`)
-      stubDirs.push(createStub(pkg, repoRoot))
+    const adapterPkgDir = path.join(adaptersDir, 'node_modules', ...pkg.split('/'))
+    if (existsSync(rootPkgDir) && existsSync(path.join(rootPkgDir, 'package.json'))) {
+      continue // already present (e.g. user installed it globally)
+    }
+    if (!existsSync(adapterPkgDir)) {
+      console.warn(`  ⚠️ ${pkg} not found in adapters/node_modules — adapter sidecar build may fail`)
+      continue
+    }
+    // Ensure parent scope directory exists (e.g. node_modules/@larksuiteoapi)
+    const parentDir = path.dirname(rootPkgDir)
+    mkdirSync(parentDir, { recursive: true })
+    // Remove any leftover stub directory
+    if (existsSync(rootPkgDir)) {
+      rmSync(rootPkgDir, { recursive: true, force: true })
+    }
+    // Use symlink (junction on Windows for cross-drive compat)
+    const symlinkType = process.platform === 'win32' ? 'junction' : 'dir'
+    try {
+      symlinkSync(adapterPkgDir, rootPkgDir, symlinkType)
+      console.log(`  Linked: ${pkg} → adapters/node_modules/${pkg}`)
+      stubDirs.push(rootPkgDir) // track for cleanup
+    } catch (linkErr) {
+      // Fallback: copy the directory if symlink fails (e.g. permissions)
+      console.warn(`  Symlink failed for ${pkg}, falling back to copy:`, linkErr instanceof Error ? linkErr.message : linkErr)
+      execSync(
+        process.platform === 'win32'
+          ? `xcopy "${adapterPkgDir}" "${rootPkgDir}" /E /I /Q /Y`
+          : `cp -R "${adapterPkgDir}" "${rootPkgDir}"`,
+        { stdio: 'pipe' },
+      )
+      console.log(`  Copied: ${pkg} from adapters/node_modules`)
+      stubDirs.push(rootPkgDir) // track for cleanup
     }
   }
 
