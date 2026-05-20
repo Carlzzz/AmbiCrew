@@ -61,6 +61,14 @@ if [[ "${SKIP_INSTALL:-0}" != "1" ]]; then
   (cd "${DESKTOP_DIR}" && bun install)
 fi
 
+for cmd in "${DESKTOP_DIR}/node_modules/.bin/tsc" "${DESKTOP_DIR}/node_modules/.bin/vite"; do
+  if [[ ! -x "${cmd}" ]]; then
+    echo "[build-macos-arm64] Missing required tool: ${cmd}" >&2
+    echo "[build-macos-arm64] Run 'cd desktop && bun install' and try again." >&2
+    exit 1
+  fi
+done
+
 # ── 清理 + 显式预热前端 / sidecar ────────────────────────────
 # 之前遇到过"改了 src/ 代码,build 的 .app 里 sidecar 还是旧的"的诡异
 # case —— 根因是 Bun.build / Tauri bundler 某一层的缓存把旧 sidecar
@@ -91,7 +99,8 @@ echo "[build-macos-arm64] Rebuilding sidecar for ${TARGET_TRIPLE}..."
 (cd "${DESKTOP_DIR}" && TAURI_ENV_TARGET_TRIPLE="${TARGET_TRIPLE}" bun run build:sidecars)
 
 TAURI_ARGS=(
-  bunx
+  bun
+  x
   tauri
   build
   --target
