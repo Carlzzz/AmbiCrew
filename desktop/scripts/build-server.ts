@@ -149,7 +149,7 @@ execSync(`bun run desktop/scripts/download-ripgrep.ts ${targetPlatform}`, {
 const stubDirs: string[] = []
 for (const pkg of EXTERNAL_PACKAGES) {
   const pkgDir = path.join(repoRoot, 'node_modules', ...pkg.split('/'))
-  if (!existsSync(pkgDir)) {
+  if (!existsSync(pkgDir) || !existsSync(path.join(pkgDir, 'package.json'))) {
     console.log(`  Creating stub: ${pkg}`)
     stubDirs.push(createStub(pkg))
   }
@@ -181,7 +181,7 @@ try {
   const adaptersDir = path.join(repoRoot, 'adapters')
   for (const pkg of ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']) {
     const pkgDir = path.join(adaptersDir, 'node_modules', ...pkg.split('/'))
-    if (!existsSync(pkgDir)) {
+    if (!existsSync(pkgDir) || !existsSync(path.join(pkgDir, 'package.json'))) {
       console.log(`  Creating stub: ${pkg} in adapters/node_modules`)
       stubDirs.push(createStub(pkg, adaptersDir))
     }
