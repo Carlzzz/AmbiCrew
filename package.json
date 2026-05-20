@@ -15,7 +15,7 @@
     "check:server": "bun run scripts/pr/run-server-tests.ts",
     "check:desktop": "cd desktop && bun run lint && bun run test -- --run && bun run build",
     "check:adapters": "cd adapters && bun test",
-    "check:native": "cd desktop && bun run build:sidecars && cd src-tauri && cargo check",
+    "check:native": "cd desktop && bun run build:server && bun run build:electron",
     "check:docs": "npm ci && npm run docs:build",
     "quality:gate": "bun run scripts/quality-gate/index.ts",
     "quality:providers": "bun run scripts/quality-gate/providers.ts",

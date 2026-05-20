@@ -7,27 +7,25 @@ DESKTOP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${DESKTOP_DIR}/.." && pwd)"
 
 TARGET_TRIPLE="aarch64-apple-darwin"
-TAURI_TARGET_DIR="${DESKTOP_DIR}/src-tauri/target"
+ELECTRON_RELEASE_DIR="${DESKTOP_DIR}/release"
 CANONICAL_OUTPUT_DIR="${DESKTOP_DIR}/build-artifacts/macos-arm64"
-APP_BUNDLE_NAME="Claude Code Haha.app"
-APP_BUNDLE_ID="com.claude-code-haha.desktop"
+APP_BUNDLE_NAME="AmbiCrew.app"
+APP_BUNDLE_ID="com.ambicrew.ambicrew"
 
 usage() {
   cat <<'EOF'
-Build Claude Code Haha desktop for macOS Apple Silicon and output a DMG.
+Build AmbiCrew desktop for macOS Apple Silicon (arm64) and output a DMG.
 
 Usage:
-  ./desktop/scripts/build-macos-arm64.sh [extra tauri build args...]
+  ./desktop/scripts/build-macos-arm64.sh [extra electron-builder args...]
 
 Environment:
   SKIP_INSTALL=1   Skip `bun install` in the repo root and desktop app.
-  SIGN_BUILD=1     Remove the default `--no-sign` flag and allow signed builds.
   OPEN_OUTPUT=1    Open the canonical artifact output directory in Finder after a successful build.
 
 Examples:
   ./desktop/scripts/build-macos-arm64.sh
   SKIP_INSTALL=1 ./desktop/scripts/build-macos-arm64.sh
-  SIGN_BUILD=1 ./desktop/scripts/build-macos-arm64.sh --skip-stapling
 EOF
 }
 
@@ -46,7 +44,7 @@ if [[ "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 
-for command in bun cargo rustc codesign hdiutil; do
+for command in bun codesign hdiutil; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "[build-macos-arm64] Missing required command: ${command}" >&2
     exit 1
@@ -61,7 +59,7 @@ if [[ "${SKIP_INSTALL:-0}" != "1" ]]; then
   (cd "${DESKTOP_DIR}" && bun install)
 fi
 
-for cmd in "${DESKTOP_DIR}/node_modules/.bin/tsc" "${DESKTOP_DIR}/node_modules/.bin/vite"; do
+for cmd in "${DESKTOP_DIR}/node_modules/.bin/tsc" "${DESKTOP_DIR}/node_modules/.bin/vite" "${DESKTOP_DIR}/node_modules/.bin/electron-builder"; do
   if [[ ! -x "${cmd}" ]]; then
     echo "[build-macos-arm64] Missing required tool: ${cmd}" >&2
     echo "[build-macos-arm64] Run 'cd desktop && bun install' and try again." >&2
@@ -69,69 +67,34 @@ for cmd in "${DESKTOP_DIR}/node_modules/.bin/tsc" "${DESKTOP_DIR}/node_modules/.
   fi
 done
 
-# ── 清理 + 显式预热前端 / sidecar ────────────────────────────
-# 之前遇到过"改了 src/ 代码,build 的 .app 里 sidecar 还是旧的"的诡异
-# case —— 根因是 Bun.build / Tauri bundler 某一层的缓存把旧 sidecar
-# binary 复用进了新 .app(.app 被删干净了也救不回来,因为 binary 源在
-# desktop/src-tauri/binaries/)。
-#
-# 这里做三件事强制 fresh build:
-#   1) 硬删 sidecar 源 binary + Tauri bundle 目录 + 前端 dist
-#   2) 显式跑 bun run build + bun run build:sidecars
-#   3) tauri build 用 --config 覆盖 beforeBuildCommand 为 true(no-op),
-#      避免 sidecar 被重复编译浪费 ~10s
-# 任一步失败,整个脚本立即退出(set -e)。
-echo "[build-macos-arm64] Cleaning stale sidecar binaries and bundle output..."
-rm -rf "${DESKTOP_DIR}/src-tauri/binaries/claude-sidecar-"*
-rm -rf "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/bundle"
-rm -rf "${DESKTOP_DIR}/src-tauri/target/release/bundle"
+# ── 清理 ──
+echo "[build-macos-arm64] Cleaning stale build and release outputs..."
+rm -rf "${DESKTOP_DIR}/resources/claude-sidecar"*
+rm -rf "${DESKTOP_DIR}/resources/adapter-sidecar"*
+rm -rf "${DESKTOP_DIR}/release"
 rm -rf "${DESKTOP_DIR}/dist"
+rm -rf "${DESKTOP_DIR}/dist-electron"
 rm -f "${DESKTOP_DIR}/tsconfig.tsbuildinfo"
-rm -rf "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/build/claude-code-desktop-"*
-rm -rf "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/.fingerprint/claude-code-desktop-"*
-rm -f "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/deps/claude_code_desktop-"*
-rm -f "${DESKTOP_DIR}/src-tauri/target/${TARGET_TRIPLE}/release/deps/libclaude_code_desktop-"*
 
-echo "[build-macos-arm64] Rebuilding frontend (tsc + vite)..."
-(cd "${DESKTOP_DIR}" && bun run build)
+echo "[build-macos-arm64] Rebuilding frontend, main process, and sidecars..."
+(cd "${DESKTOP_DIR}" && bun run build:all:pack)
 
-echo "[build-macos-arm64] Rebuilding sidecar for ${TARGET_TRIPLE}..."
-(cd "${DESKTOP_DIR}" && TAURI_ENV_TARGET_TRIPLE="${TARGET_TRIPLE}" bun run build:sidecars)
-
-TAURI_ARGS=(
-  bun
-  x
-  tauri
-  build
-  --target
-  "${TARGET_TRIPLE}"
-  --bundles
-  app,dmg
-  --ci
-  --config
-  '{"build":{"beforeBuildCommand":"true"}}'
+BUILDER_ARGS=(
+  bunx
+  electron-builder
+  --mac
+  --arm64
 )
-
-if [[ "${SIGN_BUILD:-0}" != "1" ]]; then
-  TAURI_ARGS+=(--no-sign)
-fi
 
 if [[ "$#" -gt 0 ]]; then
-  TAURI_ARGS+=("$@")
+  BUILDER_ARGS+=("$@")
 fi
 
-echo "[build-macos-arm64] Building DMG for ${TARGET_TRIPLE}..."
+echo "[build-macos-arm64] Packaging Electron app for macOS arm64..."
 (
   cd "${DESKTOP_DIR}"
-  export TAURI_ENV_TARGET_TRIPLE="${TARGET_TRIPLE}"
-  "${TAURI_ARGS[@]}"
+  "${BUILDER_ARGS[@]}"
 )
-
-TARGETED_DMG_DIR="${TAURI_TARGET_DIR}/${TARGET_TRIPLE}/release/bundle/dmg"
-FALLBACK_DMG_DIR="${TAURI_TARGET_DIR}/release/bundle/dmg"
-TARGETED_APP_DIR="${TAURI_TARGET_DIR}/${TARGET_TRIPLE}/release/bundle/macos"
-FALLBACK_APP_DIR="${TAURI_TARGET_DIR}/release/bundle/macos"
-LEGACY_BUNDLE_ROOT="${TAURI_TARGET_DIR}/release/bundle"
 
 mkdir -p "${CANONICAL_OUTPUT_DIR}"
 find "${CANONICAL_OUTPUT_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -152,14 +115,17 @@ find_latest_dir() {
   fi
 }
 
-LATEST_DMG="$(find_latest_file "${TARGETED_DMG_DIR}" '*.dmg')"
+LATEST_DMG="$(find_latest_file "${ELECTRON_RELEASE_DIR}" 'AmbiCrew-*-arm64.dmg')"
 if [[ -z "${LATEST_DMG}" ]]; then
-  LATEST_DMG="$(find_latest_file "${FALLBACK_DMG_DIR}" '*.dmg')"
+  LATEST_DMG="$(find_latest_file "${ELECTRON_RELEASE_DIR}" '*.dmg')"
 fi
 
-LATEST_APP="$(find_latest_dir "${TARGETED_APP_DIR}" '*.app')"
-if [[ -z "${LATEST_APP}" ]]; then
-  LATEST_APP="$(find_latest_dir "${FALLBACK_APP_DIR}" '*.app')"
+LATEST_APP="${ELECTRON_RELEASE_DIR}/mac-arm64/${APP_BUNDLE_NAME}"
+if [[ ! -d "${LATEST_APP}" ]]; then
+  LATEST_APP="${ELECTRON_RELEASE_DIR}/mac/${APP_BUNDLE_NAME}"
+fi
+if [[ ! -d "${LATEST_APP}" ]]; then
+  LATEST_APP="$(find_latest_dir "${ELECTRON_RELEASE_DIR}" "${APP_BUNDLE_NAME}")"
 fi
 
 build_canonical_dmg() {
@@ -168,15 +134,15 @@ build_canonical_dmg() {
   local staging_dir
   local rw_dmg
 
-  staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/cc-haha-dmg.XXXXXX")"
-  rw_dmg="$(mktemp "${TMPDIR:-/tmp}/cc-haha-rw.XXXXXX").dmg"
+  staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/ambicrew-dmg.XXXXXX")"
+  rw_dmg="$(mktemp "${TMPDIR:-/tmp}/ambicrew-rw.XXXXXX").dmg"
 
   cp -R "${app_bundle}" "${staging_dir}/"
   ln -s /Applications "${staging_dir}/Applications"
 
   # Create a read-write DMG first so we can customize the Finder layout
   hdiutil create \
-    -volname "Claude Code Haha" \
+    -volname "AmbiCrew" \
     -srcfolder "${staging_dir}" \
     -ov \
     -format UDRW \
@@ -190,18 +156,19 @@ build_canonical_dmg() {
     | grep -E '^/dev/' | head -1 | awk '{print $1}')
   mount_dir=$(hdiutil info | grep -E "${dev_name}" | tail -1 | awk '{$1=$2=""; print}' | xargs)
 
-  # Finder AppleScript 在新版 macOS (Sequoia+) 上某些属性
-  # (toolbar/statusbar visible、某些 container window 属性) 不再支持,
-  # 会返回 -10006 错误。美化失败不是 blocker —— 即便 layout 没设上,
-  # DMG 本身还是可用的,只是用户打开时看到的是 Finder 默认排布。
-  # 所以这里允许 osascript 非零退出,只 warn,不让 set -e 炸掉整个脚本。
+  # Finder AppleScript 在新版 macOS (Sequoia+) 上某些属性不支持, 会返回 -10006 错误。
+  # 通过 try...end try 块包裹不支持的属性，确保 bounds 和位置设定仍能正确应用。
   if ! osascript <<APPLESCRIPT
 tell application "Finder"
-  tell disk "Claude Code Haha"
+  tell disk "AmbiCrew"
     open
     set current view of container window to icon view
-    set toolbar visible of container window to false
-    set statusbar visible of container window to false
+    try
+      set toolbar visible of container window to false
+    end try
+    try
+      set statusbar visible of container window to false
+    end try
     set the bounds of container window to {100, 100, 760, 500}
     set viewOptions to the icon view options of container window
     set arrangement of viewOptions to not arranged
@@ -217,12 +184,10 @@ tell application "Finder"
 end tell
 APPLESCRIPT
   then
-    echo "[build-macos-arm64] WARN: Finder layout AppleScript failed (likely macOS version incompatible); DMG will use default Finder layout" >&2
+    echo "[build-macos-arm64] WARN: Finder layout AppleScript encountered an issue; DMG bounds or positions might use defaults" >&2
   fi
 
   sync
-  # osascript 可能已经让 Finder 打开了 volume 窗口,正常 detach 可能因为
-  # "Resource busy" 失败。失败时用 -force 二次尝试。
   hdiutil detach "${dev_name}" -quiet 2>/dev/null \
     || hdiutil detach "${dev_name}" -force -quiet
 
@@ -239,7 +204,7 @@ codesign_cdhash() {
 
 sign_canonical_app_bundle() {
   local app_bundle="$1"
-  local sidecar="${app_bundle}/Contents/MacOS/claude-sidecar"
+  local sidecar="${app_bundle}/Contents/Resources/claude-sidecar"
   local sidecar_cdhash_before=""
   local sidecar_cdhash_after=""
 
@@ -247,9 +212,7 @@ sign_canonical_app_bundle() {
     sidecar_cdhash_before="$(codesign_cdhash "${sidecar}")"
   fi
 
-  # Tauri --no-sign leaves the outer .app with no sealed resources, which
-  # fails strict bundle validation once Resources/icon.icns exists. Sign only
-  # the outer bundle: do not pass --deep, because re-signing claude-sidecar
+  # Sign only the outer bundle: do not pass --deep, because re-signing claude-sidecar
   # changes its code-signature hash and breaks existing macOS Keychain ACLs.
   codesign --force --sign - --timestamp=none "${app_bundle}"
 
@@ -266,24 +229,19 @@ sign_canonical_app_bundle() {
   codesign --verify --deep --strict --verbose=2 "${app_bundle}"
 }
 
-if [[ -n "${LATEST_DMG}" ]]; then
-  cp -f "${LATEST_DMG}" "${CANONICAL_OUTPUT_DIR}/"
-fi
-
-if [[ -n "${LATEST_APP}" ]]; then
-  # 不要 deep re-sign。曾经脚本在这里跑过
-  # `codesign --force --deep --sign - --identifier <bundle-id>` 来统一
-  # sidecar 和外层的 signing identifier,但这会改变 sidecar binary 的
-  # code signature hash —— macOS Keychain ACL 按 hash 识别 caller,
-  # 重签完再访问时会被 ACL 当作"陌生 binary"静默拒绝,导致 CLI 读不到
-  # OAuth token,最终请求打到 Anthropic 返回 403 "Request not allowed"。
-  # 这里只浅签外层 bundle,让 .app 拥有有效资源封印,同时保留 sidecar hash。
+if [[ -n "${LATEST_APP}" && -d "${LATEST_APP}" ]]; then
+  echo "[build-macos-arm64] Copying app bundle to canonical destination..."
   cp -R "${LATEST_APP}" "${CANONICAL_OUTPUT_DIR}/"
   sign_canonical_app_bundle "${CANONICAL_OUTPUT_DIR}/${APP_BUNDLE_NAME}"
-  rm -f "${CANONICAL_OUTPUT_DIR}/"*.dmg
+
+  LATEST_DMG_NAME="$(basename "${LATEST_DMG:-AmbiCrew_1.0.0_aarch64.dmg}")"
+  echo "[build-macos-arm64] Rebuilding canonical DMG..."
   build_canonical_dmg \
     "${CANONICAL_OUTPUT_DIR}/${APP_BUNDLE_NAME}" \
-    "${CANONICAL_OUTPUT_DIR}/$(basename "${LATEST_DMG:-Claude Code Haha_0.1.0_aarch64.dmg}")"
+    "${CANONICAL_OUTPUT_DIR}/${LATEST_DMG_NAME}"
+else
+  echo "[build-macos-arm64] ERROR: No built app bundle found!" >&2
+  exit 1
 fi
 
 cat > "${CANONICAL_OUTPUT_DIR}/BUILD_INFO.txt" <<EOF
@@ -294,26 +252,10 @@ Source app: ${LATEST_APP:-not found}
 Built at: $(date '+%Y-%m-%d %H:%M:%S %z')
 EOF
 
-if [[ -d "${LEGACY_BUNDLE_ROOT}" ]]; then
-  rm -rf "${LEGACY_BUNDLE_ROOT}"
-fi
-
 echo
 echo "[build-macos-arm64] Build finished."
-if [[ -n "${LATEST_DMG}" ]]; then
-  echo "[build-macos-arm64] DMG source: ${LATEST_DMG}"
-else
-  echo "[build-macos-arm64] No DMG found in ${TARGETED_DMG_DIR} or ${FALLBACK_DMG_DIR}" >&2
-fi
-
-if [[ -n "${LATEST_APP}" ]]; then
-  echo "[build-macos-arm64] App source: ${LATEST_APP}"
-else
-  echo "[build-macos-arm64] No .app found in ${TARGETED_APP_DIR} or ${FALLBACK_APP_DIR}" >&2
-fi
-
+echo "[build-macos-arm64] App source: ${LATEST_APP}"
 echo "[build-macos-arm64] Canonical output: ${CANONICAL_OUTPUT_DIR}"
-echo "[build-macos-arm64] Removed legacy bundle dir: ${LEGACY_BUNDLE_ROOT}"
 
 if [[ "${OPEN_OUTPUT:-0}" == "1" ]]; then
   open "${CANONICAL_OUTPUT_DIR}"

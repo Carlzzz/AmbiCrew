@@ -142,8 +142,8 @@ function coverageWarnings(files: string[]) {
 function riskNotes(files: string[]) {
   const notes: string[] = []
 
-  if (files.some((file) => file.startsWith('desktop/src-tauri/'))) {
-    notes.push('Tauri/native code changed: check sidecar build and cargo check output closely.')
+  if (files.some((file) => file.startsWith('desktop/electron/'))) {
+    notes.push('Electron main process/native code changed: check server build and electron compile closely.')
   }
   if (files.some((file) => file.startsWith('desktop/src/stores/') || file.startsWith('desktop/src/api/'))) {
     notes.push('Desktop state/API layer changed: verify store persistence, WebSocket behavior, and startup errors.')

@@ -54,9 +54,8 @@ const desktopNativeExactPaths = new Set([
   'desktop/bun.lock',
   'desktop/package.json',
   'desktop/package-lock.json',
-  'desktop/src-tauri/Cargo.lock',
-  'desktop/src-tauri/Cargo.toml',
-  'desktop/src-tauri/tauri.conf.json',
+  'desktop/electron-builder.yml',
+  'desktop/electron-tsconfig.json',
 ])
 
 const docsExactPaths = new Set([
@@ -77,9 +76,8 @@ const releaseExactPaths = new Set([
   'scripts/pr/check-pr.ts',
   'scripts/pr/run-server-tests.ts',
   'scripts/release.ts',
-  'desktop/src-tauri/tauri.conf.json',
-  'desktop/src-tauri/Cargo.toml',
-  'desktop/src-tauri/Cargo.lock',
+  'desktop/electron-builder.yml',
+  'desktop/electron-tsconfig.json',
 ])
 
 function normalizePath(path: string) {
