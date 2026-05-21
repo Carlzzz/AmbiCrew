@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react'
 import { Box, Link, Text } from '../ink.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
+import { isCentralAuthMode } from '../utils/auth.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
+import { CentralAuthFlow } from './CentralAuthFlow.js'
 import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js'
 import { Select } from './CustomSelect/select.js'
 import { OpenAILoginFlow } from './OpenAILoginFlow.js'
@@ -11,7 +13,7 @@ type Props = {
   startingMessage?: string
 }
 
-type LoginSelection = 'claudeai' | 'console' | 'openai' | 'platform' | 'idle'
+type LoginSelection = 'claudeai' | 'console' | 'openai' | 'platform' | 'crewcentral' | 'idle'
 
 function PlatformSetupFlow({
   onBack,
@@ -70,6 +72,10 @@ export function SlashLoginFlow({
   const forceLoginMethod = settings.forceLoginMethod
 
   const [selection, setSelection] = useState<LoginSelection>(() => {
+    // Auto-select CrewCentral when AUTH_MODE=central
+    if (isCentralAuthMode()) {
+      return 'crewcentral'
+    }
     if (forceLoginMethod === 'claudeai' || forceLoginMethod === 'console') {
       return forceLoginMethod
     }
@@ -129,6 +135,10 @@ export function SlashLoginFlow({
         forceLoginMethod={selection}
       />
     )
+  }
+
+  if (selection === 'crewcentral') {
+    return <CentralAuthFlow onDone={onDone} />
   }
 
   if (selection === 'openai') {
