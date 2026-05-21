@@ -588,6 +588,13 @@ export const zh: Record<TranslationKey, string> = {
   'settings.plugins.capabilityLabel.hooks': 'Hooks',
   'settings.plugins.capabilityLabel.mcpServers': 'MCP 服务',
   'settings.plugins.capabilityLabel.lspServers': 'LSP 服务',
+  'settings.plugins.browseMarketplace': '浏览插件',
+  'settings.plugins.browseTitle': '可用插件',
+  'settings.plugins.browseHint': '浏览并安装已配置的插件市场中的插件。',
+  'settings.plugins.allMarketplaces': '所有市场',
+  'settings.plugins.noMarketplacePlugins': '市场中没有找到插件。',
+  'settings.plugins.installed': '已安装',
+  'settings.plugins.install': '安装',
 
   // Settings > About
   'settings.tab.about': '关于',

@@ -93,6 +93,26 @@ function filterSettingsEnv(
 }
 
 /**
+ * When AUTH_MODE=central (set by .env), CrewProxy routing must take priority
+ * over any stale provider config in settings.json (e.g., a previous
+ * ANTHROPIC_BASE_URL pointing to a different provider, or a leftover
+ * ANTHROPIC_AUTH_TOKEN from a previous provider). This function restores the
+ * correct state after settings.json env vars have been applied.
+ */
+function applyCentralAuthOverrides(): void {
+  if ((process.env.AUTH_MODE || '').toLowerCase() !== 'central') return
+  const proxyBaseUrl = process.env.LLM_PROXY_BASE_URL?.trim()
+  if (proxyBaseUrl) {
+    process.env.ANTHROPIC_BASE_URL = proxyBaseUrl
+  }
+  // Clear stale auth tokens — CrewProxy uses the JWT from central-auth.json
+  // via configureApiKeyHeaders(), not these env vars. A leftover token from
+  // a previous provider would cause auth failures with CrewProxy.
+  delete process.env.ANTHROPIC_AUTH_TOKEN
+  delete process.env.ANTHROPIC_API_KEY
+}
+
+/**
  * Read env vars from ~/.claude/cc-haha/settings.json (Haha-specific provider
  * config). This file is written by ProviderService.syncToSettings() and
  * contains ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, model defaults, etc.
@@ -173,6 +193,10 @@ export function applySafeConfigEnvironmentVariables(): void {
   // ~/.claude/settings.json while still allowing it to override provider vars.
   Object.assign(process.env, filterSettingsEnv(getCcHahaSettingsEnv()))
 
+  // CrewCentral override: when AUTH_MODE=central (set by .env at launch),
+  // restore CrewProxy routing over any stale provider config from settings.json.
+  applyCentralAuthOverrides()
+
   // Compute remote-managed-settings eligibility now, with userSettings and
   // flagSettings env applied. Eligibility reads CLAUDE_CODE_USE_BEDROCK,
   // ANTHROPIC_BASE_URL — both settable via settings.env.
@@ -217,6 +241,9 @@ export function applyConfigEnvironmentVariables(): void {
   // cc-haha provider isolation: same as in applySafeConfigEnvironmentVariables,
   // apply Haha-specific env last so it overrides the original settings.
   Object.assign(process.env, filterSettingsEnv(getCcHahaSettingsEnv()))
+
+  // CrewCentral override: ensure CrewProxy routing takes priority
+  applyCentralAuthOverrides()
 
   // Clear caches so agents are rebuilt with the new env vars
   clearCACertsCache()

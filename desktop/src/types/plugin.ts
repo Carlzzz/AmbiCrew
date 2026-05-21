@@ -99,3 +99,20 @@ export type PluginReloadSummary = {
   lspServers: number
   errors: number
 }
+
+export type MarketplacePlugin = {
+  pluginId: string
+  name: string
+  marketplace: string
+  description?: string
+  category?: string
+  tags?: string[]
+  version?: string
+  authorName?: string
+  isInstalled: boolean
+}
+
+export type MarketplaceBrowseResponse = {
+  plugins: MarketplacePlugin[]
+  marketplaces: { name: string; pluginCount: number }[]
+}

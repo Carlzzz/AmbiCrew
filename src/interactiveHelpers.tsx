@@ -17,6 +17,7 @@ import { isQualifiedForGrove } from './services/api/grove.js';
 import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
+import { isCentralAuthMode } from './utils/auth.js';
 import { normalizeApiKeyForConfig } from './utils/authPortable.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, shouldShowClaudeMdExternalIncludesWarning } from './utils/claudemd.js';
 import { checkHasTrustDialogAccepted, getCustomApiKeyStatus, getGlobalConfig, saveGlobalConfig } from './utils/config.js';
@@ -120,6 +121,20 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
     }} />, {
       onChangeAppState
     });
+  }
+
+  // CrewCentral auth gate: if AUTH_MODE=central and the user has no valid
+  // token (first run or expired session), show the CentralAuthFlow dialog
+  // before proceeding. This is necessary because the Onboarding component
+  // (which contains CentralAuthFlow) is only shown on first run — returning
+  // users skip it entirely.
+  if (isCentralAuthMode()) {
+    const { loadTokens } = await import('./services/central/token-store.js');
+    const tokens = await loadTokens();
+    if (!tokens) {
+      const { CentralAuthFlow } = await import('./components/CentralAuthFlow.js');
+      await showSetupDialog(root, done => <CentralAuthFlow onDone={() => void done()} />);
+    }
   }
 
   // Always show the trust dialog in interactive sessions, regardless of permission mode.

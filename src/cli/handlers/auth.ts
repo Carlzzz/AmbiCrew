@@ -41,6 +41,7 @@ import { saveGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isRunningOnHomespace } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
+import { openBrowser } from '../../utils/browser.js'
 import { logError } from '../../utils/log.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
@@ -155,10 +156,7 @@ async function authLoginCentral(): Promise<void> {
     const result = await login({
       loginUrl,
       openExternal: async (url: string) => {
-        const { spawn } = await import('child_process')
-        const cmd =
-          process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open'
-        spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref()
+        await openBrowser(url)
       },
     })
 

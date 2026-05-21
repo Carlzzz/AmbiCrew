@@ -28,8 +28,24 @@ export async function handlePluginsApi(
       })
     }
 
+    if (method === 'GET' && sub === 'marketplace') {
+      const marketplaceName = url.searchParams.get('marketplace') || undefined
+      return Response.json(
+        await pluginService.getMarketplacePlugins(marketplaceName),
+      )
+    }
+
     if (method === 'POST' && sub === 'reload') {
       return Response.json(await pluginService.reloadPlugins(cwd))
+    }
+
+    if (method === 'POST' && sub === 'marketplace' && segments[3] === 'refresh') {
+      const body = await parseJsonBody(req)
+      const name = asString(body.name)
+      if (!name) {
+        throw ApiError.badRequest('Missing or invalid "name" in request body')
+      }
+      return Response.json(await pluginService.refreshMarketplace(name))
     }
 
     if (method === 'POST' && sub) {
@@ -46,6 +62,8 @@ export async function handlePluginsApi(
           return Response.json(await pluginService.enablePlugin(pluginId, scope))
         case 'disable':
           return Response.json(await pluginService.disablePlugin(pluginId, scope))
+        case 'install':
+          return Response.json(await pluginService.installPlugin(pluginId, scope))
         case 'update':
           return Response.json(
             await pluginService.updatePlugin(pluginId, scope as PluginScope | undefined),

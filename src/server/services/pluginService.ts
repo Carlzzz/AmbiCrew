@@ -4,6 +4,7 @@ import type { McpServerConfig } from '../../services/mcp/types.js'
 import {
   disablePluginOp,
   enablePluginOp,
+  installPluginOp,
   type InstallableScope,
   uninstallPluginOp,
   updatePluginOp,
@@ -17,8 +18,15 @@ import {
 } from '../../utils/plugins/marketplaceHelpers.js'
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js'
 import {
+  addMarketplaceSource,
+  getMarketplace,
   loadKnownMarketplacesConfig,
+  refreshMarketplace,
 } from '../../utils/plugins/marketplaceManager.js'
+import {
+  OFFICIAL_MARKETPLACE_NAME,
+  OFFICIAL_MARKETPLACE_SOURCE,
+} from '../../utils/plugins/officialMarketplace.js'
 import { loadPluginLspServers } from '../../utils/plugins/lspPluginIntegration.js'
 import { loadPluginMcpServers } from '../../utils/plugins/mcpPluginIntegration.js'
 import { parsePluginIdentifier } from '../../utils/plugins/pluginIdentifier.js'
@@ -127,6 +135,23 @@ export type ApiPluginActionResponse = {
   message: string
 }
 
+export type ApiMarketplacePlugin = {
+  pluginId: string
+  name: string
+  marketplace: string
+  description?: string
+  category?: string
+  tags?: string[]
+  version?: string
+  authorName?: string
+  isInstalled: boolean
+}
+
+export type ApiMarketplaceBrowseResponse = {
+  plugins: ApiMarketplacePlugin[]
+  marketplaces: { name: string; pluginCount: number }[]
+}
+
 export type ApiPluginReloadResponse = {
   ok: true
   summary: {
@@ -187,6 +212,17 @@ export class PluginService {
     return { ok: true, message: result.message }
   }
 
+  async installPlugin(
+    pluginId: string,
+    scope?: InstallableScope,
+  ): Promise<ApiPluginActionResponse> {
+    const result = await installPluginOp(pluginId, scope)
+    if (!result.success) {
+      throw ApiError.badRequest(result.message)
+    }
+    return { ok: true, message: result.message }
+  }
+
   async disablePlugin(
     pluginId: string,
     scope?: InstallableScope,
@@ -212,6 +248,61 @@ export class PluginService {
       throw ApiError.badRequest(result.message)
     }
     return { ok: true, message: result.message }
+  }
+
+  async getMarketplacePlugins(
+    marketplaceName?: string,
+  ): Promise<ApiMarketplaceBrowseResponse> {
+    if (!marketplaceName) {
+      await this.ensureOfficialMarketplace()
+    }
+
+    const marketplaceConfig = await loadKnownMarketplacesConfig()
+    const installedData = loadInstalledPluginsV2()
+    const installedIds = new Set(Object.keys(installedData.plugins))
+
+    const marketplaceNames = Object.keys(marketplaceConfig)
+    const filteredNames = marketplaceName
+      ? marketplaceNames.filter(n => n === marketplaceName)
+      : marketplaceNames
+
+    const plugins: ApiMarketplacePlugin[] = []
+    const marketplaceSummaries: { name: string; pluginCount: number }[] = []
+
+    for (const name of filteredNames) {
+      const marketplace = await getMarketplace(name).catch(() => null)
+      const entries = marketplace?.plugins ?? []
+      marketplaceSummaries.push({ name, pluginCount: entries.length })
+
+      for (const entry of entries) {
+        const pluginId = `${entry.name}@${name}`
+        plugins.push({
+          pluginId,
+          name: entry.name,
+          marketplace: name,
+          description: entry.description,
+          category: entry.category,
+          tags: entry.tags,
+          version: entry.version,
+          authorName: entry.author?.name,
+          isInstalled: installedIds.has(pluginId),
+        })
+      }
+    }
+
+    return { plugins, marketplaces: marketplaceSummaries }
+  }
+
+  private async ensureOfficialMarketplace(): Promise<void> {
+    const marketplaceConfig = await loadKnownMarketplacesConfig()
+    if (marketplaceConfig[OFFICIAL_MARKETPLACE_NAME]) return
+
+    await addMarketplaceSource(OFFICIAL_MARKETPLACE_SOURCE)
+  }
+
+  async refreshMarketplace(name: string): Promise<ApiPluginActionResponse> {
+    await refreshMarketplace(name)
+    return { ok: true, message: `Marketplace "${name}" refreshed` }
   }
 
   async updatePlugin(

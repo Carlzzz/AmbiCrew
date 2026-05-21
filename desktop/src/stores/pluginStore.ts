@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { pluginsApi } from '../api/plugins'
 import type {
+  MarketplacePlugin,
   PluginDetail,
   PluginListResponse,
   PluginReloadSummary,
@@ -18,6 +19,10 @@ type PluginStore = {
   isDetailLoading: boolean
   isApplying: boolean
   error: string | null
+  marketplacePlugins: MarketplacePlugin[]
+  marketplaceNames: { name: string; pluginCount: number }[]
+  isMarketplaceLoading: boolean
+  isInstalling: Record<string, boolean>
   fetchPlugins: (cwd?: string) => Promise<void>
   fetchPluginDetail: (id: string, cwd?: string) => Promise<void>
   reloadPlugins: (cwd?: string) => Promise<PluginReloadSummary>
@@ -25,6 +30,9 @@ type PluginStore = {
   disablePlugin: (id: string, scope?: PluginScope, cwd?: string) => Promise<string>
   updatePlugin: (id: string, scope?: PluginScope, cwd?: string) => Promise<string>
   uninstallPlugin: (id: string, scope?: PluginScope, keepData?: boolean, cwd?: string) => Promise<string>
+  installPlugin: (id: string, scope?: PluginScope, cwd?: string) => Promise<string>
+  fetchMarketplacePlugins: (marketplaceName?: string) => Promise<void>
+  refreshMarketplace: (name: string) => Promise<void>
   clearSelection: () => void
 }
 
@@ -38,6 +46,10 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
   isDetailLoading: false,
   isApplying: false,
   error: null,
+  marketplacePlugins: [],
+  marketplaceNames: [],
+  isMarketplaceLoading: false,
+  isInstalling: {},
 
   fetchPlugins: async (cwd) => {
     set({ isLoading: true, error: null })
@@ -123,6 +135,53 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       cwd,
       true,
     )
+  },
+
+  installPlugin: async (id, scope, cwd) => {
+    set({ isInstalling: { ...get().isInstalling, [id]: true }, error: null })
+    try {
+      const { message } = await pluginsApi.install({ id, scope })
+      await get().fetchPlugins(cwd)
+      await get().fetchMarketplacePlugins()
+      set({ isInstalling: { ...get().isInstalling, [id]: false } })
+      return message
+    } catch (err) {
+      set({
+        isInstalling: { ...get().isInstalling, [id]: false },
+        error: err instanceof Error ? err.message : String(err),
+      })
+      throw err
+    }
+  },
+
+  fetchMarketplacePlugins: async (marketplaceName) => {
+    set({ isMarketplaceLoading: true, error: null })
+    try {
+      const data = await pluginsApi.marketplace(marketplaceName)
+      set({
+        marketplacePlugins: data.plugins,
+        marketplaceNames: data.marketplaces,
+        isMarketplaceLoading: false,
+      })
+    } catch (err) {
+      set({
+        isMarketplaceLoading: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  },
+
+  refreshMarketplace: async (name) => {
+    set({ isMarketplaceLoading: true, error: null })
+    try {
+      await pluginsApi.refreshMarketplace(name)
+      await get().fetchMarketplacePlugins()
+    } catch (err) {
+      set({
+        isMarketplaceLoading: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   },
 
   clearSelection: () => set({ selectedPlugin: null }),

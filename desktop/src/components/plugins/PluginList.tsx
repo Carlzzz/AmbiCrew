@@ -1,10 +1,10 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePluginStore } from '../../stores/pluginStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useTranslation } from '../../i18n'
 import { useUIStore } from '../../stores/uiStore'
 import { Button } from '../shared/Button'
-import type { PluginSummary } from '../../types/plugin'
+import type { PluginScope, PluginSummary } from '../../types/plugin'
 
 type PluginBucket = 'attention' | 'enabled' | 'disabled'
 
@@ -20,6 +20,13 @@ export function PluginList() {
     fetchPlugins,
     fetchPluginDetail,
     reloadPlugins,
+    marketplacePlugins,
+    marketplaceNames,
+    isMarketplaceLoading,
+    isInstalling,
+    fetchMarketplacePlugins,
+    refreshMarketplace,
+    installPlugin,
   } = usePluginStore()
   const sessions = useSessionStore((s) => s.sessions)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
@@ -27,6 +34,8 @@ export function PluginList() {
   const t = useTranslation()
   const activeSession = sessions.find((session) => session.id === activeSessionId)
   const currentWorkDir = activeSession?.workDir || undefined
+  const [showBrowse, setShowBrowse] = useState(false)
+  const [selectedMarketplace, setSelectedMarketplace] = useState<string>('')
 
   useEffect(() => {
     void fetchPlugins(currentWorkDir)
@@ -171,10 +180,46 @@ export function PluginList() {
                 <span className="material-symbols-outlined text-[16px]">sync</span>
                 {t('settings.plugins.apply')}
               </Button>
+              <Button
+                variant={showBrowse ? 'secondary' : 'secondary'}
+                size="sm"
+                className="min-h-9 flex-1 sm:flex-none"
+                onClick={() => {
+                  const next = !showBrowse
+                  setShowBrowse(next)
+                  if (next && marketplacePlugins.length === 0) {
+                    void fetchMarketplacePlugins()
+                  }
+                }}
+              >
+                <span className="material-symbols-outlined text-[16px]">storefront</span>
+                {t('settings.plugins.browseMarketplace')}
+              </Button>
             </div>
           </div>
         </div>
       </section>
+
+      {showBrowse && (
+        <MarketplaceBrowser
+          marketplacePlugins={marketplacePlugins}
+          marketplaceNames={marketplaceNames}
+          isLoading={isMarketplaceLoading}
+          isInstalling={isInstalling}
+          selectedMarketplace={selectedMarketplace}
+          onSelectMarketplace={(name) => {
+            setSelectedMarketplace(name)
+            void fetchMarketplacePlugins(name || undefined)
+          }}
+          onRefresh={(name) => void refreshMarketplace(name)}
+          onInstall={(pluginId, scope) => {
+            void installPlugin(pluginId, scope, currentWorkDir)
+              .then((message) => addToast({ type: 'success', message }))
+              .catch((err) => addToast({ type: 'error', message: err instanceof Error ? err.message : String(err) }))
+          }}
+          t={t}
+        />
+      )}
 
       {marketplaces.length > 0 && (
         <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
@@ -370,5 +415,162 @@ function ScopePill({ scope }: { scope: PluginSummary['scope'] }) {
     <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-tertiary)]">
       {t(`settings.plugins.scope.${scope}`)}
     </span>
+  )
+}
+
+type MarketplacePluginEntry = {
+  pluginId: string
+  name: string
+  marketplace: string
+  description?: string
+  category?: string
+  tags?: string[]
+  version?: string
+  authorName?: string
+  isInstalled: boolean
+}
+
+function MarketplaceBrowser({
+  marketplacePlugins,
+  marketplaceNames,
+  isLoading,
+  isInstalling,
+  selectedMarketplace,
+  onSelectMarketplace,
+  onRefresh,
+  onInstall,
+  t,
+}: {
+  marketplacePlugins: MarketplacePluginEntry[]
+  marketplaceNames: { name: string; pluginCount: number }[]
+  isLoading: boolean
+  isInstalling: Record<string, boolean>
+  selectedMarketplace: string
+  onSelectMarketplace: (name: string) => void
+  onRefresh: (name: string) => void
+  onInstall: (pluginId: string, scope?: PluginScope) => void
+  t: ReturnType<typeof useTranslation>
+}) {
+  const [installScope, setInstallScope] = useState<PluginScope>('user')
+
+  return (
+    <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--color-border)] bg-[var(--color-surface-container-low)]">
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">
+            {t('settings.plugins.browseTitle')}
+          </h4>
+          <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+            {t('settings.plugins.browseHint')}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedMarketplace}
+            onChange={(e) => onSelectMarketplace(e.target.value)}
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+          >
+            <option value="">{t('settings.plugins.allMarketplaces')}</option>
+            {marketplaceNames.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name} ({m.pluginCount})
+              </option>
+            ))}
+          </select>
+          {selectedMarketplace && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onRefresh(selectedMarketplace)}
+              loading={isLoading}
+            >
+              <span className="material-symbols-outlined text-[14px]">refresh</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {isLoading && marketplacePlugins.length === 0 ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin w-5 h-5 border-2 border-[var(--color-brand)] border-t-transparent rounded-full" />
+        </div>
+      ) : marketplacePlugins.length === 0 ? (
+        <div className="py-8 text-center text-sm text-[var(--color-text-tertiary)]">
+          {t('settings.plugins.noMarketplacePlugins')}
+        </div>
+      ) : (
+        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+          {marketplacePlugins.map((plugin) => (
+            <div
+              key={plugin.pluginId}
+              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-4 py-3 flex flex-col"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-semibold text-[var(--color-text-primary)] break-words">
+                    {plugin.name}
+                  </span>
+                  {plugin.version && (
+                    <span className="ml-2 rounded-full bg-[var(--color-surface-container-high)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-tertiary)]">
+                      v{plugin.version}
+                    </span>
+                  )}
+                </div>
+                {plugin.isInstalled ? (
+                  <span className="flex-shrink-0 rounded-full bg-[var(--color-success-container)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-success)]">
+                    {t('settings.plugins.installed')}
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <select
+                      value={installScope}
+                      onChange={(e) => setInstallScope(e.target.value as PluginScope)}
+                      className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-0.5 text-[10px] text-[var(--color-text-tertiary)] focus:outline-none"
+                    >
+                      <option value="user">user</option>
+                      <option value="project">project</option>
+                    </select>
+                    <Button
+                      size="sm"
+                      className="min-h-7 px-2 text-[11px]"
+                      loading={isInstalling[plugin.pluginId]}
+                      onClick={() => onInstall(plugin.pluginId, installScope)}
+                    >
+                      {t('settings.plugins.install')}
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {plugin.description && (
+                <p className="mt-1.5 text-xs leading-5 text-[var(--color-text-secondary)] break-words line-clamp-2">
+                  {plugin.description}
+                </p>
+              )}
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--color-text-tertiary)]">
+                <span>{plugin.marketplace}</span>
+                {plugin.category && (
+                  <span className="rounded-full bg-[var(--color-surface-container-high)] px-1.5 py-0.5 text-[10px]">
+                    {plugin.category}
+                  </span>
+                )}
+                {plugin.authorName && <span>by {plugin.authorName}</span>}
+              </div>
+              {plugin.tags && plugin.tags.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {plugin.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-[var(--color-surface-container-high)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-tertiary)]"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }

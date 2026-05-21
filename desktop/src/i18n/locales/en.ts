@@ -586,6 +586,13 @@ export const en = {
   'settings.plugins.capabilityLabel.hooks': 'Hooks',
   'settings.plugins.capabilityLabel.mcpServers': 'MCP servers',
   'settings.plugins.capabilityLabel.lspServers': 'LSP servers',
+  'settings.plugins.browseMarketplace': 'Browse plugins',
+  'settings.plugins.browseTitle': 'Available plugins',
+  'settings.plugins.browseHint': 'Browse and install plugins from configured marketplaces.',
+  'settings.plugins.allMarketplaces': 'All marketplaces',
+  'settings.plugins.noMarketplacePlugins': 'No plugins found in marketplaces.',
+  'settings.plugins.installed': 'Installed',
+  'settings.plugins.install': 'Install',
 
   // Settings > About
   'settings.tab.about': 'About',

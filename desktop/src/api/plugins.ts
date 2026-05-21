@@ -1,5 +1,6 @@
 import { api } from './client'
 import type {
+  MarketplaceBrowseResponse,
   PluginDetail,
   PluginListResponse,
   PluginReloadSummary,
@@ -44,4 +45,23 @@ export const pluginsApi = {
       { timeout: 120_000 },
     )
   },
+
+  marketplace: (marketplaceName?: string) => {
+    const query = marketplaceName
+      ? `?marketplace=${encodeURIComponent(marketplaceName)}`
+      : ''
+    return api.get<MarketplaceBrowseResponse>(`/api/plugins/marketplace${query}`)
+  },
+
+  install: (payload: PluginActionPayload) =>
+    api.post<{ ok: true; message: string }>('/api/plugins/install', payload, {
+      timeout: 120_000,
+    }),
+
+  refreshMarketplace: (name: string) =>
+    api.post<{ ok: true; message: string }>(
+      '/api/plugins/marketplace/refresh',
+      { name },
+      { timeout: 120_000 },
+    ),
 }
