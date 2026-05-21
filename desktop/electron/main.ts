@@ -25,13 +25,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 function injectBundledToolsPath(): void {
   if (!app.isPackaged) return
   const rp = process.resourcesPath
+
+  // Put user bin dir first so `ambi` (installed by the server at startup)
+  // is discoverable in the built-in terminal without a restart.
+  const userBin = path.join(app.getPath('home'), '.local', 'bin')
+
   const entries = [
+    userBin,
     path.join(rp, 'MinGit', 'cmd'),
     path.join(rp, 'MinGit', 'bin'),
     path.join(rp, 'python'),
   ]
   process.env.PATH = entries.join(path.delimiter) + path.delimiter + (process.env.PATH || '')
-  console.log('[main] Injected bundled Git/Python into PATH')
+  console.log('[main] Injected bundled Git/Python + user bin into PATH')
 }
 
 // --- Load .env ---

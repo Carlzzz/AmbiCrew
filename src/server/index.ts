@@ -261,14 +261,23 @@ export function startServer(port = PORT, host = HOST) {
   // Start the cron scheduler to execute scheduled tasks
   cronScheduler.start()
 
-  void ensureDesktopCliLauncherInstalled().catch((error) => {
-    console.error(
-      '[desktop-cli-launcher] failed to install bundled launcher:',
-      error instanceof Error ? error.message : error,
-    )
-  })
+  // Install the bundled CLI launcher (ambi) into ~/.local/bin BEFORE
+  // signaling readiness. Otherwise the Electron main process opens the
+  // window and the user may open a terminal before the binary is copied.
+  const signalReady = () => {
+    console.log(`[Server] Claude Code API server running at http://${host}:${port}`)
+  }
 
-  console.log(`[Server] Claude Code API server running at http://${host}:${port}`)
+  ensureDesktopCliLauncherInstalled()
+    .then(() => signalReady())
+    .catch((error) => {
+      console.error(
+        '[desktop-cli-launcher] failed to install bundled launcher:',
+        error instanceof Error ? error.message : error,
+      )
+      signalReady()
+    })
+
   return server
 }
 
