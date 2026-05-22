@@ -94,6 +94,24 @@ export function PluginList() {
 
   return (
     <div className="flex flex-col gap-6 min-w-0">
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="min-h-9 w-full sm:w-auto"
+          onClick={() => {
+            const next = !showBrowse
+            setShowBrowse(next)
+            if (next && marketplacePlugins.length === 0) {
+              void fetchMarketplacePlugins()
+            }
+          }}
+        >
+          <span className="material-symbols-outlined text-[16px]">storefront</span>
+          {t('settings.plugins.browseMarketplace')}
+        </Button>
+      </div>
+
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] overflow-hidden">
         <div className="grid gap-4 px-5 py-5 min-w-0 2xl:grid-cols-[minmax(0,1.45fr)_minmax(420px,0.95fr)] 2xl:items-end">
           <div className="min-w-0">
@@ -163,21 +181,6 @@ export function PluginList() {
               >
                 <span className="material-symbols-outlined text-[16px]">sync</span>
                 {t('settings.plugins.apply')}
-              </Button>
-              <Button
-                variant={showBrowse ? 'secondary' : 'secondary'}
-                size="sm"
-                className="min-h-9 flex-1 sm:flex-none"
-                onClick={() => {
-                  const next = !showBrowse
-                  setShowBrowse(next)
-                  if (next && marketplacePlugins.length === 0) {
-                    void fetchMarketplacePlugins()
-                  }
-                }}
-              >
-                <span className="material-symbols-outlined text-[16px]">storefront</span>
-                {t('settings.plugins.browseMarketplace')}
               </Button>
             </div>
           </div>
