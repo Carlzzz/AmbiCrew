@@ -92,22 +92,6 @@ export function PluginList() {
     return <div className="text-sm text-[var(--color-error)] py-4">{error}</div>
   }
 
-  if (plugins.length === 0) {
-    return (
-      <div className="text-center py-12 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-6">
-        <span className="material-symbols-outlined text-[40px] text-[var(--color-text-tertiary)] mb-2 block">
-          extension
-        </span>
-        <p className="text-sm text-[var(--color-text-tertiary)]">
-          {t('settings.plugins.empty')}
-        </p>
-        <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-          {t('settings.plugins.emptyHint')}
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-6 min-w-0">
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] overflow-hidden">
@@ -266,9 +250,25 @@ export function PluginList() {
         </section>
       )}
 
-      {renderGroup('attention', grouped.attention, fetchPluginDetail, currentWorkDir, t)}
-      {renderGroup('enabled', grouped.enabled, fetchPluginDetail, currentWorkDir, t)}
-      {renderGroup('disabled', grouped.disabled, fetchPluginDetail, currentWorkDir, t)}
+      {plugins.length === 0 ? (
+        <div className="text-center py-12 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-6">
+          <span className="material-symbols-outlined text-[40px] text-[var(--color-text-tertiary)] mb-2 block">
+            extension
+          </span>
+          <p className="text-sm text-[var(--color-text-tertiary)]">
+            {t('settings.plugins.empty')}
+          </p>
+          <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+            {t('settings.plugins.emptyHint')}
+          </p>
+        </div>
+      ) : (
+        <>
+          {renderGroup('attention', grouped.attention, fetchPluginDetail, currentWorkDir, t)}
+          {renderGroup('enabled', grouped.enabled, fetchPluginDetail, currentWorkDir, t)}
+          {renderGroup('disabled', grouped.disabled, fetchPluginDetail, currentWorkDir, t)}
+        </>
+      )}
     </div>
   )
 }
