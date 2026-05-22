@@ -27,6 +27,7 @@ type SettingsStore = {
   theme: ThemeMode
   skipWebFetchPreflight: boolean
   desktopNotificationsEnabled: boolean
+  autoDreamEnabled: boolean
   webSearch: WebSearchSettings
   isLoading: boolean
   error: string | null
@@ -40,6 +41,7 @@ type SettingsStore = {
   setTheme: (theme: ThemeMode) => Promise<void>
   setSkipWebFetchPreflight: (enabled: boolean) => Promise<void>
   setDesktopNotificationsEnabled: (enabled: boolean) => Promise<void>
+  setAutoDreamEnabled: (enabled: boolean) => Promise<void>
   setWebSearch: (settings: WebSearchSettings) => Promise<void>
 }
 
@@ -54,6 +56,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   theme: useUIStore.getState().theme,
   skipWebFetchPreflight: true,
   desktopNotificationsEnabled: false,
+  autoDreamEnabled: true,
   webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
   isLoading: false,
   error: null,
@@ -80,6 +83,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         theme,
         skipWebFetchPreflight: userSettings.skipWebFetchPreflight !== false,
         desktopNotificationsEnabled: userSettings.desktopNotificationsEnabled === true,
+        autoDreamEnabled: userSettings.autoDreamEnabled !== false,
         webSearch: normalizeWebSearchSettings(userSettings.webSearch),
         isLoading: false,
         error: null,
@@ -173,6 +177,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       if (get().desktopNotificationsEnabled === enabled) {
         set({ desktopNotificationsEnabled: prev })
       }
+    }
+  },
+
+  setAutoDreamEnabled: async (enabled) => {
+    const prev = get().autoDreamEnabled
+    set({ autoDreamEnabled: enabled })
+    try {
+      await settingsApi.updateUser({ autoDreamEnabled: enabled })
+    } catch {
+      set({ autoDreamEnabled: prev })
     }
   },
 

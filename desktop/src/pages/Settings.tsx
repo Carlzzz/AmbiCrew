@@ -160,6 +160,8 @@ function GeneralSettings() {
     setEffort,
     thinkingEnabled,
     setThinkingEnabled,
+    autoDreamEnabled,
+    setAutoDreamEnabled,
     locale,
     setLocale,
     theme,
@@ -353,6 +355,28 @@ function GeneralSettings() {
             </div>
             <div className="text-xs text-[var(--color-text-tertiary)] mt-1 leading-5">
               {t('settings.general.thinkingHint')}
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">{t('settings.general.autoDreamTitle')}</h2>
+        <p className="text-sm text-[var(--color-text-tertiary)] mb-3">{t('settings.general.autoDreamDescription')}</p>
+        <label className="flex items-start gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-4 py-3 cursor-pointer hover:border-[var(--color-border-focus)] transition-colors">
+          <input
+            type="checkbox"
+            aria-label={t('settings.general.autoDreamEnabled')}
+            checked={autoDreamEnabled}
+            onChange={(e) => void setAutoDreamEnabled(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-brand)] focus:ring-[var(--color-brand)]"
+          />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-[var(--color-text-primary)]">
+              {t('settings.general.autoDreamEnabled')}
+            </div>
+            <div className="text-xs text-[var(--color-text-tertiary)] mt-1 leading-5">
+              {t('settings.general.autoDreamHint')}
             </div>
           </div>
         </label>

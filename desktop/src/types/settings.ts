@@ -28,6 +28,7 @@ export type UserSettings = {
   theme?: ThemeMode
   skipWebFetchPreflight?: boolean
   desktopNotificationsEnabled?: boolean
+  autoDreamEnabled?: boolean
   webSearch?: WebSearchSettings
   [key: string]: unknown
 }
