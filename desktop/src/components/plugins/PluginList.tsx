@@ -80,18 +80,6 @@ export function PluginList() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin w-5 h-5 border-2 border-[var(--color-brand)] border-t-transparent rounded-full" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return <div className="text-sm text-[var(--color-error)] py-4">{error}</div>
-  }
-
   return (
     <div className="flex flex-col gap-6 min-w-0">
       <div className="flex justify-end">
@@ -112,6 +100,35 @@ export function PluginList() {
         </Button>
       </div>
 
+      {showBrowse && (
+        <MarketplaceBrowser
+          marketplacePlugins={marketplacePlugins}
+          marketplaceNames={marketplaceNames}
+          isLoading={isMarketplaceLoading}
+          isInstalling={isInstalling}
+          selectedMarketplace={selectedMarketplace}
+          onSelectMarketplace={(name) => {
+            setSelectedMarketplace(name)
+            void fetchMarketplacePlugins(name || undefined)
+          }}
+          onRefresh={(name) => void refreshMarketplace(name)}
+          onInstall={(pluginId, scope) => {
+            void installPlugin(pluginId, scope, currentWorkDir)
+              .then((message) => addToast({ type: 'success', message }))
+              .catch((err) => addToast({ type: 'error', message: err instanceof Error ? err.message : String(err) }))
+          }}
+          t={t}
+        />
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin w-5 h-5 border-2 border-[var(--color-brand)] border-t-transparent rounded-full" />
+        </div>
+      ) : error ? (
+        <div className="text-sm text-[var(--color-error)] py-4">{error}</div>
+      ) : (
+      <>
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] overflow-hidden">
         <div className="grid gap-4 px-5 py-5 min-w-0 2xl:grid-cols-[minmax(0,1.45fr)_minmax(420px,0.95fr)] 2xl:items-end">
           <div className="min-w-0">
@@ -187,27 +204,6 @@ export function PluginList() {
         </div>
       </section>
 
-      {showBrowse && (
-        <MarketplaceBrowser
-          marketplacePlugins={marketplacePlugins}
-          marketplaceNames={marketplaceNames}
-          isLoading={isMarketplaceLoading}
-          isInstalling={isInstalling}
-          selectedMarketplace={selectedMarketplace}
-          onSelectMarketplace={(name) => {
-            setSelectedMarketplace(name)
-            void fetchMarketplacePlugins(name || undefined)
-          }}
-          onRefresh={(name) => void refreshMarketplace(name)}
-          onInstall={(pluginId, scope) => {
-            void installPlugin(pluginId, scope, currentWorkDir)
-              .then((message) => addToast({ type: 'success', message }))
-              .catch((err) => addToast({ type: 'error', message: err instanceof Error ? err.message : String(err) }))
-          }}
-          t={t}
-        />
-      )}
-
       {marketplaces.length > 0 && (
         <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
           <div className="px-5 py-4 border-b border-[var(--color-border)] bg-[var(--color-surface-container-low)]">
@@ -271,6 +267,8 @@ export function PluginList() {
           {renderGroup('enabled', grouped.enabled, fetchPluginDetail, currentWorkDir, t)}
           {renderGroup('disabled', grouped.disabled, fetchPluginDetail, currentWorkDir, t)}
         </>
+      )}
+      </>
       )}
     </div>
   )
