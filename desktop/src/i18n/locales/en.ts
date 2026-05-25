@@ -35,6 +35,9 @@ export const en = {
   'sidebar.timeGroup.older': 'Older',
   'sidebar.collapse': 'Collapse sidebar',
   'sidebar.expand': 'Expand sidebar',
+  'sidebar.pinned': 'Pinned',
+  'sidebar.pin': 'Pin',
+  'sidebar.unpin': 'Unpin',
 
   // ─── Auth ────────────────────────────────────────────
   'auth.pleaseLogin': 'Please login to CrewCentral first',

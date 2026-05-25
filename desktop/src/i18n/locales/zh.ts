@@ -37,6 +37,9 @@ export const zh: Record<TranslationKey, string> = {
   'sidebar.timeGroup.older': '更早',
   'sidebar.collapse': '折叠侧边栏',
   'sidebar.expand': '展开侧边栏',
+  'sidebar.pinned': '已固定',
+  'sidebar.pin': '固定',
+  'sidebar.unpin': '取消固定',
 
   // ─── Auth ────────────────────────────────────────────
   'auth.pleaseLogin': '请先登录 CrewCentral',

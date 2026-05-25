@@ -10,9 +10,9 @@ import { useChatStore } from '../../stores/chatStore'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
-const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform)
-
 type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'older'
+
+const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform)
 
 const TIME_GROUP_ORDER: TimeGroup[] = ['today', 'yesterday', 'last7days', 'last30days', 'older']
 
@@ -24,6 +24,9 @@ export function Sidebar() {
   const fetchSessions = useSessionStore((s) => s.fetchSessions)
   const deleteSession = useSessionStore((s) => s.deleteSession)
   const renameSession = useSessionStore((s) => s.renameSession)
+  const pinnedSessionIds = useSessionStore((s) => s.pinnedSessionIds)
+  const pinSession = useSessionStore((s) => s.pinSession)
+  const unpinSession = useSessionStore((s) => s.unpinSession)
   const addToast = useUIStore((s) => s.addToast)
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
@@ -68,7 +71,21 @@ export function Sidebar() {
     return result
   }, [sessions, selectedProjects, searchQuery])
 
-  const timeGroups = useMemo(() => groupByTime(filteredSessions), [filteredSessions])
+  const pinnedSet = useMemo(() => new Set(pinnedSessionIds), [pinnedSessionIds])
+
+  const pinnedSessions = useMemo(() => {
+    const sessionMap = new Map(filteredSessions.map((s) => [s.id, s]))
+    return pinnedSessionIds
+      .filter((id) => sessionMap.has(id))
+      .map((id) => sessionMap.get(id)!)
+  }, [filteredSessions, pinnedSessionIds])
+
+  const unpinnedSessions = useMemo(
+    () => filteredSessions.filter((s) => !pinnedSet.has(s.id)),
+    [filteredSessions, pinnedSet],
+  )
+
+  const timeGroups = useMemo(() => groupByTime(unpinnedSessions), [unpinnedSessions])
   const showInitialLoading = isLoading && sessions.length === 0
 
   const handleContextMenu = useCallback((e: React.MouseEvent, id: string) => {
@@ -111,6 +128,15 @@ export function Sidebar() {
   }, [])
 
   const t = useTranslation()
+
+  const handleTogglePin = useCallback((id: string) => {
+    setContextMenu(null)
+    if (pinnedSet.has(id)) {
+      unpinSession(id)
+    } else {
+      pinSession(id)
+    }
+  }, [pinnedSet, pinSession, unpinSession])
 
   const timeGroupLabels: Record<TimeGroup, string> = {
     today: t('sidebar.timeGroup.today'),
@@ -271,6 +297,28 @@ export function Sidebar() {
                   {searchQuery ? t('sidebar.noMatching') : t('sidebar.noSessions')}
                 </div>
               )}
+              {pinnedSessions.length > 0 && (
+                <div className="mb-1">
+                  <div className="px-2 pb-1 pt-4 text-[11px] font-semibold tracking-wide text-[var(--color-text-tertiary)]">
+                    {t('sidebar.pinned')}
+                  </div>
+                  {pinnedSessions.map((session) => (
+                    <SessionItem
+                      key={session.id}
+                      session={session}
+                      activeTabId={activeTabId}
+                      renamingId={renamingId}
+                      renameValue={renameValue}
+                      setRenameValue={setRenameValue}
+                      handleFinishRename={handleFinishRename}
+                      setRenamingId={setRenamingId}
+                      handleContextMenu={handleContextMenu}
+                      isPinned
+                      t={t}
+                    />
+                  ))}
+                </div>
+              )}
               {TIME_GROUP_ORDER.map((group) => {
                 const items = timeGroups.get(group)
                 if (!items || items.length === 0) return null
@@ -280,61 +328,19 @@ export function Sidebar() {
                       {timeGroupLabels[group]}
                     </div>
                     {items.map((session) => (
-                      <div key={session.id} className="relative">
-                        {renamingId === session.id ? (
-                          <input
-                            autoFocus
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onBlur={handleFinishRename}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleFinishRename()
-                              if (e.key === 'Escape') {
-                                setRenamingId(null)
-                                setRenameValue('')
-                              }
-                            }}
-                            className="ml-1 w-full rounded-[var(--radius-md)] border border-[var(--color-border-focus)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none"
-                          />
-                        ) : (
-                          <button
-                            onClick={() => {
-                              useTabStore.getState().openTab(session.id, session.title)
-                              useChatStore.getState().connectToSession(session.id)
-                            }}
-                            onContextMenu={(e) => handleContextMenu(e, session.id)}
-                            className={`
-                              group w-full rounded-[12px] px-3 py-2 text-left text-sm transition-colors duration-200
-                              ${session.id === activeTabId
-                                ? 'bg-[var(--color-sidebar-item-active)] text-[var(--color-text-primary)]'
-                                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-sidebar-item-hover)]'
-                              }
-                            `}
-                          >
-                            <span className="flex items-center gap-2.5">
-                              <span
-                                className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: session.id === activeTabId ? 'var(--color-brand)' : 'var(--color-text-tertiary)',
-                                  opacity: session.id === activeTabId ? 1 : 0.5,
-                                }}
-                              />
-                              <span className="flex-1 truncate font-medium tracking-[-0.01em]">{session.title || 'Untitled'}</span>
-                              {!session.workDirExists && (
-                                <span
-                                  className="flex-shrink-0 text-[10px] text-[var(--color-warning)]"
-                                  title={session.workDir ?? ''}
-                                >
-                                  {t('sidebar.missingDir')}
-                                </span>
-                              )}
-                              <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100">
-                                {formatRelativeTime(session.modifiedAt)}
-                              </span>
-                            </span>
-                          </button>
-                        )}
-                      </div>
+                      <SessionItem
+                        key={session.id}
+                        session={session}
+                        activeTabId={activeTabId}
+                        renamingId={renamingId}
+                        renameValue={renameValue}
+                        setRenameValue={setRenameValue}
+                        handleFinishRename={handleFinishRename}
+                        setRenamingId={setRenamingId}
+                        handleContextMenu={handleContextMenu}
+                        isPinned={false}
+                        t={t}
+                      />
                     ))}
                   </div>
                 )
@@ -365,6 +371,12 @@ export function Sidebar() {
           className="fixed z-50 min-w-[140px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1"
           style={{ left: contextMenu.x, top: contextMenu.y, boxShadow: 'var(--shadow-dropdown)' }}
         >
+          <button
+            onClick={() => handleTogglePin(contextMenu.id)}
+            className="w-full px-3 py-1.5 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+          >
+            {pinnedSet.has(contextMenu.id) ? t('sidebar.unpin') : t('sidebar.pin')}
+          </button>
           <button
             onClick={() => {
               const session = sessions.find((s) => s.id === contextMenu.id)
@@ -470,6 +482,107 @@ function formatRelativeTime(dateStr: string): string {
   const day = Math.floor(hr / 24)
   if (day < 30) return `${day}d`
   return `${Math.floor(day / 30)}mo`
+}
+
+function SessionItem({
+  session,
+  activeTabId,
+  renamingId,
+  renameValue,
+  setRenameValue,
+  handleFinishRename,
+  setRenamingId,
+  handleContextMenu,
+  isPinned,
+  t,
+}: {
+  session: SessionListItem
+  activeTabId: string | null
+  renamingId: string | null
+  renameValue: string
+  setRenameValue: (v: string) => void
+  handleFinishRename: () => void
+  setRenamingId: (id: string | null) => void
+  handleContextMenu: (e: React.MouseEvent, id: string) => void
+  isPinned: boolean
+  t: (key: import('../../i18n').TranslationKey, params?: Record<string, string | number>) => string
+}) {
+  return (
+    <div className="relative">
+      {renamingId === session.id ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onBlur={handleFinishRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleFinishRename()
+            if (e.key === 'Escape') {
+              setRenamingId(null)
+              setRenameValue('')
+            }
+          }}
+          className="ml-1 w-full rounded-[var(--radius-md)] border border-[var(--color-border-focus)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none"
+        />
+      ) : (
+        <button
+          onClick={() => {
+            useTabStore.getState().openTab(session.id, session.title)
+            useChatStore.getState().connectToSession(session.id)
+          }}
+          onContextMenu={(e) => handleContextMenu(e, session.id)}
+          className={`
+            group w-full rounded-[12px] px-3 py-2 text-left text-sm transition-colors duration-200
+            ${session.id === activeTabId
+              ? 'bg-[var(--color-sidebar-item-active)] text-[var(--color-text-primary)]'
+              : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-sidebar-item-hover)]'
+            }
+          `}
+        >
+          <span className="flex items-center gap-2.5">
+            {isPinned ? (
+              <PinIcon />
+            ) : (
+              <span
+                className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                style={{
+                  backgroundColor: session.id === activeTabId ? 'var(--color-brand)' : 'var(--color-text-tertiary)',
+                  opacity: session.id === activeTabId ? 1 : 0.5,
+                }}
+              />
+            )}
+            <span className="flex-1 truncate font-medium tracking-[-0.01em]">{session.title || 'Untitled'}</span>
+            {!session.workDirExists && (
+              <span
+                className="flex-shrink-0 text-[10px] text-[var(--color-warning)]"
+                title={session.workDir ?? ''}
+              >
+                {t('sidebar.missingDir')}
+              </span>
+            )}
+            <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100">
+              {formatRelativeTime(session.modifiedAt)}
+            </span>
+          </span>
+        </button>
+      )}
+    </div>
+  )
+}
+
+function PinIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="flex-shrink-0 text-[var(--color-text-tertiary)]"
+      aria-hidden="true"
+    >
+      <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
+    </svg>
+  )
 }
 
 function PlusIcon() {

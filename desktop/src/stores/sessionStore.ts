@@ -3,6 +3,25 @@ import { sessionsApi } from '../api/sessions'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
 import type { SessionListItem } from '../types/session'
 
+const PINNED_STORAGE_KEY = 'ambi-pinned-sessions'
+
+function loadPinnedIds(): string[] {
+  try {
+    const stored = localStorage.getItem(PINNED_STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string')
+    }
+  } catch { /* localStorage unavailable or malformed */ }
+  return []
+}
+
+function savePinnedIds(ids: string[]): void {
+  try {
+    localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(ids))
+  } catch { /* localStorage unavailable */ }
+}
+
 type SessionStore = {
   sessions: SessionListItem[]
   activeSessionId: string | null
@@ -10,6 +29,7 @@ type SessionStore = {
   error: string | null
   selectedProjects: string[]
   availableProjects: string[]
+  pinnedSessionIds: string[]
 
   fetchSessions: (project?: string) => Promise<void>
   createSession: (workDir?: string) => Promise<string>
@@ -18,6 +38,9 @@ type SessionStore = {
   updateSessionTitle: (id: string, title: string) => void
   setActiveSession: (id: string | null) => void
   setSelectedProjects: (projects: string[]) => void
+  pinSession: (id: string) => void
+  unpinSession: (id: string) => void
+  isSessionPinned: (id: string) => boolean
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -27,6 +50,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   error: null,
   selectedProjects: [],
   availableProjects: [],
+  pinnedSessionIds: loadPinnedIds(),
 
   fetchSessions: async (project?: string) => {
     set({ isLoading: true, error: null })
@@ -76,10 +100,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   deleteSession: async (id: string) => {
     await sessionsApi.delete(id)
     useSessionRuntimeStore.getState().clearSelection(id)
-    set((s) => ({
-      sessions: s.sessions.filter((session) => session.id !== id),
-      activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
-    }))
+    set((s) => {
+      const newPinned = s.pinnedSessionIds.filter((pid) => pid !== id)
+      if (newPinned.length !== s.pinnedSessionIds.length) {
+        savePinnedIds(newPinned)
+      }
+      return {
+        sessions: s.sessions.filter((session) => session.id !== id),
+        activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
+        pinnedSessionIds: newPinned,
+      }
+    })
   },
 
   renameSession: async (id: string, title: string) => {
@@ -101,4 +132,23 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   setActiveSession: (id) => set({ activeSessionId: id }),
   setSelectedProjects: (projects) => set({ selectedProjects: projects }),
+
+  pinSession: (id) => {
+    set((s) => {
+      if (s.pinnedSessionIds.includes(id)) return s
+      const newPinned = [id, ...s.pinnedSessionIds]
+      savePinnedIds(newPinned)
+      return { pinnedSessionIds: newPinned }
+    })
+  },
+
+  unpinSession: (id) => {
+    set((s) => {
+      const newPinned = s.pinnedSessionIds.filter((pid) => pid !== id)
+      savePinnedIds(newPinned)
+      return { pinnedSessionIds: newPinned }
+    })
+  },
+
+  isSessionPinned: (id) => get().pinnedSessionIds.includes(id),
 }))

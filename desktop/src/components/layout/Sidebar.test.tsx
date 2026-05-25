@@ -169,6 +169,58 @@ describe('Sidebar', () => {
     expect(useTabStore.getState().activeTabId).toBeNull()
   })
 
+  it('can pin and unpin sessions via context menu', () => {
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: 'session-1',
+          title: 'Session 1',
+          createdAt: new Date().toISOString(),
+          modifiedAt: new Date().toISOString(),
+          messageCount: 1,
+          projectPath: '/workspace/project',
+          workDir: '/workspace/project',
+          workDirExists: true,
+        },
+        {
+          id: 'session-2',
+          title: 'Session 2',
+          createdAt: new Date(Date.now() - 10000).toISOString(),
+          modifiedAt: new Date(Date.now() - 10000).toISOString(),
+          messageCount: 1,
+          projectPath: '/workspace/project',
+          workDir: '/workspace/project',
+          workDirExists: true,
+        },
+      ],
+      pinnedSessionIds: [],
+    })
+
+    render(<Sidebar />)
+
+    // Verify time group renders
+    expect(screen.getByText('Today')).toBeInTheDocument()
+    expect(screen.queryByText('Pinned')).not.toBeInTheDocument()
+
+    // Pin Session 2
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Session 2/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }))
+
+    // Store state should update
+    expect(useSessionStore.getState().pinnedSessionIds).toEqual(['session-2'])
+
+    // Re-render happens via Zustand, Pinned section should appear
+    expect(screen.getByText('Pinned')).toBeInTheDocument()
+    
+    // Unpin Session 2
+    fireEvent.contextMenu(screen.getAllByRole('button', { name: /Session 2/ })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: 'Unpin' }))
+
+    // Store state should update
+    expect(useSessionStore.getState().pinnedSessionIds).toEqual([])
+    expect(screen.queryByText('Pinned')).not.toBeInTheDocument()
+  })
+
   it('collapses into an icon rail and expands back', async () => {
     render(<Sidebar />)
 
