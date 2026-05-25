@@ -1274,6 +1274,7 @@ describe('Sessions API', () => {
       path: '',
     })
     expect(treeBody.entries).toEqual([
+      { name: '.git', path: '.git', isDirectory: true },
       { name: 'src', path: 'src', isDirectory: true },
       { name: 'tracked.txt', path: 'tracked.txt', isDirectory: false },
     ])

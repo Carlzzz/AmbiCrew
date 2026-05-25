@@ -61,6 +61,7 @@ export const zh: Record<TranslationKey, string> = {
   'workspace.refresh': '刷新工作区',
   'workspace.closePanel': '关闭工作区面板',
   'workspace.resizePanel': '调整工作区宽度',
+  'workspace.resizeTreePanel': '调整文件树面板宽度',
   'workspace.closeTab': '关闭标签',
   'workspace.preview': '预览',
   'workspace.previewEmpty': '选择一个文件进行预览。',

@@ -59,6 +59,7 @@ export const en = {
   'workspace.refresh': 'Refresh workspace',
   'workspace.closePanel': 'Close workspace panel',
   'workspace.resizePanel': 'Resize workspace panel',
+  'workspace.resizeTreePanel': 'Resize file tree panel',
   'workspace.closeTab': 'Close tab',
   'workspace.preview': 'Preview',
   'workspace.previewEmpty': 'Select a file to preview.',

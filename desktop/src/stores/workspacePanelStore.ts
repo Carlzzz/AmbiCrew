@@ -11,6 +11,10 @@ export const WORKSPACE_PANEL_DEFAULT_WIDTH = 860
 export const WORKSPACE_PANEL_MIN_WIDTH = 640
 export const WORKSPACE_PANEL_MAX_WIDTH = 1120
 
+export const WORKSPACE_TREE_PANEL_DEFAULT_WIDTH = 260
+export const WORKSPACE_TREE_PANEL_MIN_WIDTH = 180
+export const WORKSPACE_TREE_PANEL_MAX_WIDTH = 480
+
 export type WorkspacePanelView = 'changed' | 'all'
 export type WorkspacePreviewKind = 'file' | 'diff'
 export type WorkspacePreviewCloseScope = 'current' | 'others' | 'left' | 'right' | 'all'
@@ -56,6 +60,7 @@ type WorkspacePanelErrorState = {
 type WorkspacePanelStore = {
   panelBySession: Record<string, WorkspacePanelSessionState | undefined>
   width: number
+  treePanelWidth: number
   statusBySession: Record<string, WorkspaceStatusResult | undefined>
   expandedPathsBySession: Record<string, string[] | undefined>
   treeBySessionPath: Record<string, Record<string, WorkspaceTreeResult | undefined> | undefined>
@@ -70,6 +75,7 @@ type WorkspacePanelStore = {
   closePanel: (sessionId: string) => void
   togglePanel: (sessionId: string) => void
   setWidth: (width: number) => void
+  setTreePanelWidth: (width: number) => void
   setActiveView: (sessionId: string, view: WorkspacePanelView) => void
   loadStatus: (sessionId: string) => Promise<void>
   loadTree: (sessionId: string, path?: string) => Promise<void>
@@ -108,6 +114,12 @@ export function clampWorkspacePanelWidth(width: number) {
   if (!Number.isFinite(width)) return WORKSPACE_PANEL_DEFAULT_WIDTH
   const rounded = Math.round(width)
   return Math.min(WORKSPACE_PANEL_MAX_WIDTH, Math.max(WORKSPACE_PANEL_MIN_WIDTH, rounded))
+}
+
+function clampTreePanelWidth(width: number) {
+  if (!Number.isFinite(width)) return WORKSPACE_TREE_PANEL_DEFAULT_WIDTH
+  const rounded = Math.round(width)
+  return Math.min(WORKSPACE_TREE_PANEL_MAX_WIDTH, Math.max(WORKSPACE_TREE_PANEL_MIN_WIDTH, rounded))
 }
 
 function getSessionPanelState(
@@ -183,6 +195,7 @@ function upsertPreviewTab(
 export const useWorkspacePanelStore = create<WorkspacePanelStore>((set, get) => ({
   panelBySession: {},
   width: WORKSPACE_PANEL_DEFAULT_WIDTH,
+  treePanelWidth: WORKSPACE_TREE_PANEL_DEFAULT_WIDTH,
   statusBySession: {},
   expandedPathsBySession: {},
   treeBySessionPath: {},
@@ -239,6 +252,8 @@ export const useWorkspacePanelStore = create<WorkspacePanelStore>((set, get) => 
     }),
 
   setWidth: (width) => set({ width: clampWorkspacePanelWidth(width) }),
+
+  setTreePanelWidth: (width) => set({ treePanelWidth: clampTreePanelWidth(width) }),
 
   setActiveView: (sessionId, view) =>
     set((state) => ({

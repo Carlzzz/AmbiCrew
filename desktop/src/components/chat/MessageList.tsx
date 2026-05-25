@@ -300,10 +300,22 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
       lastSessionIdRef.current = resolvedSessionId
     }
 
+    // Force auto-scroll when a permission dialog appears so the user
+    // never misses a confirmation prompt stuck below the fold.
+    if (chatState === 'permission_pending') {
+      shouldAutoScrollRef.current = true
+    }
+
     if (!shouldAutoScrollRef.current) return
 
-    bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' })
-  }, [messages.length, resolvedSessionId, streamingText])
+    // Use instant scroll during active streaming to avoid layout thrashing
+    // from continuous smooth-scroll animations. Use smooth for final positions.
+    const behavior =
+      chatState === 'streaming' || chatState === 'tool_executing'
+        ? ('auto' as const)
+        : ('smooth' as const)
+    bottomRef.current?.scrollIntoView?.({ behavior })
+  }, [messages.length, resolvedSessionId, streamingText, chatState])
 
   const { toolResultMap, childToolCallsByParent, renderItems } = useMemo(
     () => buildRenderModel(messages),

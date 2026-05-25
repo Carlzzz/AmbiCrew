@@ -10,6 +10,9 @@ import { useTranslation } from '../../i18n'
 import { useShallow } from 'zustand/react/shallow'
 import {
   useWorkspacePanelStore,
+  WORKSPACE_TREE_PANEL_DEFAULT_WIDTH,
+  WORKSPACE_TREE_PANEL_MIN_WIDTH,
+  WORKSPACE_TREE_PANEL_MAX_WIDTH,
   type WorkspacePreviewCloseScope,
   type WorkspacePreviewKind,
   type WorkspacePreviewTab,
@@ -671,6 +674,81 @@ function TreeNode({
   )
 }
 
+const TREE_PANEL_RESIZE_STEP = 32
+
+function TreePanelResizeHandle({
+  width,
+  onWidthChange,
+}: {
+  width: number
+  onWidthChange: (width: number) => void
+}) {
+  const t = useTranslation()
+  const [dragState, setDragState] = useState<{ startX: number; startWidth: number } | null>(null)
+  const dragStateRef = useRef(dragState)
+
+  useEffect(() => {
+    dragStateRef.current = dragState
+  }, [dragState])
+
+  useEffect(() => {
+    if (!dragState) return
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const current = dragStateRef.current
+      if (!current) return
+      onWidthChange(current.startWidth + current.startX - event.clientX)
+    }
+
+    const handlePointerUp = () => {
+      setDragState(null)
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+
+    return () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [dragState, onWidthChange])
+
+  return (
+    <div
+      role="separator"
+      aria-label={t('workspace.resizeTreePanel')}
+      aria-orientation="vertical"
+      aria-valuenow={width}
+      tabIndex={0}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return
+        event.preventDefault()
+        setDragState({ startX: event.clientX, startWidth: width })
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault()
+          onWidthChange(width + TREE_PANEL_RESIZE_STEP)
+        }
+        if (event.key === 'ArrowRight') {
+          event.preventDefault()
+          onWidthChange(width - TREE_PANEL_RESIZE_STEP)
+        }
+      }}
+      onDoubleClick={() => onWidthChange(WORKSPACE_TREE_PANEL_DEFAULT_WIDTH)}
+      className="group relative z-10 flex w-2 shrink-0 cursor-col-resize items-stretch justify-center bg-[var(--color-surface)] outline-none focus-visible:bg-[var(--color-surface-container)]"
+    >
+      <div className="my-3 w-px rounded-full bg-[var(--color-border)] transition-colors group-hover:bg-[var(--color-border-focus)] group-focus-visible:bg-[var(--color-border-focus)]" />
+    </div>
+  )
+}
+
 export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
   const t = useTranslation()
   const [filterQuery, setFilterQuery] = useState('')
@@ -678,6 +756,8 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
   const [previewTabContextMenu, setPreviewTabContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null)
   const [fileContextMenu, setFileContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
   const width = useWorkspacePanelStore((state) => state.width)
+  const treePanelWidth = useWorkspacePanelStore((state) => state.treePanelWidth)
+  const setTreePanelWidth = useWorkspacePanelStore((state) => state.setTreePanelWidth)
   const isOpen = useWorkspacePanelStore((state) => state.isPanelOpen(sessionId))
   const activeView = useWorkspacePanelStore((state) => state.getActiveView(sessionId))
   const status = useWorkspacePanelStore((state) => state.statusBySession[sessionId])
@@ -772,11 +852,6 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
   }, [fileContextMenu, previewTabContextMenu])
 
   if (!isOpen) return null
-
-  const hasPreviewTabs = previewTabs.length > 0
-  const panelWidth = hasPreviewTabs ? width : Math.min(width, 520)
-  const panelMaxWidth = hasPreviewTabs ? 'min(62%, calc(100% - 328px))' : '36%'
-  const panelMinWidth = hasPreviewTabs ? 'min(420px, 54%)' : 'min(340px, 40%)'
 
   const handleRefresh = () => {
     void loadStatus(sessionId)
@@ -1130,17 +1205,25 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
     <aside
       data-testid="workspace-panel"
       className="flex h-full shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)]"
-      style={{ width: panelWidth, maxWidth: panelMaxWidth, minWidth: panelMinWidth }}
+      style={{ width, maxWidth: 'min(62%, calc(100% - 328px))', minWidth: 'min(420px, 54%)' }}
     >
-      {hasPreviewTabs && (
-        <div className="flex min-w-0 flex-1 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
-          {renderPreviewTabs()}
-          {renderPreviewContent()}
-        </div>
-      )}
+      <div className="flex min-w-0 flex-1 flex-col bg-[var(--color-surface)]">
+        {renderPreviewTabs()}
+        {renderPreviewContent()}
+      </div>
+
+      <TreePanelResizeHandle
+        width={treePanelWidth}
+        onWidthChange={setTreePanelWidth}
+      />
 
       <div
-        className={`${hasPreviewTabs ? 'basis-[32%] min-w-[220px] max-w-[320px]' : 'w-full'} flex h-full shrink-0 flex-col bg-[var(--color-surface)]`}
+        className="shrink-0 flex h-full flex-col bg-[var(--color-surface)]"
+        style={{
+          width: `${treePanelWidth}px`,
+          minWidth: `${WORKSPACE_TREE_PANEL_MIN_WIDTH}px`,
+          maxWidth: `${WORKSPACE_TREE_PANEL_MAX_WIDTH}px`,
+        }}
       >
         <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2.5">
           <div className="relative min-w-0">

@@ -512,7 +512,6 @@ export class WorkspaceService {
       }
     }
     const visibleEntries = entries
-      .filter((entry) => !entry.name.startsWith('.'))
       .sort((a, b) => {
         if (a.isDirectory() !== b.isDirectory()) {
           return a.isDirectory() ? -1 : 1

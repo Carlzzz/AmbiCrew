@@ -827,7 +827,8 @@ export function useTypeahead({
         if (isPathLikeToken(searchToken)) {
           latestPathTokenRef.current = searchToken;
           const pathSuggestions = await getPathCompletions(searchToken, {
-            maxResults: 10
+            maxResults: 10,
+            includeHidden: true,
           });
           // Discard stale results if a newer query was initiated while waiting
           if (latestPathTokenRef.current !== searchToken) {

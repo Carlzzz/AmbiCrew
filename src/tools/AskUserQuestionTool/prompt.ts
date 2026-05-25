@@ -40,5 +40,10 @@ Usage notes:
 - Use multiSelect: true to allow multiple answers to be selected for a question
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
 
+Critical — every option MUST directly answer the question it belongs to:
+- Each question's options should be tailored specifically to that question. Never reuse the same options across different questions.
+- An option's label and description must both be clearly about what the question asks. If the question is "Which library should we use?" the options should name specific libraries, not generic phrases like "Yes" or "Proceed."
+- When asking multiple questions, each question must have its own distinct set of options — do not copy-paste the same option list.
+
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ${EXIT_PLAN_MODE_TOOL_NAME} for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ${EXIT_PLAN_MODE_TOOL_NAME}. If you need plan approval, use ${EXIT_PLAN_MODE_TOOL_NAME} instead.
 `

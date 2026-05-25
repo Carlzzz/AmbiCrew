@@ -95,9 +95,8 @@ export async function scanDirectory(
     const fs = getFsImplementation()
     const entries = await fs.readdir(dirPath)
 
-    // Filter for directories only, exclude hidden directories
     const directories = entries
-      .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
+      .filter(entry => entry.isDirectory())
       .map(entry => ({
         name: entry.name,
         path: join(dirPath, entry.name),

@@ -126,7 +126,6 @@ async function handleBrowse(url: URL): Promise<Response> {
       const query = searchQuery.toLowerCase()
       const results = entries
         .filter((e) => {
-          if (e.name.startsWith('.')) return false
           if (e.isDirectory()) return e.name.toLowerCase().includes(query)
           if (!includeFiles) return false
           return e.name.toLowerCase().includes(query)
@@ -153,7 +152,6 @@ async function handleBrowse(url: URL): Promise<Response> {
 
     // Browse mode: show all directories (and optionally files)
     const filtered = entries.filter((e) => {
-      if (e.name.startsWith('.')) return false
       if (e.isDirectory()) return true
       return includeFiles
     })

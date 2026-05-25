@@ -61,6 +61,7 @@ type SessionStartOptions = {
   effort?: string
   thinking?: 'enabled' | 'adaptive' | 'disabled'
   providerId?: string | null
+  skipReplayUserMessages?: boolean
 }
 
 export class ConversationStartupError extends Error {
@@ -106,7 +107,7 @@ export class ConversationService {
       // server only sees the completed assistant message at turn end.
       '--include-partial-messages',
       ...(shouldResume ? ['--resume', sessionId] : ['--session-id', sessionId]),
-      '--replay-user-messages',
+      ...(options?.skipReplayUserMessages ? [] : ['--replay-user-messages']),
       ...this.getRuntimeArgs(options),
       ...this.getPermissionArgs(options?.permissionMode, dangerousMode),
     ])
@@ -320,11 +321,12 @@ export class ConversationService {
     content: string,
     attachments?: AttachmentRef[],
   ): boolean {
+    const workDir = this.sessions.get(sessionId)?.workDir || ''
     return this.sendSdkMessage(sessionId, {
       type: 'user',
       message: {
         role: 'user',
-        content: this.buildUserContent(content, sessionId, attachments),
+        content: this.buildUserContent(content, sessionId, workDir, attachments),
       },
       parent_tool_use_id: null,
       session_id: '',
@@ -1267,9 +1269,10 @@ export class ConversationService {
   private buildUserContent(
     content: string,
     sessionId: string,
+    workDir: string,
     attachments?: AttachmentRef[],
   ): Array<Record<string, unknown>> {
-    const prefix = this.materializeAttachments(sessionId, attachments)
+    const prefix = this.materializeAttachments(sessionId, workDir, attachments)
     const trimmed = content.trim()
     const text = prefix
       ? `${prefix}${trimmed || 'Please analyze the attached files.'}`.trim()
@@ -1280,6 +1283,7 @@ export class ConversationService {
 
   private materializeAttachments(
     sessionId: string,
+    workDir: string,
     attachments?: AttachmentRef[],
   ): string {
     if (!attachments || attachments.length === 0) {
@@ -1293,9 +1297,32 @@ export class ConversationService {
     )
     fs.mkdirSync(uploadDir, { recursive: true })
 
+    const resolvedWorkDir = workDir ? path.resolve(workDir) : ''
+
     const savedPaths: string[] = []
     for (const attachment of attachments) {
       if (attachment.path) {
+        const resolvedPath = path.resolve(attachment.path)
+        // Copy files from outside workDir into uploads so the path is stable
+        // across model turns regardless of homedir / USERPROFILE.
+        const isWithinWorkDir =
+          resolvedWorkDir &&
+          (resolvedPath === resolvedWorkDir ||
+            resolvedPath.startsWith(resolvedWorkDir + path.sep))
+        if (!isWithinWorkDir) {
+          try {
+            const stat = fs.statSync(resolvedPath)
+            if (stat.isFile() && stat.size <= 50 * 1024 * 1024) {
+              const baseName = attachment.name || path.basename(resolvedPath)
+              const outPath = path.join(uploadDir, `${crypto.randomUUID()}-${baseName}`)
+              fs.copyFileSync(resolvedPath, outPath)
+              savedPaths.push(outPath)
+              continue
+            }
+          } catch {
+            // If stat or copy fails, fall through to use original path
+          }
+        }
         savedPaths.push(attachment.path)
         continue
       }
