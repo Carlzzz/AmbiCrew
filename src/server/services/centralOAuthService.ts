@@ -94,28 +94,47 @@ export class CentralOAuthService {
       return { loggedIn: false }
     }
     let displayName = getDisplayName() || undefined
-    // If no display_name in token store, try fetching from CrewCentral API
-    if (!displayName) {
-      try {
-        const base = deriveApiBase(this.getLoginUrl())
-        const res = await fetch(`${base}/api/v1/users/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (res.ok) {
-          const json = await res.json() as { rc?: number; data?: Record<string, unknown> }
-          const d = json.data
-          const name = String(d?.display_name ?? d?.displayName ?? d?.email ?? '')
-          if (name) {
-            displayName = name
-            // Persist so subsequent calls skip the API
-            const refreshToken = getRefreshToken()
-            if (refreshToken) {
-              await saveTokens({ access_token: token, refresh_token: refreshToken, display_name: name })
-            }
+    // Validate token by calling CrewCentral API
+    try {
+      const base = deriveApiBase(this.getLoginUrl())
+      const res = await fetch(`${base}/api/v1/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const json = await res.json() as { rc?: number; data?: Record<string, unknown> }
+        const d = json.data
+        const name = String(d?.display_name ?? d?.displayName ?? d?.email ?? '')
+        if (name) {
+          displayName = name
+          const refreshToken = getRefreshToken()
+          if (refreshToken) {
+            await saveTokens({ access_token: token, refresh_token: refreshToken, display_name: name })
           }
         }
-      } catch {
-        // Non-critical
+      } else if (res.status === 401) {
+        // Token expired — try refresh
+        const newToken = await this.refreshToken()
+        if (!newToken) {
+          await clearTokens()
+          return { loggedIn: false }
+        }
+        // Retry with new token
+        const retryRes = await fetch(`${base}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${newToken}` },
+        })
+        if (retryRes.ok) {
+          const json = await retryRes.json() as { rc?: number; data?: Record<string, unknown> }
+          const d = json.data
+          displayName = String(d?.display_name ?? d?.displayName ?? d?.email ?? '') || undefined
+        } else {
+          await clearTokens()
+          return { loggedIn: false }
+        }
+      }
+    } catch {
+      // Network error — use cached displayName if available, otherwise treat as disconnected
+      if (!displayName) {
+        return { loggedIn: false }
       }
     }
     return {
