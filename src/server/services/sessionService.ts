@@ -867,6 +867,7 @@ export class SessionService {
       cacheReadInputTokens: number
       cacheCreationInputTokens: number
     } | null = null
+    let priorOutputTokensSum = 0
 
     for (const entry of entries) {
       const usage = entry.message?.usage
@@ -880,6 +881,9 @@ export class SessionService {
       const promptTokens = inputTokens + cacheReadInputTokens + cacheCreationInputTokens
       if (promptTokens === 0 && outputTokens === 0) continue
 
+      if (latest) {
+        priorOutputTokensSum += latest.outputTokens
+      }
       latest = {
         model,
         inputTokens,
@@ -893,8 +897,11 @@ export class SessionService {
 
     const rawMaxTokens = this.getTranscriptContextWindow(latest.model)
     const promptTokens = latest.inputTokens + latest.cacheReadInputTokens + latest.cacheCreationInputTokens
-    const totalTokens = calculateCurrentContextTokenTotal(promptTokens, {
-      input_tokens: latest.inputTokens,
+    // For providers that report only current-turn input_tokens (not cumulative),
+    // add prior output tokens as they become part of subsequent context.
+    const adjustedPromptTokens = promptTokens + priorOutputTokensSum
+    const totalTokens = calculateCurrentContextTokenTotal(adjustedPromptTokens, {
+      input_tokens: latest.inputTokens + priorOutputTokensSum,
       output_tokens: latest.outputTokens,
       cache_read_input_tokens: latest.cacheReadInputTokens,
       cache_creation_input_tokens: latest.cacheCreationInputTokens,

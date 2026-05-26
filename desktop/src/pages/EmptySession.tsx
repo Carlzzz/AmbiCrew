@@ -755,5 +755,7 @@ export function EmptySession() {
 
 function handleLogin() {
   const store = useCentralOAuthStore.getState()
-  store.login()
+  store.login().then(() => {
+    void useSettingsStore.getState().fetchAll()
+  }).catch(() => {})
 }
