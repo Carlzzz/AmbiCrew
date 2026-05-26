@@ -223,8 +223,11 @@ export function isCentralAuthMode(): boolean {
 export async function getCentralAccessToken(): Promise<string | null> {
   if (!isCentralAuthMode()) return null
   try {
-    const { getAccessToken } = await import('../services/central/token-store.js')
-    return getAccessToken()
+    const { getAccessToken, loadTokens } = await import('../services/central/token-store.js')
+    const token = getAccessToken()
+    if (token) return token
+    const payload = await loadTokens()
+    return payload?.access_token ?? null
   } catch {
     return null
   }

@@ -119,38 +119,66 @@ async function handleBrowse(url: URL): Promise<Response> {
       return json({ error: 'Not a directory', path: resolvedPath }, 400)
     }
 
-    const entries = fs.readdirSync(resolvedPath, { withFileTypes: true })
-
     if (searchQuery) {
-      // Search mode: filter by filename, include both dirs and files
       const query = searchQuery.toLowerCase()
-      const results = entries
-        .filter((e) => {
-          if (e.isDirectory()) return e.name.toLowerCase().includes(query)
-          if (!includeFiles) return false
-          return e.name.toLowerCase().includes(query)
-        })
-        .slice(0, maxResults)
-        .map((e) => ({
-          name: e.name,
-          path: path.join(resolvedPath, e.name),
-          isDirectory: e.isDirectory(),
-        }))
-        .sort((a, b) => {
-          // Directories first, then alphabetically
-          if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
-          return a.name.localeCompare(b.name)
-        })
+      const results: Array<{ name: string; path: string; isDirectory: boolean }> = []
+      const IGNORED_DIRS = new Set(['.git', 'node_modules', '.next', 'dist', 'build', '__pycache__', '.venv', '.cache'])
+      const MAX_DEPTH = 8
+
+      const walk = (dir: string, depth: number) => {
+        if (results.length >= maxResults || depth > MAX_DEPTH) return
+        let entries: fs.Dirent[]
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const e of entries) {
+          if (results.length >= maxResults) return
+          const isDir = e.isDirectory()
+          if (isDir && IGNORED_DIRS.has(e.name)) continue
+          const fullPath = path.join(dir, e.name)
+          if (e.name.toLowerCase().includes(query)) {
+            if (isDir || includeFiles) {
+              results.push({
+                name: path.relative(resolvedPath, fullPath).replace(/\\/g, '/'),
+                path: fullPath,
+                isDirectory: isDir,
+              })
+            }
+          }
+          if (isDir) {
+            walk(fullPath, depth + 1)
+          }
+        }
+      }
+
+      walk(resolvedPath, 0)
+
+      results.sort((a, b) => {
+        // Exact basename matches first
+        const aBase = path.basename(a.path).toLowerCase()
+        const bBase = path.basename(b.path).toLowerCase()
+        const aExact = aBase === query
+        const bExact = bBase === query
+        if (aExact !== bExact) return aExact ? -1 : 1
+        // Shorter paths (shallower) first
+        const aDepth = a.name.split('/').length
+        const bDepth = b.name.split('/').length
+        if (aDepth !== bDepth) return aDepth - bDepth
+        return a.name.localeCompare(b.name)
+      })
 
       return json({
         currentPath: resolvedPath,
         parentPath: path.dirname(resolvedPath),
-        entries: results,
+        entries: results.slice(0, maxResults),
         query: searchQuery,
       })
     }
 
     // Browse mode: show all directories (and optionally files)
+    const entries = fs.readdirSync(resolvedPath, { withFileTypes: true })
     const filtered = entries.filter((e) => {
       if (e.isDirectory()) return true
       return includeFiles

@@ -8,6 +8,7 @@ import type { SessionListItem } from '../../types/session'
 import { useTabStore, SETTINGS_TAB_ID, SCHEDULED_TAB_ID } from '../../stores/tabStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
 type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'older'
@@ -178,6 +179,7 @@ export function Sidebar() {
                 onClick={async () => {
                   const store = useCentralOAuthStore.getState()
                   await store.login()
+                  await useSettingsStore.getState().fetchAll()
                 }}
                 className={`sidebar-copy ${sidebarOpen ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors`}
               >

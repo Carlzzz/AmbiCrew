@@ -776,6 +776,7 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
   const setActiveView = useWorkspacePanelStore((state) => state.setActiveView)
   const loadStatus = useWorkspacePanelStore((state) => state.loadStatus)
   const loadTree = useWorkspacePanelStore((state) => state.loadTree)
+  const clearTreeCache = useWorkspacePanelStore((state) => state.clearTreeCache)
   const toggleTreeNode = useWorkspacePanelStore((state) => state.toggleTreeNode)
   const openPreview = useWorkspacePanelStore((state) => state.openPreview)
   const closePreview = useWorkspacePanelStore((state) => state.closePreview)
@@ -855,9 +856,8 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
 
   const handleRefresh = () => {
     void loadStatus(sessionId)
-    if (activeView === 'all') {
-      void loadTree(sessionId, '')
-    }
+    clearTreeCache(sessionId)
+    void loadTree(sessionId, '')
   }
 
   const handleOpenDiff = (path: string) => {

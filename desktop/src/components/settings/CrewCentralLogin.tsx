@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 export function CrewCentralLogin() {
   const {
@@ -22,6 +23,7 @@ export function CrewCentralLogin() {
       await login()
       // In Electron mode, login() blocks until the protocol callback completes.
       // In web mode, login() opens the browser and starts polling.
+      await useSettingsStore.getState().fetchAll()
     } catch {
       // store.login() errors are already captured into store.error
     }

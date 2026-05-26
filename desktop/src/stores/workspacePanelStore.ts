@@ -83,6 +83,7 @@ type WorkspacePanelStore = {
   openPreview: (sessionId: string, path: string, kind: WorkspacePreviewKind) => Promise<void>
   closePreview: (sessionId: string, tabId: string) => void
   closePreviewTabs: (sessionId: string, tabId: string, scope: WorkspacePreviewCloseScope) => void
+  clearTreeCache: (sessionId: string) => void
   clearSession: (sessionId: string) => void
   resetSessionUi: (sessionId: string) => void
 }
@@ -697,6 +698,24 @@ export const useWorkspacePanelStore = create<WorkspacePanelStore>((set, get) => 
         },
       }
     })
+  },
+
+  clearTreeCache: (sessionId) => {
+    invalidateSessionScopedRequests(treeRequestIds, sessionId)
+    set((state) => ({
+      treeBySessionPath: {
+        ...state.treeBySessionPath,
+        [sessionId]: undefined,
+      },
+      loading: {
+        ...state.loading,
+        treeBySessionPath: stripSessionKeys(state.loading.treeBySessionPath, sessionId),
+      },
+      errors: {
+        ...state.errors,
+        treeBySessionPath: stripSessionKeys(state.errors.treeBySessionPath, sessionId),
+      },
+    }))
   },
 
   clearSession: (sessionId) => {
