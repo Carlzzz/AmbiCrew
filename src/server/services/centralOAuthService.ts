@@ -137,6 +137,9 @@ export class CentralOAuthService {
         return { loggedIn: false }
       }
     }
+    if (!displayName) {
+      return { loggedIn: false }
+    }
     return {
       loggedIn: true,
       displayName,
