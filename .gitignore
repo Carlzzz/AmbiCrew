@@ -19,7 +19,7 @@ release/
 # Environment files (contains secrets)
 
 # Claude Code worktrees
-.claude/worktrees/
+.claude
 
 # IDE & OS
 .vscode/

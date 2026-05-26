@@ -6,14 +6,7 @@
       "prompt": "test prompt",
       "createdAt": 1779700770470,
       "recurring": true,
-      "name": "test-name",
-      "description": "test description",
-      "folder": "/test/folder",
-      "model": "claude-opus-4-7",
-      "permissionMode": "ask",
-      "worktree": false,
-      "frequency": "daily",
-      "scheduledTime": "09:00"
+      "lastFiredAt": 1779763225788
     }
   ]
 }
