@@ -258,14 +258,13 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
           </div>
         )}
 
-        {/* Free text input */}
+        {/* Free text input — multi-line with Ctrl/Cmd+Enter to submit */}
         {!submitted && (
           <div>
             <label className="text-xs text-[var(--color-text-tertiary)] mb-1.5 block">
               {t('question.customResponse')}
             </label>
-            <input
-              type="text"
+            <textarea
               value={freeText}
               onChange={(e) => {
                 setFreeText(e.target.value)
@@ -275,11 +274,18 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
               onCompositionEnd={() => { composingRef.current = false }}
               onKeyDown={(e) => {
                 if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return
-                if (e.key === 'Enter' && allAnswered) handleSubmit()
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && allAnswered) {
+                  e.preventDefault()
+                  handleSubmit()
+                }
               }}
               placeholder={t('question.typePlaceholder')}
-              className="w-full px-3 py-2 text-sm bg-[var(--color-surface)] border border-[var(--color-outline-variant)]/40 rounded-[var(--radius-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-secondary)] focus:ring-1 focus:ring-[var(--color-secondary)]/30"
+              rows={3}
+              className="w-full px-3 py-2 text-sm bg-[var(--color-surface)] border border-[var(--color-outline-variant)]/40 rounded-[var(--radius-md)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-secondary)] focus:ring-1 focus:ring-[var(--color-secondary)]/30 resize-y min-h-[72px] max-h-[200px]"
             />
+            <span className="text-[10px] text-[var(--color-text-tertiary)] mt-1 block">
+              {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter {t('question.toSubmit')}
+            </span>
           </div>
         )}
 

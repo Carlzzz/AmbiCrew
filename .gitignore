@@ -41,10 +41,13 @@ pnpm-debug.log*
 
 # Electron
 desktop/out/
+desktop/dist/
 desktop/resources/MinGit/
 desktop/resources/python/
+desktop/resources/ripgrep/
 desktop/resources/.tmp/
 desktop/resources/*.exe
+desktop/src-tauri/binaries/
 
 # Misc
 .cache/

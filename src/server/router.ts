@@ -23,6 +23,7 @@ import { handleCentralOAuthApi } from './api/central-oauth.js'
 import { handleMcpApi } from './api/mcp.js'
 import { handleDiagnosticsApi } from './api/diagnostics.js'
 import { handleClaudeMdApi } from './api/claudemd.js'
+import { handleMemoryApi } from './api/memory.js'
 
 export async function handleApiRequest(req: Request, url: URL): Promise<Response> {
   const path = url.pathname
@@ -102,6 +103,9 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
 
     case 'claudemd':
       return handleClaudeMdApi(req, url, segments)
+
+    case 'memory':
+      return handleMemoryApi(req, url, segments)
 
     case 'filesystem':
       return handleFilesystemRoute(url.pathname, url)

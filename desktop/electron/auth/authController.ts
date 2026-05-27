@@ -1,4 +1,4 @@
-import { loadTokens, saveTokens, clearTokens, getAccessToken, getRefreshToken, invalidateCache } from './tokenStore.js'
+import { loadTokens, saveTokens, clearTokens, getAccessToken, getRefreshToken, getDisplayName, invalidateCache } from './tokenStore.js'
 import { getDeviceInfo, appendDeviceToLoginUrl } from './deviceManager.js'
 
 type AuthState = 'logged_out' | 'logging_in' | 'logged_in' | 'expired' | 'logging_out'
@@ -105,10 +105,13 @@ export class AuthController {
       if (!res.ok) return false
       const json = await res.json() as { rc?: number; data?: { access_token?: string; refresh_token?: string } }
       if (json.rc !== 0 || !json.data?.access_token || !json.data?.refresh_token) return false
+      const existingDisplayName = getDisplayName() || undefined
       saveTokens({
         access_token: json.data.access_token,
         refresh_token: json.data.refresh_token,
+        display_name: existingDisplayName,
       })
+      if (existingDisplayName) this.displayName = existingDisplayName
       this.state = 'logged_in'
       this.emit()
       return true

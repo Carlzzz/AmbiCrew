@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { ToolCallBlock } from './ToolCallBlock'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import { Modal } from '../shared/Modal'
@@ -53,7 +53,7 @@ function groupHasErrors(toolCalls: ToolCall[], resultMap: Map<string, ToolResult
   })
 }
 
-export function ToolCallGroup({
+export const ToolCallGroup = memo(function ToolCallGroup({
   toolCalls,
   resultMap,
   childToolCallsByParent,
@@ -95,7 +95,7 @@ export function ToolCallGroup({
       isStreaming={isStreaming}
     />
   )
-}
+})
 
 function AgentToolGroup({
   toolCalls,

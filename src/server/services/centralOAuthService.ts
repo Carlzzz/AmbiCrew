@@ -89,7 +89,12 @@ export class CentralOAuthService {
   }
 
   async getStatus(): Promise<CentralOAuthStatus> {
-    const token = getAccessToken()
+    let token = getAccessToken()
+    if (!token) {
+      // Cache may be empty after server restart — try loading from disk
+      const payload = await loadTokens()
+      token = payload?.access_token ?? null
+    }
     if (!token) {
       return { loggedIn: false }
     }
@@ -125,7 +130,7 @@ export class CentralOAuthService {
         if (retryRes.ok) {
           const json = await retryRes.json() as { rc?: number; data?: Record<string, unknown> }
           const d = json.data
-          displayName = String(d?.display_name ?? d?.displayName ?? d?.email ?? '') || undefined
+          displayName = String(d?.display_name ?? d?.displayName ?? d?.email ?? '') || displayName
         } else {
           await clearTokens()
           return { loggedIn: false }
@@ -177,9 +182,11 @@ export class CentralOAuthService {
       if (json.rc !== 0 || !json.data?.access_token || !json.data?.refresh_token) {
         return null
       }
+      const existingDisplayName = getDisplayName() || undefined
       await saveTokens({
         access_token: json.data.access_token,
         refresh_token: json.data.refresh_token,
+        display_name: existingDisplayName,
       })
       return json.data.access_token
     } catch {

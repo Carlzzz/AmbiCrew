@@ -6,6 +6,7 @@
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
+import { execSync } from 'child_process'
 
 const IMAGE_MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -26,7 +27,11 @@ function isWithinRoot(targetPath: string, rootPath: string): boolean {
 }
 
 function normalizeComparablePath(filePath: string): string {
-  const resolved = path.resolve(filePath)
+  let resolved = path.resolve(filePath)
+  // On Windows, normalize drive roots: "C:" → "C:\" to avoid confusion
+  if (process.platform === 'win32' && /^[A-Za-z]:$/.test(resolved)) {
+    resolved += '\\'
+  }
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
@@ -40,6 +45,12 @@ function isAllowedFilesystemPath(targetPath: string): boolean {
 
   // macOS reports /tmp as /private/tmp via native folder pickers and realpath().
   if (process.platform === 'darwin' && isWithinRoot(resolvedPath, '/private/tmp')) {
+    return true
+  }
+
+  // Windows: allow any local drive root (C:\, D:\, etc.) since users commonly
+  // have projects on non-system drives. The path must be an absolute drive path.
+  if (process.platform === 'win32' && /^[A-Za-z]:[/\\]/.test(resolvedPath)) {
     return true
   }
 
@@ -121,48 +132,15 @@ async function handleBrowse(url: URL): Promise<Response> {
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
-      const results: Array<{ name: string; path: string; isDirectory: boolean }> = []
-      const IGNORED_DIRS = new Set(['.git', 'node_modules', '.next', 'dist', 'build', '__pycache__', '.venv', '.cache'])
-      const MAX_DEPTH = 8
-
-      const walk = (dir: string, depth: number) => {
-        if (results.length >= maxResults || depth > MAX_DEPTH) return
-        let entries: fs.Dirent[]
-        try {
-          entries = fs.readdirSync(dir, { withFileTypes: true })
-        } catch {
-          return
-        }
-        for (const e of entries) {
-          if (results.length >= maxResults) return
-          const isDir = e.isDirectory()
-          if (isDir && IGNORED_DIRS.has(e.name)) continue
-          const fullPath = path.join(dir, e.name)
-          if (e.name.toLowerCase().includes(query)) {
-            if (isDir || includeFiles) {
-              results.push({
-                name: path.relative(resolvedPath, fullPath).replace(/\\/g, '/'),
-                path: fullPath,
-                isDirectory: isDir,
-              })
-            }
-          }
-          if (isDir) {
-            walk(fullPath, depth + 1)
-          }
-        }
-      }
-
-      walk(resolvedPath, 0)
+      const maxResultsLimit = maxResults
+      const results = await gitFirstSearch(resolvedPath, query, includeFiles, maxResultsLimit)
 
       results.sort((a, b) => {
-        // Exact basename matches first
         const aBase = path.basename(a.path).toLowerCase()
         const bBase = path.basename(b.path).toLowerCase()
         const aExact = aBase === query
         const bExact = bBase === query
         if (aExact !== bExact) return aExact ? -1 : 1
-        // Shorter paths (shallower) first
         const aDepth = a.name.split('/').length
         const bDepth = b.name.split('/').length
         if (aDepth !== bDepth) return aDepth - bDepth
@@ -172,7 +150,7 @@ async function handleBrowse(url: URL): Promise<Response> {
       return json({
         currentPath: resolvedPath,
         parentPath: path.dirname(resolvedPath),
-        entries: results.slice(0, maxResults),
+        entries: results.slice(0, maxResultsLimit),
         query: searchQuery,
       })
     }
@@ -210,4 +188,129 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+type SearchEntry = { name: string; path: string; isDirectory: boolean }
+
+/**
+ * Git-first file search: uses `git ls-files` (tracked + untracked with
+ * exclude-standard) for git repos, falls back to recursive walk for non-git dirs.
+ * This respects .gitignore and naturally excludes node_modules, build artifacts, etc.
+ */
+async function gitFirstSearch(
+  rootPath: string,
+  query: string,
+  includeFiles: boolean,
+  maxResults: number,
+): Promise<SearchEntry[]> {
+  const gitFiles = tryGitLsFiles(rootPath)
+  if (gitFiles !== null) {
+    return filterGitResults(rootPath, gitFiles, query, includeFiles, maxResults)
+  }
+  return fallbackWalkSearch(rootPath, query, includeFiles, maxResults)
+}
+
+function tryGitLsFiles(cwd: string): string[] | null {
+  try {
+    // Get tracked files + untracked (but respecting .gitignore via --exclude-standard)
+    const output = execSync(
+      'git ls-files --cached --others --exclude-standard',
+      { cwd, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, timeout: 5000 },
+    )
+    return output.split('\n').filter(Boolean)
+  } catch {
+    return null
+  }
+}
+
+function filterGitResults(
+  rootPath: string,
+  files: string[],
+  query: string,
+  includeFiles: boolean,
+  maxResults: number,
+): SearchEntry[] {
+  const results: SearchEntry[] = []
+  const seenDirs = new Set<string>()
+
+  for (const relativePath of files) {
+    if (results.length >= maxResults) break
+    const basename = path.basename(relativePath).toLowerCase()
+    const relLower = relativePath.toLowerCase()
+
+    if (basename.includes(query) || relLower.includes(query)) {
+      const fullPath = path.join(rootPath, relativePath)
+      // Check if it's a directory entry (git ls-files only lists files,
+      // but we can infer directories from path segments)
+      if (includeFiles) {
+        results.push({
+          name: relativePath.replace(/\\/g, '/'),
+          path: fullPath,
+          isDirectory: false,
+        })
+      }
+    }
+
+    // Also match directory segments
+    const dirParts = path.dirname(relativePath).split(/[/\\]/)
+    let dirAccum = ''
+    for (const part of dirParts) {
+      if (!part || part === '.') continue
+      dirAccum = dirAccum ? `${dirAccum}/${part}` : part
+      if (part.toLowerCase().includes(query) && !seenDirs.has(dirAccum)) {
+        seenDirs.add(dirAccum)
+        if (results.length < maxResults) {
+          results.push({
+            name: dirAccum,
+            path: path.join(rootPath, dirAccum),
+            isDirectory: true,
+          })
+        }
+      }
+    }
+  }
+
+  return results
+}
+
+function fallbackWalkSearch(
+  rootPath: string,
+  query: string,
+  includeFiles: boolean,
+  maxResults: number,
+): SearchEntry[] {
+  const results: SearchEntry[] = []
+  const IGNORED_DIRS = new Set(['.git', 'node_modules', '.next', 'dist', 'build', '__pycache__', '.venv', '.cache'])
+  const MAX_DEPTH = 8
+
+  const walk = (dir: string, depth: number) => {
+    if (results.length >= maxResults || depth > MAX_DEPTH) return
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (results.length >= maxResults) return
+      const isDir = e.isDirectory()
+      if (isDir && IGNORED_DIRS.has(e.name)) continue
+      const fullPath = path.join(dir, e.name)
+      if (e.name.toLowerCase().includes(query)) {
+        if (isDir || includeFiles) {
+          results.push({
+            name: path.relative(rootPath, fullPath).replace(/\\/g, '/'),
+            path: fullPath,
+            isDirectory: isDir,
+          })
+        }
+      }
+      if (isDir) {
+        walk(fullPath, depth + 1)
+      }
+    }
+  }
+
+  walk(rootPath, 0)
+  return results
 }

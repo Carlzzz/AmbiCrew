@@ -287,12 +287,14 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
   const [isLoadingTurnChangeCards, setIsLoadingTurnChangeCards] = useState(false)
   const [rewindingTurnId, setRewindingTurnId] = useState<string | null>(null)
   const [turnUndoConfirmTargetId, setTurnUndoConfirmTargetId] = useState<string | null>(null)
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false)
 
   const updateAutoScrollState = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
     shouldAutoScrollRef.current = isNearScrollBottom(container)
-  }, [])
+    setShowJumpToLatest(!shouldAutoScrollRef.current && messages.length > 10)
+  }, [messages.length])
 
   useEffect(() => {
     if (lastSessionIdRef.current !== resolvedSessionId) {
@@ -461,6 +463,28 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
     t,
   ])
 
+  const handleBranchFromMessage = useCallback(async (messageId: string) => {
+    if (!resolvedSessionId) return
+    try {
+      const result = await sessionsApi.branch(resolvedSessionId, {
+        targetUserMessageId: messageId,
+      })
+      // Open the branched session in a new tab
+      const { openTab } = useTabStore.getState()
+      openTab(result.sessionId, `Branch (${result.messageCount} msgs)`)
+      useChatStore.getState().connectToSession(result.sessionId)
+      addToast({
+        type: 'success',
+        message: t('chat.branchCreated'),
+      })
+    } catch (error) {
+      addToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Branch failed',
+      })
+    }
+  }, [addToast, resolvedSessionId, t])
+
   return (
     <div
       ref={scrollContainerRef}
@@ -496,6 +520,11 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
                           return result ? { content: result.content, isError: result.isError } : null
                         })()
                       : null
+                  }
+                  onBranch={
+                    item.message.type === 'user_text' && resolvedSessionId && chatState === 'idle' && !item.message.pending
+                      ? () => handleBranchFromMessage(item.message.id)
+                      : undefined
                   }
                 />
               )}
@@ -540,6 +569,21 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
         <div ref={bottomRef} />
       </div>
 
+      {showJumpToLatest && (
+        <button
+          type="button"
+          onClick={() => {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+            shouldAutoScrollRef.current = true
+            setShowJumpToLatest(false)
+          }}
+          className="fixed bottom-24 left-1/2 z-20 -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-lg transition-all hover:bg-[var(--color-surface-container-low)] hover:text-[var(--color-text-primary)]"
+        >
+          <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
+          {t('chat.jumpToLatest')}
+        </button>
+      )}
+
       <ConfirmDialog
         open={Boolean(confirmTurnCard)}
         onClose={() => {
@@ -570,11 +614,13 @@ export const MessageBlock = memo(function MessageBlock({
   activeThinkingId,
   agentTaskNotifications,
   toolResult,
+  onBranch,
 }: {
   message: UIMessage
   activeThinkingId: string | null
   agentTaskNotifications: Record<string, AgentTaskNotification>
   toolResult?: { content: unknown; isError: boolean } | null
+  onBranch?: () => void
 }) {
   const t = useTranslation()
 
@@ -584,6 +630,7 @@ export const MessageBlock = memo(function MessageBlock({
         <UserMessage
           content={message.content}
           attachments={message.attachments}
+          onBranch={onBranch}
         />
       )
     case 'assistant_text':
@@ -650,11 +697,37 @@ export const MessageBlock = memo(function MessageBlock({
     }
     case 'task_summary':
       return <InlineTaskSummary tasks={message.tasks} />
-    case 'system':
+    case 'system': {
+      const compact = message.metadata?.compactSummary
+      if (compact && (compact.messagesRemoved || compact.tokensBefore)) {
+        return (
+          <div className="mb-3 flex items-center justify-center gap-2">
+            <div className="h-px flex-1 bg-[var(--color-border)]/40" />
+            <div className="flex items-center gap-1.5 rounded-full border border-[var(--color-border)]/50 bg-[var(--color-surface-container-low)] px-3 py-1">
+              <span className="material-symbols-outlined text-[12px] text-[var(--color-outline)]">compress</span>
+              <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                {message.content}
+              </span>
+              {compact.messagesRemoved && (
+                <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                  · {compact.messagesRemoved} msgs
+                </span>
+              )}
+              {compact.tokensBefore && compact.tokensAfter && (
+                <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                  · {Math.round(compact.tokensBefore / 1000)}k → {Math.round(compact.tokensAfter / 1000)}k tokens
+                </span>
+              )}
+            </div>
+            <div className="h-px flex-1 bg-[var(--color-border)]/40" />
+          </div>
+        )
+      }
       return (
         <div className="mb-3 text-center text-xs text-[var(--color-text-tertiary)]">
           {message.content}
         </div>
       )
+    }
   }
 })

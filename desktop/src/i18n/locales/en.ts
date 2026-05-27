@@ -38,6 +38,8 @@ export const en = {
   'sidebar.pinned': 'Pinned',
   'sidebar.pin': 'Pin',
   'sidebar.unpin': 'Unpin',
+  'sidebar.groupByTime': 'By time',
+  'sidebar.groupByProject': 'By project',
 
   // ─── Auth ────────────────────────────────────────────
   'auth.pleaseLogin': 'Please login to CrewCentral first',
@@ -601,19 +603,21 @@ export const en = {
   // Settings > About
   'settings.tab.about': 'About',
   'settings.about.version': 'Version',
-  'settings.about.changelog': 'Release Notes',
-  'settings.about.repo': 'GitHub Repository',
-  'settings.about.starHint': 'If this project helps you, consider giving it a Star',
-  'settings.about.feedback': 'Report an Issue',
-  'settings.about.feedbackDesc': 'Open a GitHub Issue for bugs or usage questions',
-  'settings.about.author': 'Author',
-  'settings.about.socialMedia': 'Social Media',
-  'settings.about.updates': 'App Updates',
-  'settings.about.updatesDesc': 'Check GitHub Releases, download the installer, and relaunch after install.',
+  'settings.about.tagline': 'Enterprise AI Development Environment',
+  'settings.about.description': 'AmbiCrew is an enterprise-grade AI-powered development environment, integrated with CrewCentral for unified authentication and CrewProxy for gateway management. Built for teams that need secure, collaborative AI coding assistance.',
+  'settings.about.platform': 'Platform',
 
   // Settings > Computer Use
   'settings.tab.computerUse': 'Computer Use',
   'settings.tab.memory': 'CLAUDE.md',
+  'settings.tab.memories': 'Memories',
+  'memory.loading': 'Loading memories...',
+  'memory.empty': 'No memories yet',
+  'memory.emptyHint': 'Memories are automatically created as you work with Claude. They help Claude remember context across sessions.',
+  'memory.searchPlaceholder': 'Search memories...',
+  'memory.filesAcross': 'files across',
+  'memory.projects': 'projects',
+  'memory.selectFile': 'Select a memory to preview',
   'settings.computerUse.title': 'Computer Use',
   'settings.computerUse.description': 'Allow Claude to take screenshots, click, type, and control your computer. Requires Python 3. On macOS, accessibility permissions are also needed.',
   'settings.computerUse.notSupported': 'Computer Use is only supported on macOS and Windows.',
@@ -848,6 +852,8 @@ export const en = {
   'chat.stopTitle': 'Stop generation (Cmd+.)',
   'chat.rewindSuccessWithCode': 'Rewound {count} messages and restored tracked files.',
   'chat.rewindSuccessConversationOnly': 'Rewound {count} messages. No file checkpoint was available for this turn.',
+  'chat.jumpToLatest': 'Jump to latest',
+  'chat.branchCreated': 'Branch created successfully',
   'chat.turnChangesTitle': '{count} files changed',
   'chat.turnChangesLatestCardLabel': 'Turn changed files',
   'chat.turnChangesHistoricalCardLabel': 'Turn changed files',
@@ -917,6 +923,7 @@ export const en = {
   'question.typePlaceholder': 'Type your answer...',
   'question.submit': 'Submit',
   'question.answeredPrefix': 'Answered: ',
+  'question.toSubmit': 'to submit',
 
   // ─── Thinking Block ──────────────────────────────────────
   'thinking.label': 'Thinking',

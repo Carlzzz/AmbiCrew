@@ -874,6 +874,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           useTabStore.getState().updateTabStatus(sessionId, 'idle')
         }
         if (msg.subtype === 'compact_boundary') {
+          const compactData = msg.data && typeof msg.data === 'object' ? msg.data as Record<string, unknown> : {}
           update((session) => ({
             messages: [
               ...session.messages,
@@ -884,6 +885,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                   ? msg.message
                   : 'Context compacted',
                 timestamp: Date.now(),
+                metadata: {
+                  compactSummary: {
+                    messagesRemoved: typeof compactData.messagesRemoved === 'number' ? compactData.messagesRemoved : undefined,
+                    tokensBefore: typeof compactData.tokensBefore === 'number' ? compactData.tokensBefore : undefined,
+                    tokensAfter: typeof compactData.tokensAfter === 'number' ? compactData.tokensAfter : undefined,
+                  },
+                },
               },
             ],
           }))

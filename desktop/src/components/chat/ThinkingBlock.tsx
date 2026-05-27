@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { useTranslation } from '../../i18n'
 
-export function ThinkingBlock({ content, isActive = false }: { content: string; isActive?: boolean }) {
+export const ThinkingBlock = memo(function ThinkingBlock({ content, isActive = false }: { content: string; isActive?: boolean }) {
   const t = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -49,7 +49,7 @@ export function ThinkingBlock({ content, isActive = false }: { content: string; 
       )}
     </div>
   )
-}
+})
 
 const thinkingStyles = `
 @keyframes thinking-cursor-blink {

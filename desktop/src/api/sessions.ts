@@ -335,4 +335,11 @@ export const sessionsApi = {
       timeout: 60_000,
     })
   },
+
+  branch(sessionId: string, body: {
+    targetUserMessageId: string
+    title?: string
+  }) {
+    return api.post<{ sessionId: string; messageCount: number }>(`/api/sessions/${sessionId}/branch`, body)
+  },
 }

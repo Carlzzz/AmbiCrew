@@ -39,6 +39,19 @@ function currentServerPort(): number {
 export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
   let pollTimer: ReturnType<typeof setTimeout> | null = null
 
+  // Subscribe to Electron push events for auth status changes (e.g. after
+  // background display-name fetch or token refresh in the main process).
+  if (isElectron()) {
+    try {
+      const electron = (window as unknown as {
+        electron: { auth: { onStatusChanged: (cb: (status: { loggedIn: boolean; displayName?: string }) => void) => () => void } }
+      }).electron
+      electron.auth.onStatusChanged((status) => {
+        set({ status: { loggedIn: status.loggedIn, displayName: status.displayName }, error: null })
+      })
+    } catch { /* ignore if not available */ }
+  }
+
   return {
     status: null,
     isPolling: false,

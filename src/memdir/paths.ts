@@ -57,23 +57,12 @@ export function isAutoMemoryEnabled(): boolean {
 /**
  * Whether the extract-memories background agent will run this session.
  *
- * The main agent's prompt always has full save instructions regardless of
- * this gate — when the main agent writes memories, the background agent
- * skips that range (hasMemoryWritesSince in extractMemories.ts); when it
- * doesn't, the background agent catches anything missed.
- *
- * Callers must also gate on feature('EXTRACT_MEMORIES') — that check cannot
- * live inside this helper because feature() only tree-shakes when used
- * directly in an `if` condition.
+ * AmbiCrew: bypasses GrowthBook feature flags (tengu_passport_quail /
+ * tengu_slate_thimble) since enterprise deployments don't connect to
+ * Anthropic's experiment service. Enabled whenever auto-memory is on.
  */
 export function isExtractModeActive(): boolean {
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_passport_quail', false)) {
-    return false
-  }
-  return (
-    !getIsNonInteractiveSession() ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_slate_thimble', false)
-  )
+  return !getIsNonInteractiveSession()
 }
 
 /**

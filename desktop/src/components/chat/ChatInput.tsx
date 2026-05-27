@@ -54,6 +54,9 @@ type ChatInputProps = {
 
 const EMPTY_WORKSPACE_REFERENCES: WorkspaceChatReference[] = []
 
+// Per-session draft persistence: preserves unsent input when switching tabs
+const sessionDrafts = new Map<string, { text: string; attachments: Attachment[] }>()
+
 function workspaceReferenceToAttachment(reference: WorkspaceChatReference): Attachment {
   return {
     id: reference.id,
@@ -86,8 +89,25 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
   const slashMenuRef = useRef<HTMLDivElement>(null)
   const fileSearchRef = useRef<FileSearchMenuHandle>(null)
   const slashItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const prevTabIdRef = useRef<string | null>(null)
   const { sendMessage, stopGeneration } = useChatStore()
   const activeTabId = useTabStore((s) => s.activeTabId)
+
+  // Save draft to previous tab and restore draft from new tab on tab switch
+  useEffect(() => {
+    const prevId = prevTabIdRef.current
+    if (prevId && prevId !== activeTabId) {
+      sessionDrafts.set(prevId, { text: input, attachments })
+    }
+    prevTabIdRef.current = activeTabId
+    if (activeTabId) {
+      const draft = sessionDrafts.get(activeTabId)
+      setInput(draft?.text ?? '')
+      setAttachments(draft?.attachments ?? [])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId])
+
   const sessionState = useChatStore((s) => activeTabId ? s.sessions[activeTabId] : undefined)
   const chatState = sessionState?.chatState ?? 'idle'
   const slashCommands = sessionState?.slashCommands ?? []

@@ -106,6 +106,16 @@ export async function handleSessionsApi(
       return await rewindSession(req, sessionId)
     }
 
+    if (subResource === 'branch') {
+      if (req.method !== 'POST') {
+        return Response.json(
+          { error: 'METHOD_NOT_ALLOWED', message: `Method ${req.method} not allowed` },
+          { status: 405 }
+        )
+      }
+      return await branchSessionHandler(req, sessionId)
+    }
+
     if (subResource === 'turn-checkpoints') {
       if (req.method !== 'GET') {
         return Response.json(
@@ -585,6 +595,25 @@ async function rewindSession(req: Request, sessionId: string): Promise<Response>
   const result = body.dryRun
     ? await previewSessionRewind(sessionId, body)
     : await executeSessionRewind(sessionId, body)
+
+  return Response.json(result)
+}
+
+async function branchSessionHandler(req: Request, sessionId: string): Promise<Response> {
+  let body: { targetUserMessageId: string; title?: string }
+  try {
+    body = (await req.json()) as { targetUserMessageId: string; title?: string }
+  } catch {
+    throw ApiError.badRequest('Invalid JSON body')
+  }
+
+  if (typeof body.targetUserMessageId !== 'string' || body.targetUserMessageId.length === 0) {
+    throw ApiError.badRequest('targetUserMessageId (string) is required')
+  }
+
+  const result = await sessionService.branchSession(sessionId, body.targetUserMessageId, {
+    title: body.title,
+  })
 
   return Response.json(result)
 }

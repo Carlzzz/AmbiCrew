@@ -12,10 +12,20 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
 type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'older'
+type GroupMode = 'time' | 'project'
 
 const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform)
 
 const TIME_GROUP_ORDER: TimeGroup[] = ['today', 'yesterday', 'last7days', 'last30days', 'older']
+const GROUP_MODE_STORAGE_KEY = 'cc-haha-sidebar-group-mode'
+
+function getStoredGroupMode(): GroupMode {
+  try {
+    const stored = localStorage.getItem(GROUP_MODE_STORAGE_KEY)
+    if (stored === 'project') return 'project'
+  } catch { /* noop */ }
+  return 'time'
+}
 
 export function Sidebar() {
   const sessions = useSessionStore((s) => s.sessions)
@@ -38,6 +48,7 @@ export function Sidebar() {
   const closeTab = useTabStore((s) => s.closeTab)
   const disconnectSession = useChatStore((s) => s.disconnectSession)
   const [searchQuery, setSearchQuery] = useState('')
+  const [groupMode, setGroupMode] = useState<GroupMode>(getStoredGroupMode)
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -87,7 +98,16 @@ export function Sidebar() {
   )
 
   const timeGroups = useMemo(() => groupByTime(unpinnedSessions), [unpinnedSessions])
+  const projectGroups = useMemo(() => groupByProject(unpinnedSessions), [unpinnedSessions])
   const showInitialLoading = isLoading && sessions.length === 0
+
+  const toggleGroupMode = useCallback(() => {
+    setGroupMode((prev) => {
+      const next = prev === 'time' ? 'project' : 'time'
+      try { localStorage.setItem(GROUP_MODE_STORAGE_KEY, next) } catch { /* noop */ }
+      return next
+    })
+  }, [])
 
   const handleContextMenu = useCallback((e: React.MouseEvent, id: string) => {
     e.preventDefault()
@@ -277,6 +297,19 @@ export function Sidebar() {
             data-testid="sidebar-session-list-section"
             className="sidebar-section sidebar-section--visible flex flex-1 min-h-0 flex-col"
           >
+            <div className="flex items-center justify-end px-4 pb-1">
+              <button
+                type="button"
+                onClick={toggleGroupMode}
+                title={groupMode === 'time' ? t('sidebar.groupByProject') : t('sidebar.groupByTime')}
+                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]"
+              >
+                <span className="material-symbols-outlined text-[12px]">
+                  {groupMode === 'time' ? 'schedule' : 'folder'}
+                </span>
+                {groupMode === 'time' ? t('sidebar.groupByTime') : t('sidebar.groupByProject')}
+              </button>
+            </div>
             <div className="sidebar-scroll-area min-h-0 flex-1 overflow-y-auto px-3">
               {error && (
                 <div className="mx-1 mt-2 rounded-[var(--radius-md)] border border-[var(--color-error)]/20 bg-[var(--color-error)]/5 px-3 py-2">
@@ -321,7 +354,7 @@ export function Sidebar() {
                   ))}
                 </div>
               )}
-              {TIME_GROUP_ORDER.map((group) => {
+              {groupMode === 'time' && TIME_GROUP_ORDER.map((group) => {
                 const items = timeGroups.get(group)
                 if (!items || items.length === 0) return null
                 return (
@@ -347,6 +380,29 @@ export function Sidebar() {
                   </div>
                 )
               })}
+              {groupMode === 'project' && [...projectGroups.entries()].map(([projectName, items]) => (
+                <div key={projectName} className="mb-1">
+                  <div className="flex items-center gap-1.5 px-2 pb-1 pt-4 text-[11px] font-semibold tracking-wide text-[var(--color-text-tertiary)]">
+                    <span className="material-symbols-outlined text-[12px]">folder</span>
+                    {projectName}
+                  </div>
+                  {items.map((session) => (
+                    <SessionItem
+                      key={session.id}
+                      session={session}
+                      activeTabId={activeTabId}
+                      renamingId={renamingId}
+                      renameValue={renameValue}
+                      setRenameValue={setRenameValue}
+                      handleFinishRename={handleFinishRename}
+                      setRenamingId={setRenamingId}
+                      handleContextMenu={handleContextMenu}
+                      isPinned={false}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
           </>
@@ -433,6 +489,30 @@ function groupByTime(sessions: SessionListItem[]): Map<TimeGroup, SessionListIte
   }
 
   return groups
+}
+
+function groupByProject(sessions: SessionListItem[]): Map<string, SessionListItem[]> {
+  const groups = new Map<string, SessionListItem[]>()
+
+  for (const session of sessions) {
+    const projectName = session.projectPath
+      ? session.projectPath.split(/[/\\]/).pop() || session.projectPath
+      : 'No Project'
+
+    if (!groups.has(projectName)) groups.set(projectName, [])
+    groups.get(projectName)!.push(session)
+  }
+
+  // Sort groups: groups with more recent sessions first
+  const sorted = new Map(
+    [...groups.entries()].sort((a, b) => {
+      const aLatest = Math.max(...a[1].map((s) => new Date(s.modifiedAt).getTime()))
+      const bLatest = Math.max(...b[1].map((s) => new Date(s.modifiedAt).getTime()))
+      return bLatest - aLatest
+    }),
+  )
+
+  return sorted
 }
 
 function NavItem({

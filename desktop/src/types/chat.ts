@@ -171,7 +171,7 @@ export type UIMessage =
   | { id: string; type: 'thinking'; content: string; timestamp: number }
   | { id: string; type: 'tool_use'; toolName: string; toolUseId: string; input: unknown; timestamp: number; parentToolUseId?: string }
   | { id: string; type: 'tool_result'; toolUseId: string; content: unknown; isError: boolean; timestamp: number; parentToolUseId?: string }
-  | { id: string; type: 'system'; content: string; timestamp: number }
+  | { id: string; type: 'system'; content: string; timestamp: number; metadata?: { compactSummary?: { messagesRemoved?: number; tokensBefore?: number; tokensAfter?: number } } }
   | {
       id: string
       type: 'permission_request'

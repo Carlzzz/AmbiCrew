@@ -40,6 +40,8 @@ export const zh: Record<TranslationKey, string> = {
   'sidebar.pinned': '已固定',
   'sidebar.pin': '固定',
   'sidebar.unpin': '取消固定',
+  'sidebar.groupByTime': '按时间',
+  'sidebar.groupByProject': '按项目',
 
   // ─── Auth ────────────────────────────────────────────
   'auth.pleaseLogin': '请先登录 CrewCentral',
@@ -603,19 +605,21 @@ export const zh: Record<TranslationKey, string> = {
   // Settings > About
   'settings.tab.about': '关于',
   'settings.about.version': '版本',
-  'settings.about.changelog': '更新日志',
-  'settings.about.repo': 'GitHub 仓库',
-  'settings.about.starHint': '如果这个项目对你有帮助，欢迎给个 Star',
-  'settings.about.feedback': '反馈问题',
-  'settings.about.feedbackDesc': '遇到 Bug 或使用问题，前往 GitHub Issue 提交反馈',
-  'settings.about.author': '作者',
-  'settings.about.socialMedia': '社交媒体',
-  'settings.about.updates': '应用更新',
-  'settings.about.updatesDesc': '检查 GitHub Releases，下载安装包，并在安装后自动重启。',
+  'settings.about.tagline': '企业级 AI 开发环境',
+  'settings.about.description': 'AmbiCrew 是一款企业级 AI 驱动的开发环境，集成 CrewCentral 统一鉴权和 CrewProxy 网关管理。为需要安全、协作式 AI 编码辅助的团队而构建。',
+  'settings.about.platform': '平台',
 
   // Settings > Computer Use
   'settings.tab.computerUse': 'Computer Use',
   'settings.tab.memory': 'CLAUDE.md',
+  'settings.tab.memories': '记忆',
+  'memory.loading': '加载记忆中...',
+  'memory.empty': '暂无记忆',
+  'memory.emptyHint': '记忆会在你与 Claude 协作时自动创建，帮助 Claude 在不同会话间记住上下文。',
+  'memory.searchPlaceholder': '搜索记忆...',
+  'memory.filesAcross': '个文件，分布在',
+  'memory.projects': '个项目中',
+  'memory.selectFile': '选择一条记忆查看详情',
   'settings.computerUse.title': 'Computer Use',
   'settings.computerUse.description': '允许 Claude 截屏、点击、打字并控制你的电脑。需要 Python 3，macOS 上还需要辅助功能权限。',
   'settings.computerUse.notSupported': 'Computer Use 仅支持 macOS 和 Windows。',
@@ -850,6 +854,8 @@ export const zh: Record<TranslationKey, string> = {
   'chat.stopTitle': '停止生成 (Cmd+.)',
   'chat.rewindSuccessWithCode': '已回滚 {count} 条消息，并恢复相关文件。',
   'chat.rewindSuccessConversationOnly': '已回滚 {count} 条消息。这一轮没有可用的文件检查点。',
+  'chat.jumpToLatest': '跳转到最新',
+  'chat.branchCreated': '分支创建成功',
   'chat.turnChangesTitle': '{count} 个文件已更改',
   'chat.turnChangesLatestCardLabel': '轮次已更改文件',
   'chat.turnChangesHistoricalCardLabel': '轮次已更改文件',
@@ -919,6 +925,7 @@ export const zh: Record<TranslationKey, string> = {
   'question.typePlaceholder': '输入你的回答...',
   'question.submit': '提交',
   'question.answeredPrefix': '已回答: ',
+  'question.toSubmit': '提交',
 
   // ─── Thinking Block ──────────────────────────────────────
   'thinking.label': '思考中',

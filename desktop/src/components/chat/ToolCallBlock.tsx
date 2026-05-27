@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { CodeViewer } from './CodeViewer'
 import { DiffViewer } from './DiffViewer'
 import { TerminalChrome } from './TerminalChrome'
@@ -30,7 +30,7 @@ const TOOL_ICONS: Record<string, string> = {
   Skill: 'auto_awesome',
 }
 
-export function ToolCallBlock({ toolName, input, result, compact = false }: Props) {
+export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, result, compact = false }: Props) {
   const [expanded, setExpanded] = useState(false)
   const t = useTranslation()
   const obj = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
@@ -106,7 +106,7 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
       )}
     </div>
   )
-}
+})
 
 function renderPreview(
   toolName: string,

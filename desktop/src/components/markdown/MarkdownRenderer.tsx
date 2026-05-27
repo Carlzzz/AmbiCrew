@@ -1,6 +1,8 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, memo } from 'react'
 import DOMPurify from 'dompurify'
 import { marked, type Tokens } from 'marked'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { CodeViewer } from '../chat/CodeViewer'
 import { MermaidRenderer } from '../chat/MermaidRenderer'
 
@@ -14,6 +16,55 @@ type CodeBlock = {
   id: string
   code: string
   language: string | undefined
+}
+
+type ParsedMarkdown = { html: string; codeBlocks: CodeBlock[] }
+
+// FNV-1a hash for fast cache key generation
+function fnv1a(str: string): number {
+  let hash = 2166136261
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function makeCacheKey(content: string): string {
+  return `${content.length}:${fnv1a(content)}`
+}
+
+// Module-level LRU cache for finalized (complete) markdown renders
+const FINALIZED_CACHE_MAX = 200
+const finalizedCache = new Map<string, ParsedMarkdown>()
+
+// Smaller cache for streaming content that changes frequently
+const STREAMING_CACHE_MAX = 4
+const streamingCache = new Map<string, ParsedMarkdown>()
+
+function getCachedParse(content: string, isStreaming: boolean): ParsedMarkdown {
+  const key = makeCacheKey(content)
+  const cache = isStreaming ? streamingCache : finalizedCache
+  const maxSize = isStreaming ? STREAMING_CACHE_MAX : FINALIZED_CACHE_MAX
+
+  const cached = cache.get(key)
+  if (cached) {
+    // Move to end (most recently used)
+    cache.delete(key)
+    cache.set(key, cached)
+    return cached
+  }
+
+  const result = parseMarkdown(content)
+  cache.set(key, result)
+
+  // Evict oldest entries if over capacity
+  if (cache.size > maxSize) {
+    const firstKey = cache.keys().next().value!
+    cache.delete(firstKey)
+  }
+
+  return result
 }
 
 const MERMAID_LANGUAGE = 'mermaid'
@@ -70,8 +121,8 @@ marked.use({ renderer })
 
 function enhanceMarkdownHtml(html: string): string {
   const cleanHtml = DOMPurify.sanitize(html, {
-    ADD_TAGS: ['use'],
-    ADD_ATTR: ['xlink:href'],
+    ADD_TAGS: ['use', 'annotation', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mover', 'munder', 'munderover', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mtext', 'mspace', 'math', 'mpadded', 'menclose', 'mglyph', 'mlabeledtr', 'mmultiscripts', 'mphantom', 'mstyle'],
+    ADD_ATTR: ['xlink:href', 'xmlns', 'mathvariant', 'encoding', 'stretchy', 'fence', 'separator', 'accent', 'accentunder', 'columnalign', 'rowalign', 'columnspan', 'rowspan', 'displaystyle', 'scriptlevel', 'lspace', 'rspace', 'minsize', 'maxsize', 'movablelimits', 'linethickness', 'notation', 'width', 'height', 'depth', 'voffset'],
   })
 
   if (typeof document === 'undefined') {
@@ -97,9 +148,48 @@ function enhanceMarkdownHtml(html: string): string {
   return container.innerHTML
 }
 
+// --- LaTeX math rendering ---
+// Replace $$...$$ (block) and $...$ (inline) with KaTeX-rendered HTML
+// before passing to marked, to avoid markdown parser mangling the LaTeX.
+
+function renderMathExpressions(content: string): string {
+  // First, replace block math: $$...$$
+  let result = content.replace(/\$\$([\s\S]+?)\$\$/g, (_match, expr: string) => {
+    try {
+      return katex.renderToString(expr.trim(), { displayMode: true, throwOnError: false })
+    } catch {
+      return `<pre class="katex-error">${escapeHtml(expr)}</pre>`
+    }
+  })
+
+  // Then, replace inline math: $...$
+  // Avoid matching currency like "$5" or "$5.00" — require non-digit after opening $
+  result = result.replace(/\$([^\s$](?:[^$]*[^\s$])?)\$/g, (_match, expr: string) => {
+    // Skip if it looks like a currency amount
+    if (/^\d/.test(expr)) return _match
+    try {
+      return katex.renderToString(expr.trim(), { displayMode: false, throwOnError: false })
+    } catch {
+      return `<code class="katex-error">${escapeHtml(expr)}</code>`
+    }
+  })
+
+  return result
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function contentHasMath(content: string): boolean {
+  return /\$\$[\s\S]+?\$\$|\$[^\s$][^$]*[^\s$]\$/.test(content)
+}
+
 function parseMarkdown(content: string): { html: string; codeBlocks: CodeBlock[] } {
   pendingCodeBlocks = []
-  const html = marked.parse(content) as string
+  // Pre-process math expressions before markdown parsing
+  const preprocessed = contentHasMath(content) ? renderMathExpressions(content) : content
+  const html = marked.parse(preprocessed) as string
   const codeBlocks = [...pendingCodeBlocks]
   pendingCodeBlocks = []
   return { html, codeBlocks }
@@ -111,7 +201,7 @@ const BASE_PROSE_CLASSES = `markdown-prose prose prose-sm max-w-none text-[var(-
   prose-p:break-words
   prose-code:text-[13px] prose-code:text-[var(--color-code-fg)] prose-code:font-[var(--font-mono)] prose-code:bg-[var(--color-code-bg)] prose-code:border prose-code:border-[var(--color-border)] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:hidden prose-code:after:hidden
   prose-pre:!bg-transparent prose-pre:!p-0 prose-pre:!shadow-none
-  prose-a:text-[var(--color-text-accent)] prose-a:no-underline hover:prose-a:underline
+  prose-a:text-[var(--color-text-accent)] prose-a:no-underline hover:prose-a:underline prose-a:break-all
   prose-strong:text-[var(--color-text-primary)]
   prose-ul:my-2 prose-ol:my-2
   prose-li:my-0.5
@@ -142,8 +232,9 @@ function getProseClasses(variant: 'default' | 'document', className?: string) {
     .join(' ')
 }
 
-export function MarkdownRenderer({ content, variant = 'default', className }: Props) {
-  const { html, codeBlocks } = useMemo(() => parseMarkdown(content), [content])
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, variant = 'default', className }: Props) {
+  const isStreaming = false // Caller passes isStreaming via AssistantMessage; here we always get finalized content
+  const { html, codeBlocks } = useMemo(() => getCachedParse(content, isStreaming), [content, isStreaming])
   const proseClasses = useMemo(
     () => getProseClasses(variant, className),
     [variant, className],
@@ -226,4 +317,4 @@ export function MarkdownRenderer({ content, variant = 'default', className }: Pr
       )}
     </div>
   )
-}
+})

@@ -1649,6 +1649,96 @@ export class SessionService {
       return false
     }
   }
+
+  /**
+   * Branch a session at a specific message — creates a new session containing
+   * all entries up to (and including) the target message. The source session
+   * is not modified (non-destructive fork).
+   */
+  async branchSession(
+    sourceSessionId: string,
+    targetUserMessageId: string,
+    options?: { title?: string },
+  ): Promise<{ sessionId: string; messageCount: number }> {
+    const found = await this.findSessionFile(sourceSessionId)
+    if (!found) {
+      throw ApiError.notFound(`Session not found: ${sourceSessionId}`)
+    }
+
+    const entries = await this.readJsonlFile(found.filePath)
+    const activeMessages = this.entriesToMessages(entries)
+
+    // Find the target message index
+    const targetIndex = activeMessages.findIndex((m) => m.id === targetUserMessageId)
+    if (targetIndex < 0) {
+      throw ApiError.badRequest(`Message not found: ${targetUserMessageId}`)
+    }
+
+    // Include all messages up to and including the target turn's response.
+    // A "turn" = user message + all subsequent assistant/tool messages until next user message.
+    let endIndex = targetIndex + 1
+    while (endIndex < activeMessages.length) {
+      const msg = activeMessages[endIndex]!
+      if (msg.type === 'user') break
+      endIndex++
+    }
+
+    const retainedMessageIds = new Set(
+      activeMessages.slice(0, endIndex).map((m) => m.id),
+    )
+
+    // Filter entries: keep metadata/snapshots + retained messages
+    const branchedEntries = entries.filter((entry) => {
+      // Always keep non-message entries (meta, snapshots, etc.)
+      if (typeof entry.uuid !== 'string') return true
+      // Keep entries whose uuid is in the retained set
+      if (retainedMessageIds.has(entry.uuid)) return true
+      // For typed message entries, only keep if in retained set
+      if (
+        entry.message?.role &&
+        (entry.type === 'user' || entry.type === 'assistant' || entry.type === 'system')
+      ) {
+        return retainedMessageIds.has(entry.uuid)
+      }
+      return true
+    })
+
+    // Create new session file in the same project directory
+    const newSessionId = crypto.randomUUID()
+    const newFilePath = path.join(found.projectDir, `${newSessionId}.jsonl`)
+    const now = new Date().toISOString()
+
+    // Append a branch-origin meta entry so we can trace lineage
+    const branchMeta = {
+      type: 'session-meta',
+      isMeta: true,
+      branchOrigin: {
+        sourceSessionId,
+        targetMessageId: targetUserMessageId,
+        branchedAt: now,
+      },
+      timestamp: now,
+    }
+
+    const content = [
+      ...branchedEntries.map((e) => JSON.stringify(e)),
+      JSON.stringify(branchMeta),
+    ].join('\n') + '\n'
+
+    await fs.writeFile(newFilePath, content, 'utf-8')
+
+    // If a custom title was provided, append it
+    if (options?.title) {
+      const titleEntry = {
+        type: 'custom-title',
+        title: options.title,
+        timestamp: now,
+      }
+      await fs.appendFile(newFilePath, JSON.stringify(titleEntry) + '\n', 'utf-8')
+    }
+
+    return { sessionId: newSessionId, messageCount: endIndex }
+  }
 }
 
 // Singleton instance for shared use across API handlers

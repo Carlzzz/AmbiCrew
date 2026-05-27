@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { UIAttachment } from '../../types/chat'
 import { AttachmentGallery } from './AttachmentGallery'
 import { MessageActionBar } from './MessageActionBar'
@@ -5,9 +6,10 @@ import { MessageActionBar } from './MessageActionBar'
 type Props = {
   content: string
   attachments?: UIAttachment[]
+  onBranch?: () => void
 }
 
-export function UserMessage({ content, attachments }: Props) {
+export const UserMessage = memo(function UserMessage({ content, attachments, onBranch }: Props) {
   const hasText = content.trim().length > 0
 
   return (
@@ -34,9 +36,10 @@ export function UserMessage({ content, attachments }: Props) {
             copyText={content}
             copyLabel="Copy prompt"
             align="end"
+            onBranch={onBranch}
           />
         )}
       </div>
     </div>
   )
-}
+})
