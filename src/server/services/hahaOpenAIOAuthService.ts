@@ -64,7 +64,7 @@ export class HahaOpenAIOAuthService {
   private getOAuthFilePath(): string {
     const configDir =
       process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
-    return path.join(configDir, 'cc-haha', 'openai-oauth.json')
+    return path.join(configDir, 'ambicrew', 'openai-oauth.json')
   }
 
   async loadTokens(): Promise<StoredOpenAIOAuthTokens | null> {

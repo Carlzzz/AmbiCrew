@@ -925,7 +925,7 @@ export class ConversationService {
 
     const configDir =
       process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
-    const ccHahaDir = path.join(configDir, 'cc-haha')
+    const ccHahaDir = path.join(configDir, 'ambicrew')
     const providersIndexPath = path.join(ccHahaDir, 'providers.json')
     const settingsPath = path.join(ccHahaDir, 'settings.json')
 
@@ -976,7 +976,7 @@ export class ConversationService {
 
     const configDir =
       process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')
-    const settingsPath = path.join(configDir, 'cc-haha', 'settings.json')
+    const settingsPath = path.join(configDir, 'ambicrew', 'settings.json')
     try {
       const raw = fs.readFileSync(settingsPath, 'utf-8')
       const parsed = JSON.parse(raw) as { env?: Record<string, string> }

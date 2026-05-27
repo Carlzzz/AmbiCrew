@@ -173,31 +173,39 @@ export async function handleModelsApi(
 async function handleModelsList(): Promise<Response> {
   const { providers, activeId } = await providerService.listProviders()
   const activeProvider = activeId ? providers.find((p) => p.id === activeId) : null
-  if (activeProvider) {
-    // When using crewcentral provider, try fetching dynamic models from CrewProxy first
-    if (activeProvider.presetId === 'crewcentral') {
-      const proxyModels = await tryFetchProxyModels()
-      if (proxyModels) {
-        return Response.json({
-          models: proxyModels,
-          provider: { id: activeProvider.id, name: activeProvider.name },
-        })
-      }
+
+  // In CrewCentral auth mode, always use CrewProxy models regardless of which
+  // provider is marked active. This prevents stale local provider configs
+  // (e.g. a previously configured DeepSeek) from leaking into the model list.
+  if (isCentralAuthMode()) {
+    const proxyModels = await tryFetchProxyModels()
+    if (proxyModels) {
+      const centralProvider = providers.find((p) => p.presetId === 'crewcentral')
+      return Response.json({
+        models: proxyModels,
+        provider: centralProvider
+          ? { id: centralProvider.id, name: centralProvider.name }
+          : null,
+      })
     }
+    // Proxy unavailable — fall back to CrewCentral provider's configured models
+    const centralProvider = providers.find((p) => p.presetId === 'crewcentral')
+    if (centralProvider) {
+      const modelList = buildProviderModelList(centralProvider.models)
+      return Response.json({
+        models: modelList,
+        provider: { id: centralProvider.id, name: centralProvider.name },
+      })
+    }
+    return Response.json({ models: DEFAULT_MODELS, provider: null })
+  }
+
+  if (activeProvider) {
     const modelList = buildProviderModelList(activeProvider.models)
     return Response.json({
       models: modelList,
       provider: { id: activeProvider.id, name: activeProvider.name },
     })
-  }
-  // No active provider — try proxy models if in central auth mode
-  if (isCentralAuthMode()) {
-    const proxyModels = await tryFetchProxyModels()
-    if (proxyModels) {
-      return Response.json({ models: proxyModels, provider: null })
-    }
-    // In CrewCentral mode, don't fall back to local Claude model names
-    return Response.json({ models: DEFAULT_MODELS, provider: null })
   }
   return Response.json({ models: getStandaloneModelList(), provider: null })
 }

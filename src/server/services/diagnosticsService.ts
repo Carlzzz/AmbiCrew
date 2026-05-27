@@ -60,7 +60,7 @@ export class DiagnosticsService {
   private originalConsoleWarn: typeof console.warn | null = null
 
   getLogDir(): string {
-    return path.join(this.getConfigDir(), 'cc-haha', 'diagnostics')
+    return path.join(this.getConfigDir(), 'ambicrew', 'diagnostics')
   }
 
   getDiagnosticsPath(): string {
@@ -436,7 +436,7 @@ export class DiagnosticsService {
   }
 
   private async buildProvidersSummary(): Promise<Record<string, unknown>> {
-    const providerPath = path.join(this.getConfigDir(), 'cc-haha', 'providers.json')
+    const providerPath = path.join(this.getConfigDir(), 'ambicrew', 'providers.json')
     try {
       const raw = await fs.readFile(providerPath, 'utf-8')
       const parsed = JSON.parse(raw) as {

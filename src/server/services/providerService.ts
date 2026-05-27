@@ -1,8 +1,8 @@
 /**
  * Provider Service — preset-based provider configuration
  *
- * Storage: ~/.claude/cc-haha/providers.json (lightweight index)
- * Active provider env vars written to ~/.claude/cc-haha/settings.json
+ * Storage: ~/.claude/ambicrew/providers.json (lightweight index)
+ * Active provider env vars written to ~/.claude/ambicrew/settings.json
  * (isolated from the original Claude Code's ~/.claude/settings.json)
  */
 
@@ -153,7 +153,7 @@ export class ProviderService {
   }
 
   private getCcHahaDir(): string {
-    return path.join(this.getConfigDir(), 'cc-haha')
+    return path.join(this.getConfigDir(), 'ambicrew')
   }
 
   private getIndexPath(): string {
