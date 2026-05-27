@@ -178,9 +178,9 @@ async function handleModelsList(): Promise<Response> {
   // provider is marked active. This prevents stale local provider configs
   // (e.g. a previously configured DeepSeek) from leaking into the model list.
   if (isCentralAuthMode()) {
-    const proxyModels = await tryFetchProxyModels()
+    const centralProvider = providers.find((p) => p.presetId === 'crewcentral')
+    const proxyModels = await tryFetchProxyModels(centralProvider?.baseUrl)
     if (proxyModels) {
-      const centralProvider = providers.find((p) => p.presetId === 'crewcentral')
       return Response.json({
         models: proxyModels,
         provider: centralProvider
@@ -189,7 +189,6 @@ async function handleModelsList(): Promise<Response> {
       })
     }
     // Proxy unavailable — fall back to CrewCentral provider's configured models
-    const centralProvider = providers.find((p) => p.presetId === 'crewcentral')
     if (centralProvider) {
       const modelList = buildProviderModelList(centralProvider.models)
       return Response.json({
@@ -212,10 +211,13 @@ async function handleModelsList(): Promise<Response> {
 
 /**
  * Attempt to fetch model list from CrewProxy.
- * Returns null if proxy is not configured or fetch fails.
+ * When providerBaseUrl is given (from CrewCentral provider config), it takes
+ * priority over environment variables — this ensures the correct proxy endpoint
+ * is used even if process.env contains stale values from a different provider.
  */
-async function tryFetchProxyModels(): Promise<ApiModelInfo[] | null> {
+async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelInfo[] | null> {
   const proxyBaseUrl =
+    providerBaseUrl?.trim() ||
     process.env.LLM_PROXY_BASE_URL?.trim() ||
     process.env.ANTHROPIC_BASE_URL?.trim()
   if (!proxyBaseUrl) return tryGetDirectModels()
