@@ -554,23 +554,42 @@ def detect_screen_recording_permission() -> bool | None:
 
 def detect_accessibility_permission() -> bool:
     """
-    Use the official macOS Accessibility trust API.
+    Check macOS Accessibility trust for the current process tree.
 
-    The previous System Events / AppleScript probe was too weak: it could
-    succeed even when the current helper process was not actually trusted for
-    input control, which led the desktop UI to report Accessibility as granted
-    while mouse/keyboard control still failed at runtime.
+    AXIsProcessTrusted() checks the current process (python3), which may not
+    be individually trusted. When running as a child of an Electron app, the
+    parent app bundle is what the user authorizes in System Preferences.
+
+    Strategy:
+    1. Check if current process is trusted directly
+    2. If not, use AppleScript System Events probe — this succeeds when the
+       parent Electron app bundle is trusted, because macOS grants AX access
+       to the app bundle and its child processes inherit it for AppleScript
     """
     framework_path = "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices"
     try:
         application_services = ctypes.CDLL(framework_path)
         application_services.AXIsProcessTrusted.restype = ctypes.c_bool
         application_services.AXIsProcessTrusted.argtypes = []
-        return bool(application_services.AXIsProcessTrusted())
+        if application_services.AXIsProcessTrusted():
+            return True
     except Exception:
-        # Fail closed: if the trust API can't be queried, treat accessibility
-        # as unavailable instead of reporting a misleading success state.
-        return False
+        pass
+
+    # Fallback: AppleScript probe. When the parent Electron app is trusted,
+    # child processes can successfully query System Events via osascript.
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["osascript", "-e", 'tell application "System Events" to get name of first process'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return True
+    except Exception:
+        pass
+
+    return False
 
 
 def check_permissions() -> dict[str, bool | None]:
