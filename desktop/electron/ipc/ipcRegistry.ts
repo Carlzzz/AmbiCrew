@@ -12,6 +12,7 @@ const WHITELIST_INVOKE_CHANNELS = new Set([
   'shell:openExternal',
   'shell:showOpenDialog',
   'shell:getAppVersion',
+  'shell:checkMacPermissions',
   'server:getBaseUrl',
   'terminal:spawn',
   'terminal:write',

@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
 import { isExtractModeActive } from '../memdir/paths.js'
-import { executeExtractMemories } from '../services/extractMemories/extractMemories.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -40,6 +39,9 @@ import { getTaskListId, listTasks } from '../utils/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
+// AmbiCrew: always load extractMemories (upstream gates on feature('EXTRACT_MEMORIES'))
+const extractMemoriesModule =
+  (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
 const jobClassifierModule = feature('TEMPLATES')
   ? (require('../jobs/classifier.js') as typeof import('../jobs/classifier.js'))
   : null
@@ -141,7 +143,7 @@ export async function* handleStopHooks(
       !toolUseContext.agentId &&
       isExtractModeActive()
     ) {
-      void executeExtractMemories(
+      void extractMemoriesModule.executeExtractMemories(
         stopHookContext,
         toolUseContext.appendSystemMessage,
       )

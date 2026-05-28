@@ -5,7 +5,7 @@
       "cron": "0 9 * * *",
       "prompt": "test prompt",
       "createdAt": 1779700770470,
-      "lastFiredAt": 1779848575240,
+      "lastFiredAt": 1779931567914,
       "recurring": true
     }
   ]

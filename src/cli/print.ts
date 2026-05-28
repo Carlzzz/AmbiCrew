@@ -372,8 +372,10 @@ const cronJitterConfigModule = feature('AGENT_TRIGGERS')
 const cronGate = feature('AGENT_TRIGGERS')
   ? (require('../tools/ScheduleCronTool/prompt.js') as typeof import('../tools/ScheduleCronTool/prompt.js'))
   : null
+// AmbiCrew: always load extractMemories
+const extractMemoriesModule =
+  (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { drainPendingExtraction } from '../services/extractMemories/extractMemories.js'
 
 const SHUTDOWN_TEAM_PROMPT = `<system-reminder>
 You are running in non-interactive mode and cannot return a response to the user until your team is shut down.
@@ -973,7 +975,7 @@ export async function runHeadless(
   // tengu_slate_thimble flag controls non-interactive extraction end-to-end.
   // AmbiCrew: always drain pending memory extraction
   if (isExtractModeActive()) {
-    await drainPendingExtraction()
+    await extractMemoriesModule.drainPendingExtraction()
   }
 
   gracefulShutdownSync(
