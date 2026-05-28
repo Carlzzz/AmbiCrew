@@ -1,4 +1,4 @@
-import { shell, dialog, app } from 'electron'
+import { shell, dialog, app, systemPreferences } from 'electron'
 import { registerWhitelistedInvoke } from './ipcRegistry.js'
 
 export function registerShellIpc() {
@@ -18,5 +18,14 @@ export function registerShellIpc() {
 
   registerWhitelistedInvoke('shell:getAppVersion', async () => {
     return { ok: true, version: app.getVersion() }
+  })
+
+  registerWhitelistedInvoke('shell:checkMacPermissions', async () => {
+    if (process.platform !== 'darwin') {
+      return { ok: true, accessibility: true, screenRecording: true }
+    }
+    const accessibility = systemPreferences.isTrustedAccessibilityClient(false)
+    const screenRecording = systemPreferences.getMediaAccessStatus('screen') === 'granted'
+    return { ok: true, accessibility, screenRecording }
   })
 }

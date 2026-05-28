@@ -554,42 +554,21 @@ def detect_screen_recording_permission() -> bool | None:
 
 def detect_accessibility_permission() -> bool:
     """
-    Check macOS Accessibility trust for the current process tree.
+    Check macOS Accessibility trust for the current process.
 
-    AXIsProcessTrusted() checks the current process (python3), which may not
-    be individually trusted. When running as a child of an Electron app, the
-    parent app bundle is what the user authorizes in System Preferences.
-
-    Strategy:
-    1. Check if current process is trusted directly
-    2. If not, use AppleScript System Events probe — this succeeds when the
-       parent Electron app bundle is trusted, because macOS grants AX access
-       to the app bundle and its child processes inherit it for AppleScript
+    Note: In Electron desktop mode, the UI uses Electron's native
+    systemPreferences.isTrustedAccessibilityClient() for accurate detection.
+    This Python-side check is a fallback for CLI mode or when the Electron
+    IPC is unavailable.
     """
     framework_path = "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices"
     try:
         application_services = ctypes.CDLL(framework_path)
         application_services.AXIsProcessTrusted.restype = ctypes.c_bool
         application_services.AXIsProcessTrusted.argtypes = []
-        if application_services.AXIsProcessTrusted():
-            return True
+        return bool(application_services.AXIsProcessTrusted())
     except Exception:
-        pass
-
-    # Fallback: AppleScript probe. When the parent Electron app is trusted,
-    # child processes can successfully query System Events via osascript.
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["osascript", "-e", 'tell application "System Events" to get name of first process'],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            return True
-    except Exception:
-        pass
-
-    return False
+        return False
 
 
 def check_permissions() -> dict[str, bool | None]:

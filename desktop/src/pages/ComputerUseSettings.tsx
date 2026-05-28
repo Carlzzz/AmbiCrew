@@ -65,6 +65,23 @@ export function ComputerUseSettings() {
     setCheckState('loading')
     try {
       const s = await computerUseApi.getStatus()
+
+      // On macOS in Electron, override permission detection with Electron's
+      // native systemPreferences API — Python subprocess cannot reliably detect
+      // permissions granted to the parent app bundle.
+      if (s.platform === 'darwin' && typeof window !== 'undefined' && 'electron' in window) {
+        try {
+          const electron = (window as unknown as { electron: { shell: { checkMacPermissions: () => Promise<{ ok: boolean; accessibility: boolean; screenRecording: boolean }> } } }).electron
+          const perms = await electron.shell.checkMacPermissions()
+          if (perms.ok) {
+            s.permissions = {
+              accessibility: perms.accessibility,
+              screenRecording: perms.screenRecording,
+            }
+          }
+        } catch { /* fallback to server-reported permissions */ }
+      }
+
       setStatus(s)
       setCheckState('ready')
     } catch {
