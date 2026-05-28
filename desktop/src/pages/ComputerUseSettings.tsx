@@ -66,17 +66,19 @@ export function ComputerUseSettings() {
     try {
       const s = await computerUseApi.getStatus()
 
-      // On macOS in Electron, override permission detection with Electron's
-      // native systemPreferences API — Python subprocess cannot reliably detect
-      // permissions granted to the parent app bundle.
+      // On macOS in Electron, combine both detection methods:
+      // - Electron's systemPreferences: checks if the app bundle is authorized
+      // - Python helper (server API): checks if the Python runtime is authorized
+      // Both need to be true for Computer Use to actually work.
       if (s.platform === 'darwin' && typeof window !== 'undefined' && 'electron' in window) {
         try {
           const electron = (window as unknown as { electron: { shell: { checkMacPermissions: () => Promise<{ ok: boolean; accessibility: boolean; screenRecording: boolean }> } } }).electron
-          const perms = await electron.shell.checkMacPermissions()
-          if (perms.ok) {
+          const appPerms = await electron.shell.checkMacPermissions()
+          if (appPerms.ok) {
+            // Both app AND Python runtime must be authorized
             s.permissions = {
-              accessibility: perms.accessibility,
-              screenRecording: perms.screenRecording,
+              accessibility: appPerms.accessibility && (s.permissions.accessibility !== false),
+              screenRecording: appPerms.screenRecording && (s.permissions.screenRecording !== false),
             }
           }
         } catch { /* fallback to server-reported permissions */ }
@@ -281,8 +283,17 @@ export function ComputerUseSettings() {
               />
               {(accessibilityNeedsAttention || screenRecordingNeedsAttention) && (
                 <div className="flex flex-col gap-2 px-4 py-3 rounded-lg bg-yellow-500/5 border border-yellow-500/20">
+                  <p className="text-xs text-[var(--color-text-secondary)] font-medium">{t('settings.computerUse.permElectronHint')}</p>
                   <p className="text-xs text-[var(--color-text-tertiary)]">{t('settings.computerUse.permRestartHint')}</p>
-                  <div className="flex gap-2">
+                  {status.venv.path && (
+                    <div className="mt-1 rounded-md bg-[var(--color-surface-container-low)] px-3 py-2">
+                      <p className="text-[10px] text-[var(--color-text-tertiary)] mb-1">{t('settings.computerUse.permPythonPathHint')}</p>
+                      <code className="text-[11px] text-[var(--color-text-secondary)] font-[var(--font-mono)] select-all break-all">
+                        {status.venv.path}/bin/python3
+                      </code>
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-1">
                     {accessibilityNeedsAttention && (
                       <button
                         onClick={() => openSystemSettings('Privacy_Accessibility')}

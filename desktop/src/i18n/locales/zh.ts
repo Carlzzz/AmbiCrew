@@ -655,6 +655,8 @@ export const zh: Record<TranslationKey, string> = {
   'settings.computerUse.appsSaved': '已保存',
   'settings.computerUse.openAccessibility': '打开辅助功能设置',
   'settings.computerUse.openScreenRecording': '打开屏幕录制设置',
+  'settings.computerUse.permElectronHint': '由于 macOS 安全限制，你需要在系统偏好设置中同时授权 AmbiCrew 和其 Python 运行时。',
+  'settings.computerUse.permPythonPathHint': '请将以下 Python 路径添加到辅助功能和屏幕录制中：',
   'settings.computerUse.permRestartHint': '授权后需重启 App 才能生效。',
   'settings.computerUse.flagClipboard': '剪贴板访问',
   'settings.computerUse.flagSystemKeys': '系统快捷键',

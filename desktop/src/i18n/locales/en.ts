@@ -653,6 +653,8 @@ export const en = {
   'settings.computerUse.appsSaved': 'Saved',
   'settings.computerUse.openAccessibility': 'Open Accessibility Settings',
   'settings.computerUse.openScreenRecording': 'Open Screen Recording Settings',
+  'settings.computerUse.permElectronHint': 'Due to macOS security restrictions, you need to authorize both AmbiCrew and its Python runtime in System Preferences.',
+  'settings.computerUse.permPythonPathHint': 'Add this Python path to Accessibility & Screen Recording:',
   'settings.computerUse.permRestartHint': 'After granting, restart the app for it to take effect.',
   'settings.computerUse.flagClipboard': 'Clipboard Access',
   'settings.computerUse.flagSystemKeys': 'System Key Combos',
