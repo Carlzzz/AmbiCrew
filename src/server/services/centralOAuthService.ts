@@ -137,17 +137,11 @@ export class CentralOAuthService {
         }
       }
     } catch {
-      // Network error — use cached displayName if available, otherwise treat as disconnected
-      if (!displayName) {
-        return { loggedIn: false }
-      }
-    }
-    if (!displayName) {
-      return { loggedIn: false }
+      // Network error — token exists so user is still logged in, just can't enrich displayName
     }
     return {
       loggedIn: true,
-      displayName,
+      displayName: displayName || undefined,
     }
   }
 

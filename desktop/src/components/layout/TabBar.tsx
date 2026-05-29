@@ -63,7 +63,7 @@ export function TabBar() {
   const tabRefs = useRef(new Map<string, HTMLDivElement | null>())
   const t = useTranslation()
 
-  // In Electron, window dragging is handled by the title bar CSS
+  // Window dragging is handled by Tauri decorations / CSS -webkit-app-region
 
   const updateScrollState = useCallback(() => {
     const el = scrollRef.current
@@ -254,7 +254,7 @@ export function TabBar() {
   }
 
   const handleScrollRegionMouseDown = useCallback((_event: React.MouseEvent<HTMLDivElement>) => {
-    // No-op: Electron uses CSS -webkit-app-region: drag on the title bar
+    // No-op: window dragging handled by CSS -webkit-app-region: drag
   }, [])
 
   return (

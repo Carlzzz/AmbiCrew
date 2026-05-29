@@ -3,7 +3,7 @@ import path from 'node:path'
 
 const desktopRoot = path.resolve(import.meta.dir, '..')
 const repoRoot = path.resolve(desktopRoot, '..')
-const binariesDir = path.join(desktopRoot, 'src-tauri', 'binaries')
+const sidecarsDir = path.join(desktopRoot, 'src-tauri', 'sidecars')
 
 const targetTriple =
   process.env.TAURI_ENV_TARGET_TRIPLE ||
@@ -24,7 +24,7 @@ if (scanExit !== 0) {
   throw new Error(`[build-sidecars] scan-missing-imports failed (exit ${scanExit})`)
 }
 
-await mkdir(binariesDir, { recursive: true })
+await mkdir(sidecarsDir, { recursive: true })
 
 // Download ripgrep for the target platform before building
 console.log('[build-sidecars] Downloading ripgrep...')
@@ -49,7 +49,7 @@ Bun.spawnSync(
 // 选择 'server' 或 'cli' 模式，详见 desktop/sidecars/claude-sidecar.ts。
 await compileExecutable({
   entrypoint: path.join(desktopRoot, 'sidecars/claude-sidecar.ts'),
-  outfileBase: path.join(binariesDir, `claude-sidecar-${targetTriple}`),
+  outfileBase: path.join(sidecarsDir, `claude-sidecar-${targetTriple}`),
   productName: 'Claude Code Sidecar',
   bunTarget,
 })

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { computerUseApi, type ComputerUseStatus, type SetupResult, type InstalledApp, type AuthorizedApp } from '../api/computerUse'
 import { useTranslation } from '../i18n'
+import { isDesktopRuntime } from '../lib/desktopRuntime'
 
 type CheckState = 'loading' | 'ready' | 'error'
 const PYTHON_DOWNLOAD_URLS: Record<string, string> = {
@@ -66,20 +68,14 @@ export function ComputerUseSettings() {
     try {
       const s = await computerUseApi.getStatus()
 
-      // On macOS in Electron, combine both detection methods:
-      // - Electron's systemPreferences: checks if the app bundle is authorized
-      // - Python helper (server API): checks if the Python runtime is authorized
-      // Both need to be true for Computer Use to actually work.
-      if (s.platform === 'darwin' && typeof window !== 'undefined' && 'electron' in window) {
+      // On macOS in Tauri, use Rust-side permission detection which runs in
+      // the app bundle process — accurate unlike Python subprocess detection.
+      if (s.platform === 'darwin' && isDesktopRuntime()) {
         try {
-          const electron = (window as unknown as { electron: { shell: { checkMacPermissions: () => Promise<{ ok: boolean; accessibility: boolean; screenRecording: boolean }> } } }).electron
-          const appPerms = await electron.shell.checkMacPermissions()
-          if (appPerms.ok) {
-            // Both app AND Python runtime must be authorized
-            s.permissions = {
-              accessibility: appPerms.accessibility && (s.permissions.accessibility !== false),
-              screenRecording: appPerms.screenRecording && (s.permissions.screenRecording !== false),
-            }
+          const perms = await invoke<{ accessibility: boolean; screen_recording: boolean }>('check_mac_permissions')
+          s.permissions = {
+            accessibility: perms.accessibility && (s.permissions.accessibility !== false),
+            screenRecording: perms.screen_recording && (s.permissions.screenRecording !== false),
           }
         } catch { /* fallback to server-reported permissions */ }
       }

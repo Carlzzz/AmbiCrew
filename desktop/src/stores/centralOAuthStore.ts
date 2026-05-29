@@ -1,5 +1,9 @@
 import { create } from 'zustand'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { getBaseUrl } from '../api/client'
+import { isDesktopRuntime } from '../lib/desktopRuntime'
+import { useSettingsStore } from './settingsStore'
 
 type CentralOAuthStatus = {
   loggedIn: boolean
@@ -23,10 +27,6 @@ function apiUrl(path: string) {
   return `${getBaseUrl()}${path}`
 }
 
-function isElectron(): boolean {
-  return typeof window !== 'undefined' && 'electron' in window
-}
-
 function currentServerPort(): number {
   try {
     const port = new URL(getBaseUrl()).port
@@ -39,17 +39,17 @@ function currentServerPort(): number {
 export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
   let pollTimer: ReturnType<typeof setTimeout> | null = null
 
-  // Subscribe to Electron push events for auth status changes (e.g. after
-  // background display-name fetch or token refresh in the main process).
-  if (isElectron()) {
-    try {
-      const electron = (window as unknown as {
-        electron: { auth: { onStatusChanged: (cb: (status: { loggedIn: boolean; displayName?: string }) => void) => () => void } }
-      }).electron
-      electron.auth.onStatusChanged((status) => {
-        set({ status: { loggedIn: status.loggedIn, displayName: status.displayName }, error: null })
+  // Subscribe to Tauri push events for auth status changes
+  if (isDesktopRuntime()) {
+    listen<{ logged_in: boolean; display_name?: string }>('auth:statusChanged', (event) => {
+      set({
+        status: { loggedIn: event.payload.logged_in, displayName: event.payload.display_name },
+        error: null,
       })
-    } catch { /* ignore if not available */ }
+      if (event.payload.logged_in) {
+        void useSettingsStore.getState().fetchAll()
+      }
+    }).catch(() => { /* ignore if not available */ })
   }
 
   return {
@@ -60,17 +60,11 @@ export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
 
     fetchStatus: async () => {
       try {
-        if (isElectron()) {
-          const electron = (window as unknown as {
-            electron: { auth: { getStatus: () => Promise<{ ok: boolean; status?: CentralOAuthStatus }> } }
-          }).electron
-          const result = await electron.auth.getStatus()
-          if (result.ok && result.status) {
-            set({ status: result.status, error: null })
-            return
-          }
+        if (isDesktopRuntime()) {
+          const result = await invoke<{ logged_in: boolean; display_name?: string }>('get_auth_status')
+          set({ status: { loggedIn: result.logged_in, displayName: result.display_name }, error: null })
+          return
         }
-        // Fallback: server API
         const resp = await fetch(apiUrl('/api/central-oauth'))
         const status = await resp.json() as CentralOAuthStatus
         set({ status, error: null })
@@ -82,20 +76,14 @@ export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
     login: async () => {
       set({ isLoading: true, error: null })
       try {
-        if (isElectron()) {
-          // Electron: login via IPC (uses testcrew:// protocol handler)
-          const electron = (window as unknown as {
-            electron: { auth: { login: () => Promise<{ ok: boolean; status?: CentralOAuthStatus; error?: string }> } }
-          }).electron
-          const result = await electron.auth.login()
-          if (!result.ok) {
-            throw new Error(result.error || 'Login failed')
-          }
-          set({ status: result.status || null, isLoading: false })
+        if (isDesktopRuntime()) {
+          await invoke('login')
+          // Login completion comes via deep link → auth:statusChanged event
+          set({ isLoading: false })
           return
         }
 
-        // Non-Electron: server API with HTTP redirect_uri
+        // Non-desktop: server API with HTTP redirect_uri
         const resp = await fetch(apiUrl('/api/central-oauth/start'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -104,13 +92,11 @@ export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
         const data = await resp.json() as { authorizeUrl?: string; error?: string }
         if (data.error) throw new Error(data.error)
 
-        // Open browser
         const url = data.authorizeUrl!
         if (typeof window !== 'undefined') {
           window.open(url, '_blank', 'noopener,noreferrer')
         }
         set({ isLoading: false })
-        // Start polling for server-side login completion
         get().startPolling()
       } catch (err) {
         set({
@@ -124,11 +110,8 @@ export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
       get().stopPolling()
       set({ isLoading: true })
       try {
-        if (isElectron()) {
-          const electron = (window as unknown as {
-            electron: { auth: { logout: () => Promise<{ ok: boolean }> } }
-          }).electron
-          await electron.auth.logout()
+        if (isDesktopRuntime()) {
+          await invoke('logout')
         } else {
           await fetch(apiUrl('/api/central-oauth'), { method: 'DELETE' })
         }
@@ -146,7 +129,10 @@ export const useCentralOAuthStore = create<CentralOAuthState>((set, get) => {
       set({ isPolling: true })
       const poll = async () => {
         await get().fetchStatus()
-        if (get().status?.loggedIn) return
+        if (get().status?.loggedIn) {
+          void useSettingsStore.getState().fetchAll()
+          return
+        }
         pollTimer = setTimeout(poll, 2000)
       }
       poll()

@@ -149,6 +149,7 @@ function convertUserMessage(blocks: AnthropicContentBlock[], output: OpenAIChatM
 
 function convertAssistantMessage(blocks: AnthropicContentBlock[], output: OpenAIChatMessage[]): void {
   let textContent = ''
+  let reasoningContent = ''
   const toolCalls: OpenAIToolCall[] = []
 
   for (const block of blocks) {
@@ -163,13 +164,18 @@ function convertAssistantMessage(blocks: AnthropicContentBlock[], output: OpenAI
           arguments: typeof block.input === 'string' ? block.input : JSON.stringify(block.input),
         },
       })
+    } else if (block.type === 'thinking') {
+      reasoningContent += block.thinking || ''
     }
-    // Skip thinking blocks — no OpenAI equivalent
   }
 
   const msg: OpenAIChatMessage = {
     role: 'assistant',
     content: textContent || null,
+  }
+
+  if (reasoningContent) {
+    msg.reasoning_content = reasoningContent
   }
 
   if (toolCalls.length > 0) {

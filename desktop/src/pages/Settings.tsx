@@ -173,6 +173,8 @@ function GeneralSettings() {
     setDesktopNotificationsEnabled,
     webSearch,
     setWebSearch,
+    replyLanguage,
+    setReplyLanguage,
   } = useSettingsStore()
   const t = useTranslation()
   const [webSearchDraft, setWebSearchDraft] = useState(webSearch)
@@ -204,6 +206,14 @@ function GeneralSettings() {
   const LANGUAGES: Array<{ value: Locale; label: string }> = [
     { value: 'en', label: 'English' },
     { value: 'zh', label: '中文' },
+  ]
+
+  const REPLY_LANGUAGES: Array<{ value: string; label: string }> = [
+    { value: '', label: t('settings.general.replyLanguage.auto') },
+    { value: 'English', label: 'English' },
+    { value: '中文', label: '中文' },
+    { value: '日本語', label: '日本語' },
+    { value: '한국어', label: '한국어' },
   ]
 
   const THEMES: Array<{ value: ThemeMode; label: string }> = [
@@ -311,6 +321,25 @@ function GeneralSettings() {
             onClick={() => setLocale(value)}
             className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-all ${
               locale === value
+                ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)]'
+                : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Reply Language selector */}
+      <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">{t('settings.general.replyLanguage.title')}</h2>
+      <p className="text-sm text-[var(--color-text-tertiary)] mb-3">{t('settings.general.replyLanguage.description')}</p>
+      <div className="flex gap-2 mb-8 flex-wrap">
+        {REPLY_LANGUAGES.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => void setReplyLanguage(value)}
+            className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all ${
+              replyLanguage === value
                 ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)]'
                 : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
             }`}
@@ -1270,17 +1299,6 @@ function AboutSettings() {
     let cancelled = false
 
     const fetchVersion = async () => {
-      if (typeof window !== 'undefined' && 'electron' in window) {
-        try {
-          const electron = (window as unknown as { electron: { shell: { getAppVersion: () => Promise<{ ok: boolean; version?: string }> } } }).electron
-          const result = await electron.shell.getAppVersion()
-          if (!cancelled && result.ok && result.version) {
-            setVersion(result.version)
-            return
-          }
-        } catch { /* fallback below */ }
-      }
-
       try {
         const mod = await import('@tauri-apps/api/app')
         const value = await mod.getVersion()

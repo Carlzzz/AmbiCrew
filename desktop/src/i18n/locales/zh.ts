@@ -42,6 +42,11 @@ export const zh: Record<TranslationKey, string> = {
   'sidebar.unpin': '取消固定',
   'sidebar.groupByTime': '按时间',
   'sidebar.groupByProject': '按项目',
+  'sidebar.batchManage': '批量管理',
+  'sidebar.selectAll': '全选',
+  'sidebar.deselectAll': '取消全选',
+  'sidebar.selectedCount': '已选 {count} 项',
+  'sidebar.confirmBatchDelete': '删除 {count} 个会话？此操作不可撤销。',
 
   // ─── Auth ────────────────────────────────────────────
   'auth.pleaseLogin': '请先登录 CrewCentral',
@@ -668,6 +673,9 @@ export const zh: Record<TranslationKey, string> = {
   'settings.general.appearance.dark': '暗色',
   'settings.general.languageTitle': '语言',
   'settings.general.languageDescription': '选择应用程序的显示语言。',
+  'settings.general.replyLanguage.title': '回复语言',
+  'settings.general.replyLanguage.description': '指定 AI 回复使用的语言，留空则自动匹配输入语言。',
+  'settings.general.replyLanguage.auto': '自动',
   'settings.general.effortTitle': '推理强度',
   'settings.general.effortDescription': '控制模型使用的计算量。',
   'settings.general.effort.low': '低',

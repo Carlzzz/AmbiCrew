@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isDesktopRuntime } from '../lib/desktopRuntime'
 
 export type UpdateStatus =
   | 'idle'
@@ -44,6 +45,15 @@ function writeDismissedUpdateVersion(version: string | null) {
   }
 }
 
+function readDismissedUpdateVersion(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY)
+  } catch {
+    return null
+  }
+}
+
 export const useUpdateStore = create<UpdateStore>((set, get) => ({
   status: 'idle',
   availableVersion: null,
@@ -56,16 +66,71 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   shouldPrompt: false,
 
   initialize: async () => {
-    // Update checking will be wired via electron-updater in a future phase
+    if (!isDesktopRuntime()) return
+    // Auto-check on startup after a short delay
+    setTimeout(() => {
+      get().checkForUpdates({ silent: true })
+    }, 10_000)
   },
 
-  checkForUpdates: async () => {
-    set({ status: 'idle' })
+  checkForUpdates: async (options?: CheckOptions) => {
+    if (!isDesktopRuntime()) return null
+    set({ status: 'checking', error: null })
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const update = await check()
+      set({ checkedAt: Date.now() })
+      if (!update) {
+        set({ status: 'up-to-date' })
+        return null
+      }
+      const dismissed = readDismissedUpdateVersion()
+      const shouldPrompt = !options?.silent || update.version !== dismissed
+      set({
+        status: 'available',
+        availableVersion: update.version,
+        releaseNotes: update.body,
+        shouldPrompt,
+      })
+    } catch (err) {
+      if (!options?.silent) {
+        set({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      } else {
+        set({ status: 'idle' })
+      }
+    }
     return null
   },
 
   installUpdate: async () => {
-    // Will be wired via electron-updater in a future phase
+    if (!isDesktopRuntime()) return
+    set({ status: 'downloading', progressPercent: 0, downloadedBytes: 0, totalBytes: null })
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const update = await check()
+      if (!update) {
+        set({ status: 'up-to-date' })
+        return
+      }
+      await update.download((event) => {
+        if (event.event === 'Started' && event.data.contentLength) {
+          set({ totalBytes: event.data.contentLength })
+        } else if (event.event === 'Progress') {
+          const downloaded = get().downloadedBytes + event.data.chunkLength
+          const total = get().totalBytes
+          set({
+            downloadedBytes: downloaded,
+            progressPercent: total ? Math.round((downloaded / total) * 100) : 0,
+          })
+        }
+      })
+      set({ status: 'restarting' })
+      await update.install()
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
+    } catch (err) {
+      set({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+    }
   },
 
   dismissPrompt: () => {

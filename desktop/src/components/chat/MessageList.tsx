@@ -296,6 +296,8 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
     setShowJumpToLatest(!shouldAutoScrollRef.current && messages.length > 10)
   }, [messages.length])
 
+  const scrollRafRef = useRef<number>(0)
+
   useEffect(() => {
     if (lastSessionIdRef.current !== resolvedSessionId) {
       shouldAutoScrollRef.current = true
@@ -310,13 +312,15 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
 
     if (!shouldAutoScrollRef.current) return
 
-    // Use instant scroll during active streaming to avoid layout thrashing
-    // from continuous smooth-scroll animations. Use smooth for final positions.
-    const behavior =
-      chatState === 'streaming' || chatState === 'tool_executing'
-        ? ('auto' as const)
-        : ('smooth' as const)
-    bottomRef.current?.scrollIntoView?.({ behavior })
+    // Batch scroll updates into a single animation frame to avoid layout thrashing
+    cancelAnimationFrame(scrollRafRef.current)
+    scrollRafRef.current = requestAnimationFrame(() => {
+      const behavior =
+        chatState === 'streaming' || chatState === 'tool_executing'
+          ? ('auto' as const)
+          : ('smooth' as const)
+      bottomRef.current?.scrollIntoView?.({ behavior })
+    })
   }, [messages.length, resolvedSessionId, streamingText, chatState])
 
   const { toolResultMap, childToolCallsByParent, renderItems } = useMemo(
@@ -489,14 +493,14 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
     <div
       ref={scrollContainerRef}
       onScroll={updateAutoScrollState}
-      className={`flex-1 overflow-y-auto ${compact ? 'px-3 py-3 pb-5' : 'px-4 py-4'}`}
+      className={`flex-1 overflow-y-auto [will-change:transform] ${compact ? 'px-3 py-3 pb-5' : 'px-4 py-4'}`}
     >
       <div className={compact ? 'mx-auto max-w-full' : 'mx-auto max-w-[860px]'}>
         {renderItems.map((item, index) => {
           const cardsForItem = turnCardsByRenderIndex.get(index) ?? []
 
           return (
-            <div key={item.kind === 'tool_group' ? item.id : item.message.id}>
+            <div key={item.kind === 'tool_group' ? item.id : item.message.id} className="message-item">
               {item.kind === 'tool_group' ? (
                 <ToolCallGroup
                   toolCalls={item.toolCalls}
@@ -513,6 +517,7 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
                   message={item.message}
                   activeThinkingId={activeThinkingId}
                   agentTaskNotifications={agentTaskNotifications}
+                  sessionId={resolvedSessionId}
                   toolResult={
                     item.message.type === 'tool_use'
                       ? (() => {
@@ -615,12 +620,14 @@ export const MessageBlock = memo(function MessageBlock({
   agentTaskNotifications,
   toolResult,
   onBranch,
+  sessionId,
 }: {
   message: UIMessage
   activeThinkingId: string | null
   agentTaskNotifications: Record<string, AgentTaskNotification>
   toolResult?: { content: unknown; isError: boolean } | null
   onBranch?: () => void
+  sessionId?: string | null
 }) {
   const t = useTranslation()
 
@@ -674,6 +681,7 @@ export const MessageBlock = memo(function MessageBlock({
           toolName={message.toolName}
           input={message.input}
           description={message.description}
+          sessionId={sessionId || undefined}
         />
       )
     case 'error': {

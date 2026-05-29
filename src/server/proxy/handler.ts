@@ -119,7 +119,9 @@ async function handleOpenaiChat(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(transformed),
-    signal: isStream ? AbortSignal.timeout(30_000) : AbortSignal.timeout(300_000),
+    // For streaming: generous timeout (10min) since LLM responses can be very long.
+    // For non-streaming: 5 minutes for the full response.
+    signal: AbortSignal.timeout(isStream ? 600_000 : 300_000),
   })
 
   if (!upstream.ok) {
@@ -176,7 +178,9 @@ async function handleOpenaiResponses(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(transformed),
-    signal: isStream ? AbortSignal.timeout(30_000) : AbortSignal.timeout(300_000),
+    // For streaming: generous timeout (10min) since LLM responses can be very long.
+    // For non-streaming: 5 minutes for the full response.
+    signal: AbortSignal.timeout(isStream ? 600_000 : 300_000),
   })
 
   if (!upstream.ok) {

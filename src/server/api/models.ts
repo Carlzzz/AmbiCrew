@@ -179,7 +179,8 @@ async function handleModelsList(): Promise<Response> {
   // (e.g. a previously configured DeepSeek) from leaking into the model list.
   if (isCentralAuthMode()) {
     const centralProvider = providers.find((p) => p.presetId === 'crewcentral')
-    const proxyModels = await tryFetchProxyModels(centralProvider?.baseUrl)
+    const proxyUrl = centralProvider?.baseUrl || process.env.LLM_PROXY_BASE_URL?.trim() || ''
+    const proxyModels = await tryFetchProxyModels(proxyUrl || undefined)
     if (proxyModels) {
       return Response.json({
         models: proxyModels,
@@ -220,13 +221,21 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
     providerBaseUrl?.trim() ||
     process.env.LLM_PROXY_BASE_URL?.trim() ||
     process.env.ANTHROPIC_BASE_URL?.trim()
-  if (!proxyBaseUrl) return tryGetDirectModels()
+  if (!proxyBaseUrl) {
+    console.warn('[models] No proxy base URL available (providerBaseUrl=%s, LLM_PROXY_BASE_URL=%s)',
+      providerBaseUrl ?? 'undefined', process.env.LLM_PROXY_BASE_URL ?? 'undefined')
+    return tryGetDirectModels()
+  }
 
   try {
     const token = (await getCentralAccessToken()) ||
       process.env.LLM_PROXY_API_KEY?.trim() ||
       process.env.LLM_DIRECT_API_KEY?.trim() ||
       undefined
+
+    if (!token) {
+      console.warn('[models] No auth token available for proxy fetch (AUTH_MODE=%s)', process.env.AUTH_MODE)
+    }
 
     const result = await fetchProxyModelList({
       baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
@@ -239,8 +248,9 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
       description: m.imageSupport ? 'Supports image input' : '',
       context: '',
     }))
-  } catch {
-    // Proxy fetch failed — try LLM_DIRECT_MODELS as fallback
+  } catch (err) {
+    console.error('[models] Proxy model fetch failed (url=%s): %s',
+      proxyBaseUrl, err instanceof Error ? err.message : String(err))
     return tryGetDirectModels()
   }
 }

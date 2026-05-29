@@ -126,31 +126,79 @@ async function getAccessToken(): Promise<string> {
 
 async function sendText(chatId: string, text: string): Promise<void> {
   const sessionWebhook = sessionWebhooks.get(chatId)
-  if (!sessionWebhook) {
-    console.warn(`[DingTalk] Missing sessionWebhook for ${chatId}; cannot send response`)
-    return
-  }
-
   const token = await getAccessToken()
+
   for (const chunk of splitMessage(text, 3500)) {
-    const res = await fetch(sessionWebhook, {
+    let sent = false
+
+    // Try sessionWebhook first
+    if (sessionWebhook) {
+      const res = await fetch(sessionWebhook, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-acs-dingtalk-access-token': token,
+        },
+        body: JSON.stringify({
+          msgtype: 'markdown',
+          markdown: {
+            title: 'Claude Code',
+            text: chunk,
+          },
+        }),
+      })
+      if (res.ok) {
+        sent = true
+      } else {
+        const body = await res.text().catch(() => '')
+        console.warn(`[DingTalk] sessionWebhook failed (${res.status}), trying OpenAPI fallback. Body: ${body}`)
+      }
+    }
+
+    // Fallback: OpenAPI for DM chats
+    if (!sent) {
+      sent = await sendViaOpenApi(chatId, chunk, token)
+    }
+
+    if (!sent) {
+      console.error(`[DingTalk] All send methods failed for ${chatId}. Message dropped: ${chunk.slice(0, 100)}...`)
+    }
+  }
+}
+
+async function sendViaOpenApi(chatId: string, text: string, token?: string): Promise<boolean> {
+  // OpenAPI oToMessages only works for DM chats
+  if (!chatId.startsWith('dingtalk:dm:')) {
+    console.warn(`[DingTalk] OpenAPI fallback not available for group chat: ${chatId}`)
+    return false
+  }
+  const userId = chatId.slice('dingtalk:dm:'.length)
+  if (!userId) return false
+
+  try {
+    const accessToken = token || await getAccessToken()
+    const res = await fetch(`${DINGTALK_API}/v1.0/robot/oToMessages/batchSend`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-acs-dingtalk-access-token': token,
+        'x-acs-dingtalk-access-token': accessToken,
       },
       body: JSON.stringify({
-        msgtype: 'markdown',
-        markdown: {
-          title: 'Claude Code',
-          text: chunk,
-        },
+        robotCode: config.dingtalk.clientId,
+        userIds: [userId],
+        msgKey: 'sampleMarkdown',
+        msgParam: JSON.stringify({ title: 'Claude Code', text }),
       }),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.warn(`[DingTalk] sendText failed: ${res.status} ${body}`)
+      console.warn(`[DingTalk] OpenAPI send failed: ${res.status} ${body}`)
+      return false
     }
+    return true
+  } catch (err) {
+    console.error(`[DingTalk] OpenAPI send error:`, err instanceof Error ? err.message : err)
+    return false
   }
 }
 
@@ -245,6 +293,9 @@ async function ensureExistingSession(chatId: string): Promise<{ sessionId: strin
   if (!bridge.hasSession(chatId)) {
     bridge.connectSession(chatId, stored.sessionId)
     bridge.onServerMessage(chatId, (msg) => handleServerMessage(chatId, msg))
+    bridge.onSessionLost(chatId, () => {
+      void sendText(chatId, '⚠️ 与服务器的连接已断开，下次发消息时将自动重新连接。')
+    })
     const opened = await bridge.waitForOpen(chatId)
     if (!opened) return null
   }
@@ -310,6 +361,9 @@ async function ensureSession(chatId: string): Promise<boolean> {
   if (stored) {
     bridge.connectSession(chatId, stored.sessionId)
     bridge.onServerMessage(chatId, (msg) => handleServerMessage(chatId, msg))
+    bridge.onSessionLost(chatId, () => {
+      void sendText(chatId, '⚠️ 与服务器的连接已断开，下次发消息时将自动重新连接。')
+    })
     return await bridge.waitForOpen(chatId)
   }
 
@@ -325,6 +379,9 @@ async function createSessionForChat(chatId: string, workDir: string): Promise<bo
     sessionStore.set(chatId, sessionId, workDir)
     bridge.connectSession(chatId, sessionId)
     bridge.onServerMessage(chatId, (msg) => handleServerMessage(chatId, msg))
+    bridge.onSessionLost(chatId, () => {
+      void sendText(chatId, '⚠️ 与服务器的连接已断开，下次发消息时将自动重新连接。')
+    })
     const opened = await bridge.waitForOpen(chatId)
     if (!opened) {
       await sendText(chatId, '⚠️ 连接服务器超时，请重试。')
@@ -412,6 +469,13 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       break
     case 'tool_use_complete':
       runtime.state = 'streaming'
+      break
+    case 'tool_result':
+      if (msg.isError) {
+        runtime.state = 'idle'
+        runtime.verb = undefined
+        await aiCardBuffers.get(chatId)?.complete()
+      }
       break
     case 'permission_request': {
       await sendPermissionRequest(chatId, msg)
@@ -615,7 +679,15 @@ async function routeUserMessage(chatId: string, text: string, attachments: Attac
     }
 
     const ready = await ensureSession(chatId)
-    if (!ready) return
+    if (!ready) {
+      // Session is dead — clean up and auto-recreate
+      sessionStore.delete(chatId)
+      bridge.resetSession(chatId)
+      clearTransientChatState(chatId)
+      const retried = await createSessionForChat(chatId, defaultWorkDir)
+      if (!retried) return
+      // Retry sending the original message on the new session
+    }
     const effectiveText = trimmed || (attachments.length > 0 ? '(用户发送了附件)' : '')
     if (!effectiveText && attachments.length === 0) return
     if (!bridge.sendUserMessage(chatId, effectiveText, attachments.length ? attachments : undefined)) {

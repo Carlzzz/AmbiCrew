@@ -1,19 +1,23 @@
 // desktop/src/components/settings/ClaudeOfficialLogin.tsx
 //
 // 显示当前 Claude Official OAuth 登录状态,提供 Login / Logout 按钮。
-// 点击 Login 调 Electron shell.openExternal 打开浏览器走 OAuth flow;浏览器回 callback
+// 点击 Login 打开浏览器走 OAuth flow;浏览器回 callback
 // 到 haha server 后,store 的 polling 自动刷新 UI 展示"已登录"。
 
 import { useEffect } from 'react'
 import { useHahaOAuthStore } from '../../stores/hahaOAuthStore'
 import { useTranslation } from '../../i18n'
+import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
-function openExternal(url: string) {
-  if (typeof window !== 'undefined' && 'electron' in window) {
-    const electron = (window as unknown as { electron: { shell: { openExternal: (u: string) => Promise<{ ok: boolean; error?: string }> } } }).electron
-    electron.shell.openExternal(url).catch((err) => {
+async function openExternal(url: string) {
+  if (isDesktopRuntime()) {
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell')
+      await open(url)
+    } catch (err) {
       console.error('[ClaudeOfficialLogin] openExternal failed:', err)
-    })
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
   } else {
     window.open(url, '_blank', 'noopener,noreferrer')
   }

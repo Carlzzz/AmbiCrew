@@ -1,9 +1,10 @@
 import { getDefaultBaseUrl, setBaseUrl } from '../api/client'
+import { invoke } from '@tauri-apps/api/core'
 
-/** Returns true when running inside the Electron desktop app. */
+/** Returns true when running inside the Tauri desktop app. */
 export function isDesktopRuntime(): boolean {
   if (typeof window === 'undefined') return false
-  return 'electron' in window
+  return '__TAURI_INTERNALS__' in window
 }
 
 /** @deprecated Use isDesktopRuntime() instead. */
@@ -17,14 +18,13 @@ export async function initializeDesktopServerUrl() {
     return fallbackUrl
   }
 
-  const electron = (window as unknown as { electron: { server: { getBaseUrl: () => Promise<{ ok: boolean; baseUrl?: string; error?: string }> } } }).electron
-  const result = await electron.server.getBaseUrl()
-  if (!result.ok || !result.baseUrl) {
-    throw new Error(result.error || 'Failed to get server URL from Electron')
+  const url: string | null = await invoke('get_server_url')
+  if (!url) {
+    throw new Error('Server not started yet')
   }
-  setBaseUrl(result.baseUrl)
-  await waitForHealth(result.baseUrl)
-  return result.baseUrl
+  setBaseUrl(url)
+  await waitForHealth(url)
+  return url
 }
 
 async function waitForHealth(serverUrl: string) {

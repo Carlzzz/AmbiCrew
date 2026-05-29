@@ -7,19 +7,12 @@ import type { DingtalkRegistrationBegin, DingtalkRegistrationPoll } from '../api
  * 让主进程 kill + respawn adapter sidecar，
  * 让 ~/.claude/adapters.json 里的最新凭据被新进程读到。
  *
- * 优先走 Electron IPC；非桌面环境回退到 Tauri invoke；
- * 都不满足时安静失败。
+ * 通过 Tauri invoke 通知主进程重启适配器 sidecar。
  */
 async function notifyRestartAdapters(): Promise<void> {
   try {
-    const electron = (window as unknown as { electron?: { adapters?: { restart: () => Promise<{ ok: boolean; error?: string }> } } }).electron
-    if (electron?.adapters?.restart) {
-      await electron.adapters.restart()
-      return
-    }
-    // Fallback: Tauri environments
     const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('restart_adapters_sidecar')
+    await invoke('restart_adapters')
   } catch (err) {
     // 不阻塞保存流程 —— 配置文件已经写入，下次启动 App 也会生效
     if (typeof console !== 'undefined') {

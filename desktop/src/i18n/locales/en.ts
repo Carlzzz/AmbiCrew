@@ -40,6 +40,11 @@ export const en = {
   'sidebar.unpin': 'Unpin',
   'sidebar.groupByTime': 'By time',
   'sidebar.groupByProject': 'By project',
+  'sidebar.batchManage': 'Batch manage',
+  'sidebar.selectAll': 'Select all',
+  'sidebar.deselectAll': 'Deselect all',
+  'sidebar.selectedCount': '{count} selected',
+  'sidebar.confirmBatchDelete': 'Delete {count} sessions? This cannot be undone.',
 
   // ─── Auth ────────────────────────────────────────────
   'auth.pleaseLogin': 'Please login to CrewCentral first',
@@ -666,6 +671,9 @@ export const en = {
   'settings.general.appearance.dark': 'Dark',
   'settings.general.languageTitle': 'Language',
   'settings.general.languageDescription': 'Choose the display language for the application.',
+  'settings.general.replyLanguage.title': 'Reply Language',
+  'settings.general.replyLanguage.description': 'Specify the language for AI replies. Leave as auto to match your input language.',
+  'settings.general.replyLanguage.auto': 'Auto',
   'settings.general.effortTitle': 'Effort Level',
   'settings.general.effortDescription': 'Controls how much computation the model uses.',
   'settings.general.effort.low': 'Low',

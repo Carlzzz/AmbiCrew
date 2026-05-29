@@ -4,6 +4,7 @@ import { sessionsApi, type RecentProject } from '../../api/sessions'
 import { filesystemApi } from '../../api/filesystem'
 import { useTranslation } from '../../i18n'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
+import { open as tauriOpenDialog } from '@tauri-apps/plugin-dialog'
 
 type Props = {
   value: string
@@ -111,18 +112,14 @@ export function DirectoryPicker({ value, onChange }: Props) {
 
   const handleChooseFolder = async () => {
     if (isDesktopRuntime()) {
-      // Electron: native OS folder dialog via IPC
       setIsOpen(false)
       try {
-        const electron = (window as unknown as {
-          electron: { shell: { showOpenDialog: (opts: { properties: string[]; title?: string }) => Promise<{ ok: boolean; canceled?: boolean; filePaths?: string[] }> } }
-        }).electron
-        const result = await electron.shell.showOpenDialog({
-          properties: ['openDirectory'],
+        const selected = await tauriOpenDialog({
+          directory: true,
           title: t('dirPicker.chooseProjectFolder'),
         })
-        if (result.ok && !result.canceled && result.filePaths?.[0]) {
-          onChange(result.filePaths[0])
+        if (selected) {
+          onChange(selected)
         }
       } catch (err) {
         console.error('[DirectoryPicker] Failed to open folder dialog:', err)

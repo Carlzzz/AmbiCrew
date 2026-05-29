@@ -48,6 +48,7 @@ export class WsBridge {
    *  Ensures an async handler for message N completes before handler for N+1
    *  starts, preventing state races at `await` points. */
   private handlerChains = new Map<string, Promise<void>>()
+  private sessionLostHandlers = new Map<string, () => void>()
   private serverUrl: string
   private platform: string
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -116,6 +117,11 @@ export class WsBridge {
     this.handlers.set(chatId, handler)
   }
 
+  /** Register a callback invoked when reconnection is permanently abandoned for a chatId. */
+  onSessionLost(chatId: string, handler: () => void): void {
+    this.sessionLostHandlers.set(chatId, handler)
+  }
+
   /** Reset session for a chatId (e.g. /new command). */
   resetSession(chatId: string): void {
     const session = this.sessions.get(chatId)
@@ -126,6 +132,7 @@ export class WsBridge {
     }
     this.handlers.delete(chatId)
     this.handlerChains.delete(chatId)
+    this.sessionLostHandlers.delete(chatId)
   }
 
   /** Has a session (connected or handler registered) for chatId. */
@@ -147,6 +154,7 @@ export class WsBridge {
     this.sessions.clear()
     this.handlers.clear()
     this.handlerChains.clear()
+    this.sessionLostHandlers.clear()
   }
 
   // ------- internal -------
@@ -256,6 +264,9 @@ export class WsBridge {
       console.error(`[WsBridge] Max reconnect attempts reached for ${sessionId}, giving up`)
       this.sessions.delete(chatId)
       this.handlers.delete(chatId)
+      const lostHandler = this.sessionLostHandlers.get(chatId)
+      this.sessionLostHandlers.delete(chatId)
+      if (lostHandler) lostHandler()
       return
     }
 

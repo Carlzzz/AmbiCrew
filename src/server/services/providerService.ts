@@ -58,7 +58,7 @@ function buildDefaultCrewCentralProvider(): SavedProvider {
     presetId: preset.id,
     name: preset.name,
     apiKey: '',
-    baseUrl: preset.baseUrl,
+    baseUrl: process.env.LLM_PROXY_BASE_URL?.trim() || preset.baseUrl,
     apiFormat: preset.apiFormat,
     models: preset.defaultModels,
     ...(preset.modelContextWindows && { modelContextWindows: preset.modelContextWindows }),
@@ -72,6 +72,8 @@ function withDefaultCrewCentralProvider(index: ProvidersIndex): ProvidersIndex {
 
   if (!existingCrewCentral) {
     providers.unshift(defaultProvider)
+  } else if (!existingCrewCentral.baseUrl && process.env.LLM_PROXY_BASE_URL?.trim()) {
+    existingCrewCentral.baseUrl = process.env.LLM_PROXY_BASE_URL.trim()
   }
 
   const activeId = providers.some((provider) => provider.id === index.activeId)

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { tasksApi } from '../api/tasks'
 import { notifyDesktop } from '../lib/desktopNotifications'
 import { getBaseUrl, getDefaultBaseUrl } from '../api/client'
+import { isDesktopRuntime } from '../lib/desktopRuntime'
 import type { CronTask, TaskRun } from '../types/task'
 
 const POLL_INTERVAL_MS = 30_000
@@ -72,9 +73,9 @@ export function useScheduledTaskDesktopNotifications(): void {
 
     const poll = async () => {
       // Skip polling if the server URL hasn't been initialized yet.
-      // In Electron mode, the base URL starts as the default (port 3456)
+      // In desktop mode, the base URL starts as the default (port 3456)
       // and gets updated by initializeDesktopServerUrl() to port 43124.
-      if (getBaseUrl() === getDefaultBaseUrl() && typeof window !== 'undefined' && 'electron' in window) {
+      if (getBaseUrl() === getDefaultBaseUrl() && isDesktopRuntime()) {
         return
       }
 

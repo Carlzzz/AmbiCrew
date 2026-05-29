@@ -141,23 +141,9 @@ export async function openDesktopNotificationSettings(): Promise<boolean> {
   }
 }
 
-async function sendElectronNotification(options: { title: string; body?: string }): Promise<boolean | null> {
-  if (typeof window === 'undefined' || !('electron' in window)) return null
-
-  try {
-    const electron = (window as unknown as { electron: { notification: { send: (opts: { title: string; body?: string }) => Promise<boolean> } } }).electron
-    return await electron.notification.send(options)
-  } catch {
-    return null
-  }
-}
-
 async function sendNativeNotification(options: { title: string; body?: string }): Promise<boolean> {
   const macSent = await sendMacNotification(options)
   if (macSent !== null) return macSent
-
-  const electronSent = await sendElectronNotification(options)
-  if (electronSent !== null) return electronSent
 
   const {
     isPermissionGranted,
@@ -173,16 +159,6 @@ async function sendNativeNotification(options: { title: string; body?: string })
 }
 
 async function requestWindowAttention(): Promise<boolean> {
-  if (typeof window !== 'undefined' && 'electron' in window) {
-    try {
-      const electron = (window as unknown as { electron: { notification: { flashFrame: () => Promise<void> } } }).electron
-      await electron.notification.flashFrame()
-      return true
-    } catch {
-      return false
-    }
-  }
-
   try {
     const { getCurrentWindow, UserAttentionType } = await import('@tauri-apps/api/window')
     await getCurrentWindow().requestUserAttention(UserAttentionType.Critical)

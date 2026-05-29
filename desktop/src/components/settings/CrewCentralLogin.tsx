@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
+import { isDesktopRuntime } from '../../lib/desktopRuntime'
 import { useSettingsStore } from '../../stores/settingsStore'
 
 export function CrewCentralLogin() {
@@ -21,9 +22,12 @@ export function CrewCentralLogin() {
   const handleLogin = async () => {
     try {
       await login()
-      // In Electron mode, login() blocks until the protocol callback completes.
+      // In Tauri mode, login() opens browser and returns immediately — the deep link
+      // callback triggers auth:statusChanged which refetches settings.
       // In web mode, login() opens the browser and starts polling.
-      await useSettingsStore.getState().fetchAll()
+      if (!isDesktopRuntime()) {
+        await useSettingsStore.getState().fetchAll()
+      }
     } catch {
       // store.login() errors are already captured into store.error
     }

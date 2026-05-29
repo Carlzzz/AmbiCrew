@@ -53,6 +53,8 @@ export function Sidebar() {
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [batchMode, setBatchMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!isCentralLoggedIn) return
@@ -121,11 +123,47 @@ export function Sidebar() {
 
   const confirmDelete = useCallback(async () => {
     if (!pendingDeleteSessionId) return
+    // Batch delete mode
+    if (pendingDeleteSessionId === '__batch__') {
+      for (const id of selectedIds) {
+        await deleteSession(id)
+        disconnectSession(id)
+        closeTab(id)
+      }
+      setSelectedIds(new Set())
+      setBatchMode(false)
+      setPendingDeleteSessionId(null)
+      return
+    }
     await deleteSession(pendingDeleteSessionId)
     disconnectSession(pendingDeleteSessionId)
     closeTab(pendingDeleteSessionId)
     setPendingDeleteSessionId(null)
-  }, [closeTab, deleteSession, disconnectSession, pendingDeleteSessionId])
+  }, [closeTab, deleteSession, disconnectSession, pendingDeleteSessionId, selectedIds])
+
+  const toggleBatchSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleBatchSelectAll = useCallback(() => {
+    const allIds = filteredSessions.map((s) => s.id)
+    setSelectedIds((prev) => prev.size === allIds.length ? new Set() : new Set(allIds))
+  }, [filteredSessions])
+
+  const handleBatchDelete = useCallback(() => {
+    if (selectedIds.size === 0) return
+    setPendingDeleteSessionId('__batch__')
+  }, [selectedIds])
+
+  const exitBatchMode = useCallback(() => {
+    setBatchMode(false)
+    setSelectedIds(new Set())
+  }, [])
 
   const handleStartRename = useCallback((id: string, currentTitle: string) => {
     setContextMenu(null)
@@ -141,11 +179,10 @@ export function Sidebar() {
     setRenameValue('')
   }, [renamingId, renameValue, renameSession])
 
-  // In Electron, window dragging is handled by the title bar (-webkit-app-region: drag)
-  // In web mode, there's no window dragging
+  // Window dragging is handled by Tauri's decorations / -webkit-app-region: drag
 
   const handleSidebarDrag = useCallback((_e: React.MouseEvent) => {
-    // No-op: Electron uses CSS -webkit-app-region: drag on the title bar
+    // No-op: CSS -webkit-app-region: drag on the title bar handles this
   }, [])
 
   const t = useTranslation()
@@ -298,6 +335,39 @@ export function Sidebar() {
             className="sidebar-section sidebar-section--visible flex flex-1 min-h-0 flex-col"
           >
             <div className="flex items-center justify-end px-4 pb-1">
+              {batchMode ? (
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleBatchSelectAll}
+                      className="text-[10px] text-[var(--color-text-accent)] hover:underline"
+                    >
+                      {selectedIds.size === filteredSessions.length ? t('sidebar.deselectAll') : t('sidebar.selectAll')}
+                    </button>
+                    <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                      {t('sidebar.selectedCount', { count: selectedIds.size })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleBatchDelete}
+                      disabled={selectedIds.size === 0}
+                      className="rounded-md px-2 py-0.5 text-[10px] text-[var(--color-error)] hover:bg-[var(--color-error)]/10 disabled:opacity-40 transition-colors"
+                    >
+                      {t('common.delete')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exitBatchMode}
+                      className="rounded-md px-2 py-0.5 text-[10px] text-[var(--color-text-tertiary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <button
                 type="button"
                 onClick={toggleGroupMode}
@@ -309,6 +379,7 @@ export function Sidebar() {
                 </span>
                 {groupMode === 'time' ? t('sidebar.groupByTime') : t('sidebar.groupByProject')}
               </button>
+              )}
             </div>
             <div className="sidebar-scroll-area min-h-0 flex-1 overflow-y-auto px-3">
               {error && (
@@ -349,6 +420,9 @@ export function Sidebar() {
                       setRenamingId={setRenamingId}
                       handleContextMenu={handleContextMenu}
                       isPinned
+                      batchMode={batchMode}
+                      isSelected={selectedIds.has(session.id)}
+                      onToggleSelect={toggleBatchSelect}
                       t={t}
                     />
                   ))}
@@ -374,6 +448,9 @@ export function Sidebar() {
                         setRenamingId={setRenamingId}
                         handleContextMenu={handleContextMenu}
                         isPinned={false}
+                        batchMode={batchMode}
+                        isSelected={selectedIds.has(session.id)}
+                        onToggleSelect={toggleBatchSelect}
                         t={t}
                       />
                     ))}
@@ -398,6 +475,9 @@ export function Sidebar() {
                       setRenamingId={setRenamingId}
                       handleContextMenu={handleContextMenu}
                       isPinned={false}
+                      batchMode={batchMode}
+                      isSelected={selectedIds.has(session.id)}
+                      onToggleSelect={toggleBatchSelect}
                       t={t}
                     />
                   ))}
@@ -450,6 +530,17 @@ export function Sidebar() {
           >
             {t('common.delete')}
           </button>
+          <div className="my-1 h-px bg-[var(--color-border)]" />
+          <button
+            onClick={() => {
+              setContextMenu(null)
+              setBatchMode(true)
+              setSelectedIds(new Set([contextMenu.id]))
+            }}
+            className="w-full px-3 py-1.5 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+          >
+            {t('sidebar.batchManage')}
+          </button>
         </div>
       )}
 
@@ -458,7 +549,9 @@ export function Sidebar() {
         onClose={() => setPendingDeleteSessionId(null)}
         onConfirm={confirmDelete}
         title={t('common.delete')}
-        body={pendingDeleteSessionId ? t('sidebar.confirmDelete') : ''}
+        body={pendingDeleteSessionId === '__batch__'
+          ? t('sidebar.confirmBatchDelete', { count: selectedIds.size })
+          : pendingDeleteSessionId ? t('sidebar.confirmDelete') : ''}
         confirmLabel={t('common.delete')}
         cancelLabel={t('common.cancel')}
         confirmVariant="danger"
@@ -576,6 +669,9 @@ function SessionItem({
   setRenamingId,
   handleContextMenu,
   isPinned,
+  batchMode,
+  isSelected,
+  onToggleSelect,
   t,
 }: {
   session: SessionListItem
@@ -587,6 +683,9 @@ function SessionItem({
   setRenamingId: (id: string | null) => void
   handleContextMenu: (e: React.MouseEvent, id: string) => void
   isPinned: boolean
+  batchMode: boolean
+  isSelected: boolean
+  onToggleSelect: (id: string) => void
   t: (key: import('../../i18n').TranslationKey, params?: Record<string, string | number>) => string
 }) {
   return (
@@ -609,20 +708,32 @@ function SessionItem({
       ) : (
         <button
           onClick={() => {
+            if (batchMode) {
+              onToggleSelect(session.id)
+              return
+            }
             useTabStore.getState().openTab(session.id, session.title)
             useChatStore.getState().connectToSession(session.id)
           }}
           onContextMenu={(e) => handleContextMenu(e, session.id)}
           className={`
             group w-full rounded-[12px] px-3 py-2 text-left text-sm transition-colors duration-200
-            ${session.id === activeTabId
+            ${session.id === activeTabId && !batchMode
               ? 'bg-[var(--color-sidebar-item-active)] text-[var(--color-text-primary)]'
-              : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-sidebar-item-hover)]'
+              : isSelected && batchMode
+                ? 'bg-[var(--color-primary-fixed)]/20 text-[var(--color-text-primary)]'
+                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-sidebar-item-hover)]'
             }
           `}
         >
           <span className="flex items-center gap-2.5">
-            {isPinned ? (
+            {batchMode ? (
+              <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${isSelected ? 'border-[var(--color-brand)] bg-[var(--color-brand)]' : 'border-[var(--color-border)]'}`}>
+                {isSelected && (
+                  <span className="material-symbols-outlined text-[12px] text-white" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
+                )}
+              </span>
+            ) : isPinned ? (
               <PinIcon />
             ) : (
               <span

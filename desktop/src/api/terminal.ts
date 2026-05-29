@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { isDesktopRuntime } from '../lib/desktopRuntime'
 
 export type TerminalSpawnResult = {
@@ -13,24 +15,11 @@ export type TerminalOutputPayload = {
 
 export type TerminalExitPayload = {
   session_id: number
-  code: number
+  code: number | null
   signal?: string | null
 }
 
 type Unlisten = () => void
-
-function getElectronTerminal() {
-  return (window as unknown as { electron: { terminal: ElectronTerminalAPI } }).electron.terminal
-}
-
-interface ElectronTerminalAPI {
-  spawn: (opts: { cols: number; rows: number; cwd?: string }) => Promise<TerminalSpawnResult>
-  write: (sessionId: number, data: string) => Promise<void>
-  resize: (sessionId: number, cols: number, rows: number) => Promise<void>
-  kill: (sessionId: number) => Promise<void>
-  onOutput: (callback: (payload: TerminalOutputPayload) => void) => Unlisten
-  onExit: (callback: (payload: TerminalExitPayload) => void) => Unlisten
-}
 
 export const terminalApi = {
   isAvailable: isDesktopRuntime,
@@ -39,26 +28,39 @@ export const terminalApi = {
     if (!isDesktopRuntime()) {
       return Promise.reject(new Error('Terminal is available in the desktop app runtime.'))
     }
-    return getElectronTerminal().spawn(input)
+    return invoke<TerminalSpawnResult>('spawn_pty', {
+      cols: input.cols,
+      rows: input.rows,
+      cwd: input.cwd ?? null,
+      shell: null,
+    })
   },
 
   write(sessionId: number, data: string): Promise<void> {
-    return getElectronTerminal().write(sessionId, data)
+    return invoke('write_pty', { sessionId, data })
   },
 
   resize(sessionId: number, cols: number, rows: number): Promise<void> {
-    return getElectronTerminal().resize(sessionId, cols, rows)
+    return invoke('resize_pty', { sessionId, cols, rows })
   },
 
   kill(sessionId: number): Promise<void> {
-    return getElectronTerminal().kill(sessionId)
+    return invoke('kill_pty', { sessionId })
   },
 
   onOutput(handler: (payload: TerminalOutputPayload) => void): Unlisten {
-    return getElectronTerminal().onOutput(handler)
+    let unlisten: (() => void) | null = null
+    listen<TerminalOutputPayload>('terminal:output', (event) => {
+      handler(event.payload)
+    }).then((fn) => { unlisten = fn })
+    return () => { unlisten?.() }
   },
 
   onExit(handler: (payload: TerminalExitPayload) => void): Unlisten {
-    return getElectronTerminal().onExit(handler)
+    let unlisten: (() => void) | null = null
+    listen<TerminalExitPayload>('terminal:exit', (event) => {
+      handler(event.payload)
+    }).then((fn) => { unlisten = fn })
+    return () => { unlisten?.() }
   },
 }

@@ -228,7 +228,8 @@ export async function getCentralAccessToken(): Promise<string | null> {
     if (token) return token
     const payload = await loadTokens()
     return payload?.access_token ?? null
-  } catch {
+  } catch (err) {
+    console.error('[auth] getCentralAccessToken failed:', err instanceof Error ? err.message : String(err))
     return null
   }
 }

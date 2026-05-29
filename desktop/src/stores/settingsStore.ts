@@ -29,6 +29,7 @@ type SettingsStore = {
   desktopNotificationsEnabled: boolean
   autoDreamEnabled: boolean
   webSearch: WebSearchSettings
+  replyLanguage: string
   isLoading: boolean
   error: string | null
 
@@ -43,6 +44,7 @@ type SettingsStore = {
   setDesktopNotificationsEnabled: (enabled: boolean) => Promise<void>
   setAutoDreamEnabled: (enabled: boolean) => Promise<void>
   setWebSearch: (settings: WebSearchSettings) => Promise<void>
+  setReplyLanguage: (language: string) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -58,6 +60,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   desktopNotificationsEnabled: false,
   autoDreamEnabled: true,
   webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
+  replyLanguage: '',
   isLoading: false,
   error: null,
 
@@ -85,6 +88,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         desktopNotificationsEnabled: userSettings.desktopNotificationsEnabled === true,
         autoDreamEnabled: userSettings.autoDreamEnabled !== false,
         webSearch: normalizeWebSearchSettings(userSettings.webSearch),
+        replyLanguage: typeof userSettings.language === 'string' ? userSettings.language : '',
         isLoading: false,
         error: null,
       })
@@ -198,6 +202,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await settingsApi.updateUser({ webSearch: next })
     } catch {
       set({ webSearch: prev })
+    }
+  },
+
+  setReplyLanguage: async (language) => {
+    const prev = get().replyLanguage
+    set({ replyLanguage: language })
+    try {
+      await settingsApi.updateUser({ language: language || undefined })
+    } catch {
+      set({ replyLanguage: prev })
     }
   },
 }))

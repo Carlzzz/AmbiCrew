@@ -53,6 +53,12 @@ export function startServer(port = PORT, host = HOST) {
   diagnosticsService.installConsoleCapture()
   diagnosticsService.installProcessCapture()
   ProviderService.setServerPort(port)
+
+  // Diagnostic: confirm critical env vars are loaded
+  if (process.env.DESKTOP_MODE) {
+    console.log(`[Server] AUTH_MODE=${process.env.AUTH_MODE || '(unset)'}, LLM_PROXY_BASE_URL=${process.env.LLM_PROXY_BASE_URL ? '***set***' : '(unset)'}`)
+  }
+
   const localConnectHost =
     host === '0.0.0.0' || host === '127.0.0.1' || host === 'localhost'
       ? '127.0.0.1'
