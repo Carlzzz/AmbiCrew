@@ -57,30 +57,39 @@ await compileExecutable({
 console.log(`[build-sidecars] Built desktop sidecar for ${targetTriple} (${bunTarget})`)
 
 async function detectHostTriple() {
-  const proc = Bun.spawn(['rustc', '-vV'], {
-    cwd: repoRoot,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  try {
+    const proc = Bun.spawn(['rustc', '-vV'], {
+      cwd: repoRoot,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
 
-  const stdout = await new Response(proc.stdout).text()
-  const stderr = await new Response(proc.stderr).text()
-  const exitCode = await proc.exited
+    const stdout = await new Response(proc.stdout).text()
+    await proc.exited
 
-  if (exitCode !== 0) {
-    throw new Error(`[build-sidecars] rustc -vV failed: ${stderr || stdout}`)
+    const hostLine = stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('host: '))
+
+    if (hostLine) {
+      return hostLine.replace('host: ', '')
+    }
+  } catch {
+    // rustc not available, fall through to platform detection
   }
 
-  const hostLine = stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .find((line) => line.startsWith('host: '))
-
-  if (!hostLine) {
-    throw new Error('[build-sidecars] Could not detect Rust host triple')
+  const platformMap: Record<string, Record<string, string>> = {
+    darwin: { arm64: 'aarch64-apple-darwin', x64: 'x86_64-apple-darwin' },
+    win32: { x64: 'x86_64-pc-windows-msvc', arm64: 'aarch64-pc-windows-msvc' },
+    linux: { x64: 'x86_64-unknown-linux-gnu', arm64: 'aarch64-unknown-linux-gnu' },
   }
-
-  return hostLine.replace('host: ', '')
+  const triple = platformMap[process.platform]?.[process.arch]
+  if (!triple) {
+    throw new Error(`[build-sidecars] Cannot detect host triple: unsupported platform ${process.platform}/${process.arch}`)
+  }
+  console.log(`[build-sidecars] rustc not found, inferred host triple: ${triple}`)
+  return triple
 }
 
 function mapTargetTripleToBun(triple: string) {

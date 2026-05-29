@@ -83,8 +83,12 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         // Dev mode: CARGO_MANIFEST_DIR is always desktop/src-tauri at compile time
         let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .ancestors().nth(2).unwrap().to_path_buf();
-        Command::new("bun")
-            .args(["run", "src/server/index.ts"])
+        let env_file = repo_root.join(".env");
+        let mut cmd = Command::new("bun");
+        if env_file.exists() {
+            cmd.arg(format!("--env-file={}", env_file.to_string_lossy()));
+        }
+        cmd.args(["run", "src/server/index.ts"])
             .current_dir(&repo_root)
             .env("SERVER_PORT", SERVER_PORT.to_string())
             .env("DESKTOP_MODE", "1")
