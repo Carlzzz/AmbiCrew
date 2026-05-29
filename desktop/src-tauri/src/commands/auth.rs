@@ -99,7 +99,7 @@ fn derive_api_base() -> String {
         return base.trim_end_matches('/').to_string();
     }
     let login_url = std::env::var("CREWCENTRAL_AUTH_LOGIN_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:1420/woicrew/auth/login".to_string());
+        .unwrap_or_else(|_| "https://crew.ambilight.com/woicrew/auth/login".to_string());
     if let Ok(url) = url::Url::parse(&login_url) {
         let path = url.path();
         if let Some(idx) = path.find("/auth/") {
@@ -107,7 +107,7 @@ fn derive_api_base() -> String {
         }
         return url.origin().ascii_serialization();
     }
-    "http://127.0.0.1:1420/woicrew".to_string()
+    "https://crew.ambilight.com/woicrew".to_string()
 }
 
 // ─── Deep Link Handling ──────────────────────────────────────────────────────

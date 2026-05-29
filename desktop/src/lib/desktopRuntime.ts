@@ -18,9 +18,15 @@ export async function initializeDesktopServerUrl() {
     return fallbackUrl
   }
 
-  const url: string | null = await invoke('get_server_url')
+  // Wait for the sidecar server to start (it may take a few seconds after install)
+  let url: string | null = null
+  for (let attempt = 0; attempt < 40; attempt++) {
+    url = await invoke('get_server_url')
+    if (url) break
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
   if (!url) {
-    throw new Error('Server not started yet')
+    throw new Error('Server failed to start within 20 seconds')
   }
   setBaseUrl(url)
   await waitForHealth(url)
