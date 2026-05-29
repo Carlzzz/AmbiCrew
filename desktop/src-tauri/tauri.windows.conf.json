@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "../resources/MinGit": "MinGit",
+      "../resources/python": "python"
+    }
+  }
+}

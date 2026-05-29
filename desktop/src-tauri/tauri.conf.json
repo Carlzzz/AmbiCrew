@@ -37,8 +37,6 @@
     ],
     "resources": {
       "../resources/ripgrep": "ripgrep",
-      "../resources/MinGit": "MinGit",
-      "../resources/python": "python",
       "../../runtime": "runtime"
     },
     "externalBin": [
