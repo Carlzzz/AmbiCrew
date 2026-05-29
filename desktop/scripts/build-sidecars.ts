@@ -54,7 +54,68 @@ await compileExecutable({
   bunTarget,
 })
 
-console.log(`[build-sidecars] Built desktop sidecar for ${targetTriple} (${bunTarget})`)
+console.log(`[build-sidecars] Built claude-sidecar for ${targetTriple} (${bunTarget})`)
+
+// Adapter sidecar: handles IM adapters (Feishu, Telegram, DingTalk, etc.)
+// Requires adapter dependencies to be installed first.
+const adaptersDir = path.join(repoRoot, 'adapters')
+const { existsSync } = await import('node:fs')
+if (existsSync(adaptersDir)) {
+  console.log('[build-sidecars] Installing adapter dependencies...')
+  const installProc = Bun.spawn(['bun', 'install', '--force'], {
+    cwd: adaptersDir,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  await installProc.exited
+
+  // Link adapter packages into root node_modules for build resolution
+  const adapterPkgs = ['dingtalk-stream', '@larksuiteoapi/node-sdk', 'grammy']
+  const linkedDirs: string[] = []
+  for (const pkg of adapterPkgs) {
+    const rootPkgDir = path.join(repoRoot, 'node_modules', ...pkg.split('/'))
+    const adapterPkgDir = path.join(adaptersDir, 'node_modules', ...pkg.split('/'))
+    if (existsSync(rootPkgDir) && existsSync(path.join(rootPkgDir, 'package.json'))) continue
+    if (!existsSync(adapterPkgDir)) continue
+    const parentDir = path.dirname(rootPkgDir)
+    await mkdir(parentDir, { recursive: true })
+    if (existsSync(rootPkgDir)) {
+      const { rmSync } = await import('node:fs')
+      rmSync(rootPkgDir, { recursive: true, force: true })
+    }
+    const { symlinkSync } = await import('node:fs')
+    const symlinkType = process.platform === 'win32' ? 'junction' : 'dir'
+    try {
+      symlinkSync(adapterPkgDir, rootPkgDir, symlinkType)
+      console.log(`  Linked: ${pkg} → adapters/node_modules/${pkg}`)
+      linkedDirs.push(rootPkgDir)
+    } catch {
+      // If symlink fails, skip — adapter build may still work
+    }
+  }
+
+  await compileExecutable({
+    entrypoint: path.join(desktopRoot, 'sidecars/adapter-sidecar.ts'),
+    outfileBase: path.join(sidecarsDir, `adapter-sidecar-${targetTriple}`),
+    productName: 'Adapter Sidecar',
+    bunTarget,
+    external: [
+      'dingtalk-stream',
+      '@larksuiteoapi/node-sdk',
+      'grammy',
+    ],
+  })
+
+  // Clean up linked dirs
+  const { rmSync } = await import('node:fs')
+  for (const dir of linkedDirs) {
+    try { rmSync(dir, { recursive: true, force: true }) } catch {}
+  }
+
+  console.log(`[build-sidecars] Built adapter-sidecar for ${targetTriple} (${bunTarget})`)
+} else {
+  console.warn('[build-sidecars] adapters/ directory not found, skipping adapter sidecar')
+}
 
 async function detectHostTriple() {
   try {
@@ -120,11 +181,13 @@ async function compileExecutable({
   outfileBase,
   productName,
   bunTarget,
+  external: extraExternal,
 }: {
   entrypoint: string
   outfileBase: string
   productName: string
   bunTarget: string
+  external?: string[]
 }) {
   const result = await Bun.build({
     entrypoints: [entrypoint],
@@ -161,6 +224,7 @@ async function compileExecutable({
       'fflate',
       'sharp',
       'react-devtools-core',
+      ...(extraExternal ?? []),
     ],
     compile: {
       target: bunTarget,
