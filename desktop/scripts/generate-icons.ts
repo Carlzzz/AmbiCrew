@@ -12,9 +12,9 @@ const ICONS_DIR = path.resolve(ROOT, 'src-tauri', 'icons')
 const PUBLIC_DIR = path.resolve(ROOT, 'public')
 
 async function main() {
-  const src = sharp(SOURCE)
+  const src = sharp(SOURCE).ensureAlpha()
 
-  // Generate PNGs
+  // Generate PNGs (RGBA required by Tauri)
   const sizes: [string, number][] = [
     ['32x32.png', 32],
     ['128x128.png', 128],
