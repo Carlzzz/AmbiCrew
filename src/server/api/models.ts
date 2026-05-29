@@ -174,10 +174,11 @@ async function handleModelsList(): Promise<Response> {
   const { providers, activeId } = await providerService.listProviders()
   const activeProvider = activeId ? providers.find((p) => p.id === activeId) : null
 
-  // In CrewCentral auth mode, always use CrewProxy models regardless of which
-  // provider is marked active. This prevents stale local provider configs
-  // (e.g. a previously configured DeepSeek) from leaking into the model list.
-  if (isCentralAuthMode()) {
+  // In CrewCentral auth mode (env var or active provider is crewcentral),
+  // always use CrewProxy models regardless of which provider is marked active.
+  // This prevents stale local provider configs from leaking into the model list.
+  const isCrewCentral = isCentralAuthMode() || activeProvider?.presetId === 'crewcentral'
+  if (isCrewCentral) {
     const centralProvider = providers.find((p) => p.presetId === 'crewcentral')
     const proxyUrl = centralProvider?.baseUrl || process.env.LLM_PROXY_BASE_URL?.trim() || ''
     const proxyModels = await tryFetchProxyModels(proxyUrl || undefined)
@@ -228,10 +229,20 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
   }
 
   try {
-    const token = (await getCentralAccessToken()) ||
+    let token = (await getCentralAccessToken()) ||
       process.env.LLM_PROXY_API_KEY?.trim() ||
       process.env.LLM_DIRECT_API_KEY?.trim() ||
       undefined
+
+    // Fallback: load token directly from disk when AUTH_MODE isn't set yet
+    // (e.g. server just started and env sync hasn't completed)
+    if (!token) {
+      try {
+        const { loadTokens } = await import('../../services/central/token-store.js')
+        const payload = await loadTokens()
+        token = payload?.access_token || undefined
+      } catch {}
+    }
 
     if (!token) {
       console.warn('[models] No auth token available for proxy fetch (AUTH_MODE=%s)', process.env.AUTH_MODE)

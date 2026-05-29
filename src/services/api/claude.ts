@@ -189,7 +189,7 @@ import {
   isDeferredToolsDeltaEnabled,
   isToolSearchEnabled,
 } from "src/utils/toolSearch.js";
-import { API_MAX_MEDIA_PER_REQUEST } from "../../constants/apiLimits.js";
+import { API_MAX_MEDIA_TOKEN_SAFE } from "../../constants/apiLimits.js";
 import { ADVISOR_BETA_HEADER } from "../../constants/betas.js";
 import {
   formatDeferredToolLine,
@@ -1368,12 +1368,12 @@ async function* queryModel(
   }
 
   // Strip excess media items before making the API call.
-  // The API rejects requests with >100 media items but returns a confusing error.
-  // Rather than erroring (which is hard to recover from in Cowork/CCD), we
-  // silently drop the oldest media items to stay within the limit.
+  // Computer use sessions accumulate screenshots rapidly (~1568 tokens each).
+  // Use the token-safe limit (30) to prevent context_too_large errors, which
+  // also satisfies the API's 100-item hard limit.
   messagesForAPI = stripExcessMediaItems(
     messagesForAPI,
-    API_MAX_MEDIA_PER_REQUEST,
+    API_MAX_MEDIA_TOKEN_SAFE,
   );
 
   // Instrumentation: Track message count after normalization

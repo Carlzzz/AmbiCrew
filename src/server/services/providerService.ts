@@ -335,6 +335,20 @@ export class ProviderService {
     await this.clearProviderFromSettings()
   }
 
+  async ensureActiveProviderSynced(): Promise<void> {
+    const index = await this.readIndex()
+    if (!index.activeId) return
+    const provider = index.providers.find((p) => p.id === index.activeId)
+    if (!provider || provider.presetId === 'official') return
+    const env = this.buildManagedEnv(provider)
+    await this.syncToSettings(provider)
+    for (const [key, value] of Object.entries(env)) {
+      if (value && !process.env[key]) {
+        process.env[key] = value
+      }
+    }
+  }
+
   // --- Settings sync ---
 
   private buildManagedEnv(

@@ -92,3 +92,10 @@ export const PDF_AT_MENTION_INLINE_THRESHOLD = 10
  * We validate client-side to provide a clear error message.
  */
 export const API_MAX_MEDIA_PER_REQUEST = 100
+
+/**
+ * Stricter media limit for token-budget safety.
+ * Computer use sessions accumulate screenshots rapidly (~1568 tokens each).
+ * 30 images × 1568 ≈ 47k tokens — leaves ample room in a 200k context window.
+ */
+export const API_MAX_MEDIA_TOKEN_SAFE = 30

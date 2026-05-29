@@ -602,6 +602,7 @@ export const en = {
   'settings.plugins.browseHint': 'Browse and install plugins from configured marketplaces.',
   'settings.plugins.allMarketplaces': 'All marketplaces',
   'settings.plugins.noMarketplacePlugins': 'No plugins found in marketplaces.',
+  'settings.plugins.searchPlaceholder': 'Search plugins...',
   'settings.plugins.installed': 'Installed',
   'settings.plugins.install': 'Install',
 

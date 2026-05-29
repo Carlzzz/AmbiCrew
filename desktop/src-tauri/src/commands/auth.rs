@@ -152,7 +152,50 @@ pub fn handle_deep_link_argv(app: &AppHandle, args: &[String]) {
 
 // ─── Initialization ──────────────────────────────────────────────────────────
 
+/// Try to refresh the access token using the stored refresh token.
+/// Returns updated StoredTokens on success.
+async fn try_refresh_token(base: &str, refresh_token: &str, existing_display_name: Option<&str>) -> Option<StoredTokens> {
+    let url = format!("{}/api/v1/auth/refresh", base);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({ "refresh_token": refresh_token }))
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let body: serde_json::Value = resp.json().await.ok()?;
+    if body.get("rc").and_then(|v| v.as_i64()) != Some(0) {
+        return None;
+    }
+
+    let data = body.get("data")?;
+    let new_access = data.get("access_token")?.as_str()?.to_string();
+    let new_refresh = data
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or(refresh_token)
+        .to_string();
+    let display_name = data.get("display_name").and_then(|v| v.as_str())
+        .or_else(|| data.get("displayName").and_then(|v| v.as_str()))
+        .or_else(|| data.get("email").and_then(|v| v.as_str()))
+        .map(|s| s.to_string())
+        .or_else(|| existing_display_name.map(|s| s.to_string()));
+
+    Some(StoredTokens {
+        v: 1,
+        access_token: new_access,
+        refresh_token: new_refresh,
+        display_name,
+    })
+}
+
 /// Restore auth session on startup by validating stored token.
+/// If the access token is expired, attempts a refresh before giving up.
 pub async fn initialize(app: &AppHandle) {
     let tokens = match load_tokens() {
         Some(t) => t,
@@ -166,23 +209,63 @@ pub async fn initialize(app: &AppHandle) {
     let url = format!("{}/api/v1/users/me", base);
 
     let client = reqwest::Client::new();
-    match client
+    let resp = client
         .get(&url)
         .header("Authorization", format!("Bearer {}", tokens.access_token))
         .send()
-        .await
-    {
-        Ok(resp) if resp.status().is_success() => {
-            let display_name = tokens.display_name.clone();
+        .await;
+
+    let valid = match &resp {
+        Ok(r) if r.status().is_success() => true,
+        _ => false,
+    };
+
+    if valid {
+        let api_display_name = match resp {
+            Ok(r) => r.json::<serde_json::Value>().await.ok()
+                .and_then(|body| {
+                    let d = body.get("data")?;
+                    d.get("display_name").and_then(|v| v.as_str())
+                        .or_else(|| d.get("displayName").and_then(|v| v.as_str()))
+                        .or_else(|| d.get("email").and_then(|v| v.as_str()))
+                        .map(|s| s.to_string())
+                }),
+            _ => None,
+        };
+        let display_name = api_display_name.or(tokens.display_name.clone());
+
+        if display_name != tokens.display_name {
+            let updated = StoredTokens { display_name: display_name.clone(), ..tokens.clone() };
+            let _ = save_tokens(&updated);
+        }
+
+        let state = app.state::<AuthState>();
+        let mut status = state.status.lock().unwrap();
+        status.logged_in = true;
+        status.display_name = display_name;
+        let _ = app.emit("auth:statusChanged", status.clone());
+        log::info!("[auth] Session restored successfully");
+        return;
+    }
+
+    // Access token invalid or network error — attempt refresh
+    log::info!("[auth] Access token invalid, attempting refresh...");
+    match try_refresh_token(&base, &tokens.refresh_token, tokens.display_name.as_deref()).await {
+        Some(new_tokens) => {
+            let display_name = new_tokens.display_name.clone();
+            if let Err(e) = save_tokens(&new_tokens) {
+                log::error!("[auth] Failed to save refreshed tokens: {}", e);
+                return;
+            }
             let state = app.state::<AuthState>();
             let mut status = state.status.lock().unwrap();
             status.logged_in = true;
             status.display_name = display_name;
             let _ = app.emit("auth:statusChanged", status.clone());
-            log::info!("[auth] Session restored successfully");
+            log::info!("[auth] Session restored via token refresh");
         }
-        _ => {
-            log::info!("[auth] Stored token invalid, user needs to re-login");
+        None => {
+            log::info!("[auth] Token refresh failed, user needs to re-login");
         }
     }
 }

@@ -604,6 +604,7 @@ export const zh: Record<TranslationKey, string> = {
   'settings.plugins.browseHint': '浏览并安装已配置的插件市场中的插件。',
   'settings.plugins.allMarketplaces': '所有市场',
   'settings.plugins.noMarketplacePlugins': '市场中没有找到插件。',
+  'settings.plugins.searchPlaceholder': '搜索插件...',
   'settings.plugins.installed': '已安装',
   'settings.plugins.install': '安装',
 

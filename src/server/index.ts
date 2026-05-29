@@ -54,10 +54,14 @@ export function startServer(port = PORT, host = HOST) {
   diagnosticsService.installProcessCapture()
   ProviderService.setServerPort(port)
 
-  // Diagnostic: confirm critical env vars are loaded
-  if (process.env.DESKTOP_MODE) {
-    console.log(`[Server] AUTH_MODE=${process.env.AUTH_MODE || '(unset)'}, LLM_PROXY_BASE_URL=${process.env.LLM_PROXY_BASE_URL ? '***set***' : '(unset)'}`)
-  }
+  // Ensure active provider env (AUTH_MODE, LLM_PROXY_BASE_URL, etc.) is applied
+  // to process.env. The server doesn't call applySafeConfigEnvironmentVariables()
+  // like the CLI does, so we sync the active provider's env directly.
+  void new ProviderService().ensureActiveProviderSynced().then(() => {
+    if (process.env.DESKTOP_MODE) {
+      console.log(`[Server] AUTH_MODE=${process.env.AUTH_MODE || '(unset)'}, LLM_PROXY_BASE_URL=${process.env.LLM_PROXY_BASE_URL ? '***set***' : '(unset)'}`)
+    }
+  }).catch(() => {})
 
   const localConnectHost =
     host === '0.0.0.0' || host === '127.0.0.1' || host === 'localhost'

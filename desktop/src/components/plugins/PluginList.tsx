@@ -453,6 +453,21 @@ function MarketplaceBrowser({
   t: ReturnType<typeof useTranslation>
 }) {
   const [installScope, setInstallScope] = useState<PluginScope>('user')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredPlugins = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return marketplacePlugins
+    return marketplacePlugins.filter((p) => {
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.description?.toLowerCase().includes(q)) ||
+        (p.category?.toLowerCase().includes(q)) ||
+        (p.authorName?.toLowerCase().includes(q)) ||
+        (p.tags?.some((tag) => tag.toLowerCase().includes(q)))
+      )
+    })
+  }, [marketplacePlugins, searchQuery])
 
   return (
     <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
@@ -491,17 +506,30 @@ function MarketplaceBrowser({
         </div>
       </div>
 
-      {isLoading && marketplacePlugins.length === 0 ? (
+      <div className="px-5 py-3 border-b border-[var(--color-border)]">
+        <div className="relative">
+          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-[var(--color-text-tertiary)]">search</span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('settings.plugins.searchPlaceholder')}
+            className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-8 pr-3 py-1.5 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+          />
+        </div>
+      </div>
+
+      {isLoading && filteredPlugins.length === 0 ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin w-5 h-5 border-2 border-[var(--color-brand)] border-t-transparent rounded-full" />
         </div>
-      ) : marketplacePlugins.length === 0 ? (
+      ) : filteredPlugins.length === 0 ? (
         <div className="py-8 text-center text-sm text-[var(--color-text-tertiary)]">
           {t('settings.plugins.noMarketplacePlugins')}
         </div>
       ) : (
         <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-          {marketplacePlugins.map((plugin) => (
+          {filteredPlugins.map((plugin) => (
             <div
               key={plugin.pluginId}
               className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-4 py-3 flex flex-col"
