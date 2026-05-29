@@ -69,6 +69,11 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
+                    // Focus existing window when deep link arrives
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
                     commands::auth::handle_deep_link_argv(&app_handle, &urls);
                 });
             }
