@@ -7,10 +7,13 @@ export default defineConfig({
   base: './',
   resolve: {
     alias: {},
+    // Ensure Vite/Rolldown resolves @tauri-apps subpath exports correctly
+    conditions: ['import', 'module', 'browser', 'default'],
   },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000,
   },
   server: {
     host: '127.0.0.1',
