@@ -25,15 +25,31 @@ impl Default for ServerState {
 }
 
 fn get_sidecar_path(app: &AppHandle, name: &str) -> String {
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+    let binary_name = format!("{}{}", name, ext);
+
+    // Tauri v2 places externalBin sidecars next to the main binary:
+    //   macOS:   AppName.app/Contents/MacOS/
+    //   Windows: same directory as the .exe
+    //   Linux:   same directory as the binary
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let candidate = exe_dir.join(&binary_name);
+            if candidate.exists() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    // Fallback: try resource_dir (works on Windows where resource_dir == exe dir)
     app.path()
         .resource_dir()
         .map(|dir| {
-            let ext = if cfg!(windows) { ".exe" } else { "" };
-            dir.join(format!("{}{}", name, ext))
+            dir.join(&binary_name)
                 .to_string_lossy()
                 .to_string()
         })
-        .unwrap_or_else(|_| name.to_string())
+        .unwrap_or_else(|_| binary_name)
 }
 
 fn get_resource_dir(app: &AppHandle) -> String {
@@ -78,6 +94,7 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
 
     let resource_dir = get_resource_dir(app);
     let sidecar_path = get_sidecar_path(app, "claude-sidecar");
+    log::info!("[tauri] Sidecar path: {}", sidecar_path);
 
     let spawn_result = if cfg!(debug_assertions) {
         // Dev mode: CARGO_MANIFEST_DIR is always desktop/src-tauri at compile time
