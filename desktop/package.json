@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node_modules/.bin/tsc -b && node_modules/.bin/vite build",
+    "build": "tsc -b && vite build",
     "build:server": "bun run scripts/build-server.ts",
     "build:sidecars": "bun run scripts/build-sidecars.ts",
     "download:deps": "node scripts/download-deps.mjs",
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "lint": "node_modules/.bin/tsc --noEmit",
+    "lint": "tsc --noEmit",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
