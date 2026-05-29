@@ -44,7 +44,6 @@ desktop/src-tauri/target/
 desktop/src-tauri/sidecars/*.exe
 desktop/src-tauri/sidecars/claude-sidecar-*
 desktop/src-tauri/sidecars/adapter-sidecar-*
-desktop/src-tauri/icons/
 desktop/out/
 desktop/dist/
 desktop/resources/MinGit/
