@@ -5,6 +5,20 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
 const SERVER_PORT: u16 = 43124;
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Prevent a console window from appearing when spawning the sidecar on Windows.
+fn hide_console(cmd: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
 
 /// Check if the given TCP port is currently accepting connections on 127.0.0.1.
 fn is_port_in_use(port: u16) -> bool {
@@ -224,13 +238,14 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             .env("DESKTOP_MODE", "1")
             .env("CLAUDE_RUNTIME_DIR", repo_root.join("runtime").to_string_lossy().to_string())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        hide_console(&mut cmd);
+        cmd.spawn()
             .map_err(|e| format!("Failed to spawn bun server: {}", e))
     } else {
         // Packaged mode: use compiled sidecar
-        Command::new(&sidecar_path)
-            .args(["server", "--app-root", &resource_dir])
+        let mut cmd = Command::new(&sidecar_path);
+        cmd.args(["server", "--app-root", &resource_dir])
             .env("SERVER_PORT", SERVER_PORT.to_string())
             .env("DESKTOP_MODE", "1")
             .env("CLAUDE_RUNTIME_DIR", format!("{}/runtime", resource_dir))
@@ -239,8 +254,9 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             .env("LLM_PROXY_BASE_URL", std::env::var("LLM_PROXY_BASE_URL").unwrap_or_else(|_| "https://crew.ambilight.com/woicrew/proxy".to_string()))
             .env("CREWCENTRAL_AUTH_LOGIN_URL", std::env::var("CREWCENTRAL_AUTH_LOGIN_URL").unwrap_or_else(|_| "https://crew.ambilight.com/woicrew/auth/login".to_string()))
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        hide_console(&mut cmd);
+        cmd.spawn()
             .map_err(|e| format!("Failed to spawn sidecar: {}", e))
     };
 
@@ -358,20 +374,22 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
 
     // TODO: read adapter config from ~/.claude/adapters.json to build flags
     let child = if cfg!(debug_assertions) {
-        Command::new("bun")
-            .args(["run", "sidecars/adapter-sidecar.ts"])
+        let mut cmd = Command::new("bun");
+        cmd.args(["run", "sidecars/adapter-sidecar.ts"])
             .env("SERVER_URL", &server_url)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        hide_console(&mut cmd);
+        cmd.spawn()
             .map_err(|e| format!("Failed to spawn adapter sidecar: {}", e))?
     } else {
-        Command::new(&sidecar_path)
-            .env("SERVER_URL", &server_url)
+        let mut cmd = Command::new(&sidecar_path);
+        cmd.env("SERVER_URL", &server_url)
             .env("CLAUDE_APP_ROOT", &resource_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        hide_console(&mut cmd);
+        cmd.spawn()
             .map_err(|e| format!("Failed to spawn adapter sidecar: {}", e))?
     };
 
