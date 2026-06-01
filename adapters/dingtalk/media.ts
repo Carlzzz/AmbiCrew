@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { AttachmentStore } from '../common/attachment/attachment-store.js'
 import type { LocalAttachment } from '../common/attachment/attachment-types.js'
+import { fetchWithTimeout } from '../common/fetch-with-timeout.js'
 import type { DingTalkAttachmentCandidate } from './helpers.js'
 
 const DINGTALK_API = 'https://api.dingtalk.com'
@@ -16,7 +17,7 @@ export class DingTalkMediaService {
     const downloadUrl = candidate.url || await this.resolveDownloadUrl(candidate.downloadCode, opts)
     if (!downloadUrl) throw new Error('DingTalk media item is missing a download URL')
 
-    const resp = await fetch(downloadUrl)
+    const resp = await fetchWithTimeout(downloadUrl, { timeoutMs: 30_000 })
     if (!resp.ok) {
       throw new Error(`DingTalk media download failed: ${resp.status} ${resp.statusText}`)
     }
@@ -41,7 +42,7 @@ export class DingTalkMediaService {
     opts: { clientId: string; accessToken: string },
   ): Promise<string | null> {
     if (!downloadCode) return null
-    const resp = await fetch(`${DINGTALK_API}/v1.0/robot/messageFiles/download`, {
+    const resp = await fetchWithTimeout(`${DINGTALK_API}/v1.0/robot/messageFiles/download`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -51,6 +52,7 @@ export class DingTalkMediaService {
         downloadCode,
         robotCode: opts.clientId,
       }),
+      timeoutMs: 10_000,
     })
     const body = await resp.json().catch(() => null) as { downloadUrl?: string; message?: string } | null
     if (!resp.ok || !body?.downloadUrl) {

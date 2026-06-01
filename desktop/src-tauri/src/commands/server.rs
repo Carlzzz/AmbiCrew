@@ -112,6 +112,58 @@ fn kill_existing_on_port(port: u16) {
     log::warn!("[server] Port {} still in use after kill attempt", port);
 }
 
+/// Read ~/.claude/adapters.json and return the flags needed to start the
+/// adapter sidecar (--dingtalk, --feishu, --wechat, --telegram). Returns an
+/// empty Vec if no adapters are configured with credentials.
+fn build_adapter_flags() -> Vec<String> {
+    let config_path = match dirs::home_dir() {
+        Some(home) => home.join(".claude").join("adapters.json"),
+        None => return vec![],
+    };
+
+    let raw = match std::fs::read_to_string(&config_path) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    let json: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+
+    let mut flags: Vec<String> = Vec::new();
+
+    // DingTalk: needs clientId + clientSecret (from registration poll)
+    if has_credential(&json, "dingtalk", "clientId") && has_credential(&json, "dingtalk", "clientSecret") {
+        flags.push("--dingtalk".to_string());
+    }
+
+    // Feishu: needs appId + appSecret
+    if has_credential(&json, "feishu", "appId") && has_credential(&json, "feishu", "appSecret") {
+        flags.push("--feishu".to_string());
+    }
+
+    // WeChat: needs accountId + botToken (from QR binding)
+    if has_credential(&json, "wechat", "accountId") && has_credential(&json, "wechat", "botToken") {
+        flags.push("--wechat".to_string());
+    }
+
+    // Telegram: needs botToken
+    if has_credential(&json, "telegram", "botToken") {
+        flags.push("--telegram".to_string());
+    }
+
+    flags
+}
+
+fn has_credential(json: &serde_json::Value, platform: &str, key: &str) -> bool {
+    json.get(platform)
+        .and_then(|p| p.get(key))
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+}
+
 pub struct ServerState {
     pub server_process: Mutex<Option<Child>>,
     pub adapter_process: Mutex<Option<Child>>,
@@ -372,11 +424,31 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
     let server_url = state.server_url.lock().unwrap().clone()
         .unwrap_or_else(|| format!("http://127.0.0.1:{}", SERVER_PORT));
 
-    // TODO: read adapter config from ~/.claude/adapters.json to build flags
-    let child = if cfg!(debug_assertions) {
+    // Read adapter config to decide which IM adapters to enable.
+    // The adapter-sidecar requires explicit flags (--feishu, --telegram,
+    // --wechat, --dingtalk) to know which adapters to start. Without them
+    // it exits immediately with code 2 and no adapter runs.
+    let adapter_flags = build_adapter_flags();
+    log::info!("[tauri] Adapter flags: {:?}", adapter_flags);
+
+    if adapter_flags.is_empty() {
+        log::info!("[tauri] No adapters configured — skipping adapter sidecar");
+        *state.adapter_process.lock().unwrap() = None;
+        return Ok(());
+    }
+
+    let mut child = if cfg!(debug_assertions) {
+        // Dev mode: bun needs to run from the repo root so it can resolve
+        // sidecars/adapter-sidecar.ts (Tauri's CWD is desktop/src-tauri/).
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors().nth(2).unwrap().to_path_buf();
         let mut cmd = Command::new("bun");
-        cmd.args(["run", "sidecars/adapter-sidecar.ts"])
-            .env("SERVER_URL", &server_url)
+        cmd.args(["run", "desktop/sidecars/adapter-sidecar.ts"]);
+        for flag in &adapter_flags {
+            cmd.arg(flag);
+        }
+        cmd.current_dir(&repo_root)
+            .env("ADAPTER_SERVER_URL", &server_url)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hide_console(&mut cmd);
@@ -384,7 +456,10 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
             .map_err(|e| format!("Failed to spawn adapter sidecar: {}", e))?
     } else {
         let mut cmd = Command::new(&sidecar_path);
-        cmd.env("SERVER_URL", &server_url)
+        for flag in &adapter_flags {
+            cmd.arg(flag);
+        }
+        cmd.env("ADAPTER_SERVER_URL", &server_url)
             .env("CLAUDE_APP_ROOT", &resource_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -392,6 +467,27 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
         cmd.spawn()
             .map_err(|e| format!("Failed to spawn adapter sidecar: {}", e))?
     };
+
+    // Drain stdout/stderr in background threads so adapter logs are visible
+    // and pipe buffers never fill up and block the child process.
+    // stdout → info (normal output); stderr → warn (worth attention but not
+    // necessarily an error — Node/Bun write a lot of diagnostics to stderr).
+    if let Some(stdout) = child.stdout.take() {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                log::info!("[adapter] {}", line);
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                log::warn!("[adapter stderr] {}", line);
+            }
+        });
+    }
 
     *state.adapter_process.lock().unwrap() = Some(child);
     Ok(())

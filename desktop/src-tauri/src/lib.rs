@@ -11,7 +11,12 @@ pub fn run() {
         }
     }
 
-    env_logger::init();
+    // env_logger defaults to OFF / error — too strict for dev where we want to
+    // see [tauri] / [adapter] / [server stderr] info-level lines. Use RUST_LOG
+    // if set, otherwise default to "info" so normal subprocess output surfaces
+    // without misleadingly being tagged ERROR.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .init();
 
     tauri::Builder::default()
         // single-instance MUST be first plugin (per Tauri docs)
@@ -101,13 +106,28 @@ pub fn run() {
             // Start the bun server sidecar (on a blocking thread to avoid starving Tokio)
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                let server_app = app_handle.clone();
                 let result = tauri::async_runtime::spawn_blocking(move || {
-                    commands::server::auto_start_sync(&app_handle)
+                    commands::server::auto_start_sync(&server_app)
                 }).await;
                 match result {
-                    Ok(Err(e)) => log::error!("[tauri] Server auto-start failed: {}", e),
-                    Err(e) => log::error!("[tauri] Server auto-start task panicked: {}", e),
+                    Ok(Err(e)) => {
+                        log::error!("[tauri] Server auto-start failed: {}", e);
+                        return;
+                    }
+                    Err(e) => {
+                        log::error!("[tauri] Server auto-start task panicked: {}", e);
+                        return;
+                    }
                     _ => {}
+                }
+
+                // Server is up — auto-start any configured adapters so users
+                // don't have to manually trigger a config save to get them running.
+                // Without this, IM bots are silently dead until the user happens
+                // to open Settings and re-save something.
+                if let Err(e) = commands::server::restart_adapters(app_handle).await {
+                    log::error!("[tauri] Adapter auto-start failed: {}", e);
                 }
             });
 

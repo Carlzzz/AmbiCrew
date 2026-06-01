@@ -1,10 +1,17 @@
 import type { MessageBuffer } from '../common/message-buffer.js'
 import type { DingTalkAiCardInstance } from './ai-card.js'
 
+export type CardStreamState = {
+  cardPromise: Promise<DingTalkAiCardInstance | null>
+  createdAt: number
+  consecutiveErrors: number
+}
+
 export type DingTalkStreamingState = {
   aiCardBuffers: Map<string, MessageBuffer>
-  streamingCards: Map<string, Promise<DingTalkAiCardInstance | null>>
+  streamingCards: Map<string, CardStreamState>
   streamingCardText: Map<string, string>
+  disabledCardChats?: Set<string>
 }
 
 export function resetDingTalkStreamingState(
@@ -15,6 +22,7 @@ export function resetDingTalkStreamingState(
   state.aiCardBuffers.delete(chatId)
   state.streamingCards.delete(chatId)
   state.streamingCardText.delete(chatId)
+  state.disabledCardChats?.delete(chatId)
 }
 
 export async function finishAndResetDingTalkStreamingState(

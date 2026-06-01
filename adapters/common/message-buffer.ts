@@ -9,6 +9,11 @@ export type FlushCallback = (text: string, isComplete: boolean) => void | Promis
 
 const DEFAULT_INTERVAL_MS = 500
 const DEFAULT_CHAR_THRESHOLD = 200
+/** Hard upper bound on a single onFlush() call.
+ *  If onFlush silently hangs (e.g. a downstream HTTP without timeout),
+ *  this prevents the whole chat handler chain from freezing.
+ *  Generous so legitimate slow flushes still succeed. */
+const FLUSH_TIMEOUT_MS = 20_000
 
 export class MessageBuffer {
   private buffer = ''
@@ -76,7 +81,7 @@ export class MessageBuffer {
     const text = this.buffer
     this.buffer = ''
     try {
-      await this.onFlush(text, isComplete)
+      await withTimeout(this.onFlush(text, isComplete), FLUSH_TIMEOUT_MS)
     } catch (err) {
       console.error('[MessageBuffer] Flush error:', err)
     } finally {
@@ -88,4 +93,13 @@ export class MessageBuffer {
       }
     }
   }
+}
+
+function withTimeout<T>(value: void | Promise<T>, timeoutMs: number): Promise<T | void> {
+  if (!value || typeof (value as Promise<T>).then !== 'function') return Promise.resolve(value)
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`onFlush timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+  return Promise.race([value as Promise<T>, timeout]).finally(() => clearTimeout(timer))
 }

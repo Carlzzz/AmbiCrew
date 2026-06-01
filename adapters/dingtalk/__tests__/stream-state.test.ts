@@ -14,8 +14,9 @@ describe('DingTalk streaming state', () => {
 
     const state = {
       aiCardBuffers: new Map([['chat-1', buffer]]),
-      streamingCards: new Map([['chat-1', Promise.resolve(null)]]),
+      streamingCards: new Map([['chat-1', { cardPromise: Promise.resolve(null), createdAt: Date.now(), consecutiveErrors: 0 }]]),
       streamingCardText: new Map([['chat-1', 'pre-permission text']]),
+      disabledCardChats: new Set<string>(),
     }
 
     resetDingTalkStreamingState(state, 'chat-1')
@@ -24,6 +25,7 @@ describe('DingTalk streaming state', () => {
     expect(state.aiCardBuffers.has('chat-1')).toBe(false)
     expect(state.streamingCards.has('chat-1')).toBe(false)
     expect(state.streamingCardText.has('chat-1')).toBe(false)
+    expect(state.disabledCardChats!.has('chat-1')).toBe(false)
   })
 
   it('completes the existing stream before dropping it for a permission request', async () => {
@@ -39,8 +41,9 @@ describe('DingTalk streaming state', () => {
 
     const state = {
       aiCardBuffers: new Map([['chat-1', buffer]]),
-      streamingCards: new Map([['chat-1', Promise.resolve(null)]]),
+      streamingCards: new Map([['chat-1', { cardPromise: Promise.resolve(null), createdAt: Date.now(), consecutiveErrors: 0 }]]),
       streamingCardText: new Map([['chat-1', 'already streamed']]),
+      disabledCardChats: new Set<string>(['chat-1']),
     }
 
     await finishAndResetDingTalkStreamingState(state, 'chat-1')
@@ -49,5 +52,6 @@ describe('DingTalk streaming state', () => {
     expect(state.aiCardBuffers.has('chat-1')).toBe(false)
     expect(state.streamingCards.has('chat-1')).toBe(false)
     expect(state.streamingCardText.has('chat-1')).toBe(false)
+    expect(state.disabledCardChats!.has('chat-1')).toBe(false)
   })
 })

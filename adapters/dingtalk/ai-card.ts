@@ -2,6 +2,9 @@ const DINGTALK_API = 'https://api.dingtalk.com'
 const AI_CARD_TEMPLATE_ID = '02fcf2f4-5e02-4a85-b672-46d1f715543e.schema'
 const CARD_API_MAX_QPS = 20
 const QPS_BACKOFF_DURATION_MS = 2_000
+const CARD_API_TIMEOUT_MS = 10_000
+
+import { fetchWithTimeout } from '../common/fetch-with-timeout.js'
 
 const AICardStatus = {
   INPUTING: '2',
@@ -178,13 +181,15 @@ async function requestJson(
   token: string,
   body: Record<string, unknown>,
 ): Promise<void> {
-  const res = await fetch(`${DINGTALK_API}${path}`, {
+  const res = await fetchWithTimeout(`${DINGTALK_API}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       'x-acs-dingtalk-access-token': token,
     },
     body: JSON.stringify(body),
+    timeoutMs: CARD_API_TIMEOUT_MS,
+    retries: 0, // retry handled by withCardRateLimit for QPS; others fall up
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')

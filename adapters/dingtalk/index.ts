@@ -8,6 +8,7 @@
 import path from 'node:path'
 import { DWClient, TOPIC_CARD, TOPIC_ROBOT } from 'dingtalk-stream'
 import { WsBridge, type ServerMessage, type AttachmentRef } from '../common/ws-bridge.js'
+import { fetchWithTimeout } from '../common/fetch-with-timeout.js'
 import { MessageDedup } from '../common/message-dedup.js'
 import { MessageBuffer } from '../common/message-buffer.js'
 import { enqueue } from '../common/chat-queue.js'
@@ -70,11 +71,13 @@ const pendingProjectSelection = new Map<string, boolean>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const aiCardBuffers = new Map<string, MessageBuffer>()
 const aiCardTargets = new Map<string, DingTalkAiCardTarget>()
-const streamingCards = new Map<string, Promise<DingTalkAiCardInstance | null>>()
+const streamingCards = new Map<string, CardStreamState>()
 const streamingCardText = new Map<string, string>()
+const disabledCardChats = new Set<string>()
 const pendingPermissions = new Map<string, Set<string>>()
 const pendingPermissionChats = new Map<string, string>()
 const pendingAskUserInputs = new Map<string, unknown>()
+const sendFailureCounts = new Map<string, number>()
 
 let accessTokenCache: { token: string; expiresAt: number } | null = null
 
@@ -88,6 +91,15 @@ type ChatRuntimeState = {
   model?: string
   pendingPermissionCount: number
 }
+
+type CardStreamState = {
+  cardPromise: Promise<DingTalkAiCardInstance | null>
+  createdAt: number
+  consecutiveErrors: number
+}
+
+const CARD_MAX_CONSECUTIVE_ERRORS = 2
+const CARD_MAX_AGE_MS = 30 * 60 * 1000 // 30 minutes
 
 function getRuntimeState(chatId: string): ChatRuntimeState {
   let state = runtimeStates.get(chatId)
@@ -104,13 +116,14 @@ async function getAccessToken(): Promise<string> {
     return accessTokenCache.token
   }
 
-  const res = await fetch(`${DINGTALK_API}/v1.0/oauth2/accessToken`, {
+  const res = await fetchWithTimeout(`${DINGTALK_API}/v1.0/oauth2/accessToken`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       appKey: config.dingtalk.clientId,
       appSecret: config.dingtalk.clientSecret,
     }),
+    timeoutMs: 10_000,
   })
   const data = await res.json().catch(() => null) as { accessToken?: string; expireIn?: number; message?: string } | null
   if (!res.ok || !data?.accessToken) {
@@ -128,42 +141,72 @@ async function sendText(chatId: string, text: string): Promise<void> {
   const sessionWebhook = sessionWebhooks.get(chatId)
   const token = await getAccessToken()
 
+  // If previous sends failed silently, prepend a one-shot notice so the user knows
+  // they may have missed something — then clear the counter once we successfully
+  // deliver this message.
+  const pendingFailures = sendFailureCounts.get(chatId) ?? 0
+  let firstChunkPrefix = ''
+  if (pendingFailures > 0) {
+    firstChunkPrefix = `⚠️ 此前有 ${pendingFailures} 条回复未能送达（网络/钉钉接口故障），如需补发请重新提问。\n\n`
+  }
+
+  let anyChunkSent = false
+  let firstChunk = true
   for (const chunk of splitMessage(text, 3500)) {
-    let sent = false
+    const effectiveChunk = firstChunk ? firstChunkPrefix + chunk : chunk
+    firstChunk = false
 
-    // Try sessionWebhook first
-    if (sessionWebhook) {
-      const res = await fetch(sessionWebhook, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-acs-dingtalk-access-token': token,
-        },
-        body: JSON.stringify({
-          msgtype: 'markdown',
-          markdown: {
-            title: 'Claude Code',
-            text: chunk,
-          },
-        }),
-      })
-      if (res.ok) {
-        sent = true
-      } else {
-        const body = await res.text().catch(() => '')
-        console.warn(`[DingTalk] sessionWebhook failed (${res.status}), trying OpenAPI fallback. Body: ${body}`)
-      }
-    }
-
-    // Fallback: OpenAPI for DM chats
-    if (!sent) {
-      sent = await sendViaOpenApi(chatId, chunk, token)
-    }
-
-    if (!sent) {
+    const sent = await trySendChunk(chatId, effectiveChunk, sessionWebhook, token)
+    if (sent) {
+      anyChunkSent = true
+    } else {
+      // Count every dropped chunk. We do NOT retry payload (could be huge / sensitive);
+      // we only surface the loss on the next successful send.
+      sendFailureCounts.set(chatId, (sendFailureCounts.get(chatId) ?? 0) + 1)
       console.error(`[DingTalk] All send methods failed for ${chatId}. Message dropped: ${chunk.slice(0, 100)}...`)
     }
   }
+
+  // Once at least one chunk landed and we surfaced the prior-failure notice, clear it.
+  if (anyChunkSent && pendingFailures > 0 && firstChunkPrefix) {
+    sendFailureCounts.delete(chatId)
+  }
+}
+
+/** Try sessionWebhook → OpenAPI for a single chunk. Returns true if delivered. */
+async function trySendChunk(
+  chatId: string,
+  chunk: string,
+  sessionWebhook: string | undefined,
+  token: string,
+): Promise<boolean> {
+  if (sessionWebhook) {
+    const res = await fetchWithTimeout(sessionWebhook, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-acs-dingtalk-access-token': token,
+      },
+      body: JSON.stringify({
+        msgtype: 'markdown',
+        markdown: {
+          title: 'Claude Code',
+          text: chunk,
+        },
+      }),
+      timeoutMs: 15_000,
+    }).catch((err) => {
+      console.warn(`[DingTalk] sessionWebhook request error: ${err instanceof Error ? err.message : err}`)
+      return null
+    })
+    if (res?.ok) return true
+    if (res) {
+      const body = await res.text().catch(() => '')
+      console.warn(`[DingTalk] sessionWebhook failed (${res.status}), trying OpenAPI fallback. Body: ${body}`)
+    }
+  }
+
+  return await sendViaOpenApi(chatId, chunk, token)
 }
 
 async function sendViaOpenApi(chatId: string, text: string, token?: string): Promise<boolean> {
@@ -177,7 +220,7 @@ async function sendViaOpenApi(chatId: string, text: string, token?: string): Pro
 
   try {
     const accessToken = token || await getAccessToken()
-    const res = await fetch(`${DINGTALK_API}/v1.0/robot/oToMessages/batchSend`, {
+    const res = await fetchWithTimeout(`${DINGTALK_API}/v1.0/robot/oToMessages/batchSend`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -189,6 +232,7 @@ async function sendViaOpenApi(chatId: string, text: string, token?: string): Pro
         msgKey: 'sampleMarkdown',
         msgParam: JSON.stringify({ title: 'Claude Code', text }),
       }),
+      timeoutMs: 15_000,
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -219,12 +263,48 @@ function getOrCreateAiCard(chatId: string): Promise<DingTalkAiCardInstance | nul
   const target = aiCardTargets.get(chatId)
   if (!target) return null
 
-  let card = streamingCards.get(chatId)
-  if (!card) {
-    card = aiCards.createForTarget(target)
-    streamingCards.set(chatId, card)
+  // If the card path has been disabled this turn (too many errors), short-circuit
+  if (disabledCardChats.has(chatId)) return null
+
+  let state = streamingCards.get(chatId)
+
+  // Expire stale cards proactively (token might be near expiry, kept hours-long)
+  if (state && Date.now() - state.createdAt > CARD_MAX_AGE_MS) {
+    console.warn(`[DingTalk][AICard] card for ${chatId} expired by age, recreating`)
+    streamingCards.delete(chatId)
+    state = undefined
   }
-  return card
+
+  if (!state) {
+    state = {
+      cardPromise: aiCards.createForTarget(target),
+      createdAt: Date.now(),
+      consecutiveErrors: 0,
+    }
+    streamingCards.set(chatId, state)
+  }
+  return state.cardPromise
+}
+
+/** Mark a card error. Disables the card path for this chat if threshold reached. */
+function noteCardError(chatId: string): void {
+  const state = streamingCards.get(chatId)
+  if (!state) return
+  state.consecutiveErrors += 1
+  if (state.consecutiveErrors >= CARD_MAX_CONSECUTIVE_ERRORS) {
+    console.warn(`[DingTalk][AICard] disabling card path for ${chatId} after ${state.consecutiveErrors} errors`)
+    disabledCardChats.add(chatId)
+    streamingCards.delete(chatId)
+  } else {
+    // Drop the failed card so the next flush attempts a fresh one
+    streamingCards.delete(chatId)
+  }
+}
+
+/** Reset success: clear error counter on a card that just streamed/finished OK. */
+function noteCardSuccess(chatId: string): void {
+  const state = streamingCards.get(chatId)
+  if (state) state.consecutiveErrors = 0
 }
 
 async function flushToAiCard(chatId: string, newText: string, isComplete: boolean): Promise<void> {
@@ -235,6 +315,11 @@ async function flushToAiCard(chatId: string, newText: string, isComplete: boolea
   const cardPromise = getOrCreateAiCard(chatId)
   const card = cardPromise ? await cardPromise : null
   if (!card) {
+    // Either card path was disabled, or create failed. Track create failures too.
+    if (cardPromise && !disabledCardChats.has(chatId)) {
+      // createForTarget returned null — count as an error against the chat
+      noteCardError(chatId)
+    }
     if (isComplete) {
       await sendText(chatId, fullText)
       streamingCardText.delete(chatId)
@@ -247,16 +332,18 @@ async function flushToAiCard(chatId: string, newText: string, isComplete: boolea
   try {
     if (isComplete) {
       await aiCards.finish(card, fullText)
+      noteCardSuccess(chatId)
       streamingCards.delete(chatId)
       streamingCardText.delete(chatId)
       aiCardBuffers.get(chatId)?.reset()
       aiCardBuffers.delete(chatId)
     } else {
       await aiCards.stream(card, `${fullText} ▍`, false)
+      noteCardSuccess(chatId)
     }
   } catch (err) {
     console.warn('[DingTalk][AICard] stream failed, falling back to markdown:', err instanceof Error ? err.message : err)
-    streamingCards.delete(chatId)
+    noteCardError(chatId)
     if (isComplete) {
       await sendText(chatId, fullText)
       streamingCardText.delete(chatId)
@@ -267,7 +354,7 @@ async function flushToAiCard(chatId: string, newText: string, isComplete: boolea
 }
 
 function clearTransientChatState(chatId: string): void {
-  resetDingTalkStreamingState({ aiCardBuffers, streamingCards, streamingCardText }, chatId)
+  resetDingTalkStreamingState({ aiCardBuffers, streamingCards, streamingCardText, disabledCardChats }, chatId)
   clearPendingPermissions(chatId)
   const runtime = getRuntimeState(chatId)
   runtime.state = 'idle'
@@ -485,6 +572,8 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       runtime.state = 'idle'
       runtime.verb = undefined
       await aiCardBuffers.get(chatId)?.complete()
+      // Re-enable card path for the next user message — disablement is per-turn
+      disabledCardChats.delete(chatId)
       break
     case 'error':
       runtime.state = 'idle'
@@ -492,6 +581,7 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       aiCardBuffers.get(chatId)?.reset()
       streamingCards.delete(chatId)
       streamingCardText.delete(chatId)
+      disabledCardChats.delete(chatId)
       await sendText(chatId, `❌ ${msg.message}`)
       break
     case 'system_notification':
@@ -507,7 +597,7 @@ async function sendPermissionRequest(chatId: string, msg: ServerMessage): Promis
   const runtime = getRuntimeState(chatId)
   runtime.pendingPermissionCount += 1
   runtime.state = 'permission_pending'
-  await finishAndResetDingTalkStreamingState({ aiCardBuffers, streamingCards, streamingCardText }, chatId)
+  await finishAndResetDingTalkStreamingState({ aiCardBuffers, streamingCards, streamingCardText, disabledCardChats }, chatId)
 
   const set = pendingPermissions.get(chatId) ?? new Set<string>()
   set.add(msg.requestId)
