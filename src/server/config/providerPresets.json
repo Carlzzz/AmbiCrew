@@ -96,16 +96,17 @@
     "baseUrl": "https://api.minimaxi.com/anthropic",
     "apiFormat": "anthropic",
     "defaultModels": {
-      "main": "MiniMax-M2.7-highspeed",
-      "haiku": "MiniMax-M2.7-highspeed",
-      "sonnet": "MiniMax-M2.7-highspeed",
-      "opus": "MiniMax-M2.7-highspeed"
+      "main": "MiniMax-M3",
+      "haiku": "MiniMax-M3",
+      "sonnet": "MiniMax-M3",
+      "opus": "MiniMax-M3"
     },
     "needsApiKey": true,
     "websiteUrl": "https://platform.minimaxi.com",
     "apiKeyUrl": "https://platform.minimaxi.com/subscribe/token-plan?code=1TG2Cseab2&source=link",
     "authStrategy": "auth_token",
     "modelContextWindows": {
+      "MiniMax-M3": 1048576,
       "MiniMax-M2.7": 204800,
       "MiniMax-M2.7-highspeed": 204800,
       "MiniMax-M2.5": 204800,
@@ -214,15 +215,16 @@
     "baseUrl": "",
     "apiFormat": "anthropic",
     "defaultModels": {
-      "main": "MiniMax-M2.7-highspeed",
-      "haiku": "MiniMax-M2.7-highspeed",
-      "sonnet": "MiniMax-M2.7-highspeed",
-      "opus": "MiniMax-M2.7-highspeed"
+      "main": "MiniMax-M3",
+      "haiku": "MiniMax-M3",
+      "sonnet": "MiniMax-M3",
+      "opus": "MiniMax-M3"
     },
     "needsApiKey": false,
     "websiteUrl": "",
     "promoText": "通过 CrewCentral 中控统一认证，LLM 请求经由 CrewProxy 网关路由和用量统计。",
     "modelContextWindows": {
+      "MiniMax-M3": 1048576,
       "MiniMax-M2.7-highspeed": 204800,
       "MiniMax-M2.7": 204800
     }
