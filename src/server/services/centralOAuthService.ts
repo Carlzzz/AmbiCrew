@@ -51,6 +51,8 @@ function deriveApiBase(_loginUrl: string): string {
 
 export class CentralOAuthService {
   private sessions = new Map<string, CentralOAuthSession>()
+  private lastTokenValidation = 0
+  private readonly TOKEN_VALIDATION_INTERVAL_MS = 5 * 60 * 1000 // 5 min
 
   private getLoginUrl(): string {
     return process.env.CREWCENTRAL_AUTH_LOGIN_URL || 'http://127.0.0.1:5173/woicrew/auth/login?client_label=AmbiCode&device_label=win32'
@@ -148,13 +150,47 @@ export class CentralOAuthService {
   async ensureFreshAccessToken(): Promise<string | null> {
     // First try the in-memory cached token
     let token = getAccessToken()
-    if (token) return token
+    if (!token) {
+      // Try loading from disk
+      const payload = await loadTokens()
+      token = payload?.access_token ?? null
+    }
+    if (!token) return null
 
-    // Try loading from disk
-    const payload = await loadTokens()
-    if (payload?.access_token) return payload.access_token
+    // Skip validation if we recently validated (avoid network roundtrip per CLI spawn)
+    const now = Date.now()
+    if (now - this.lastTokenValidation < this.TOKEN_VALIDATION_INTERVAL_MS) {
+      return token
+    }
 
-    return null
+    // Validate the token by calling /api/v1/users/me. If it's expired (401),
+    // refresh it before returning. This prevents CLI subprocesses from being
+    // spawned with stale tokens that will fail on the first request.
+    try {
+      const base = deriveApiBase(this.getLoginUrl())
+      const res = await fetch(`${base}/api/v1/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        this.lastTokenValidation = now
+        return token
+      }
+      if (res.status === 401) {
+        const newToken = await this.refreshToken()
+        if (newToken) {
+          this.lastTokenValidation = now
+          return newToken
+        }
+        // Refresh failed — token is dead, but return it anyway so the caller
+        // sees the same 401 and surfaces "Not logged in" to the user.
+        return token
+      }
+      // Non-401 error (network, 5xx) — return cached token, might still work
+      return token
+    } catch {
+      // Network error — return cached token, don't block CLI startup
+      return token
+    }
   }
 
   async refreshToken(): Promise<string | null> {
@@ -182,6 +218,7 @@ export class CentralOAuthService {
         refresh_token: json.data.refresh_token,
         display_name: existingDisplayName,
       })
+      this.lastTokenValidation = Date.now()
       return json.data.access_token
     } catch {
       return null
@@ -189,6 +226,7 @@ export class CentralOAuthService {
   }
 
   async deleteTokens(): Promise<void> {
+    this.lastTokenValidation = 0
     await clearTokens()
   }
 

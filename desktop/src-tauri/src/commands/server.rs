@@ -6,6 +6,98 @@ use tauri::{AppHandle, Manager};
 
 const SERVER_PORT: u16 = 43124;
 
+/// Check if the given TCP port is currently accepting connections on 127.0.0.1.
+fn is_port_in_use(port: u16) -> bool {
+    let addr = format!("127.0.0.1:{}", port);
+    if let Ok(socket_addr) = addr.parse() {
+        std::net::TcpStream::connect_timeout(&socket_addr, Duration::from_millis(200)).is_ok()
+    } else {
+        false
+    }
+}
+
+/// Verify that the server listening on the port is actually responding to
+/// /health. Returns true if it's our (healthy) server, false if it's an
+/// orphan/stale process that should be killed.
+fn is_our_server_healthy(port: u16) -> bool {
+    let url = format!("http://127.0.0.1:{}/health", port);
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    match client.get(&url).send() {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+/// If the given port is held by a non-AmbiCrew process (or a stale orphan from
+/// a previous run), kill it and wait briefly for the port to be released.
+/// Best-effort: returns Ok even if we couldn't kill, to allow startup to proceed.
+fn kill_existing_on_port(port: u16) {
+    if !is_port_in_use(port) {
+        return;
+    }
+
+    log::warn!("[server] Port {} occupied — attempting to kill orphan process", port);
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        // lsof -ti :PORT  prints one PID per line
+        if let Ok(output) = Command::new("lsof")
+            .args(["-ti", &format!(":{}", port)])
+            .output()
+        {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid in pids.lines() {
+                let pid = pid.trim();
+                if pid.is_empty() {
+                    continue;
+                }
+                let _ = Command::new("kill").args(["-9", pid]).output();
+                log::info!("[server] Killed orphan process {} on port {}", pid, port);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // netstat -ano | findstr :PORT  →  parse PID from last column
+        if let Ok(output) = Command::new("netstat").args(["-ano", "-p", "TCP"]).output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let needle_local = format!(":{} ", port);
+            let needle_listening = "LISTENING";
+            for line in stdout.lines() {
+                if !line.contains(&needle_local) || !line.contains(needle_listening) {
+                    continue;
+                }
+                if let Some(pid) = line.split_whitespace().last() {
+                    if pid.chars().all(|c| c.is_ascii_digit()) {
+                        let _ = Command::new("taskkill")
+                            .args(["/F", "/PID", pid])
+                            .output();
+                        log::info!("[server] Killed orphan process {} on port {}", pid, port);
+                    }
+                }
+            }
+        }
+    }
+
+    // Wait up to 2 seconds for the port to be released
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if !is_port_in_use(port) {
+            log::info!("[server] Port {} released", port);
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    log::warn!("[server] Port {} still in use after kill attempt", port);
+}
+
 pub struct ServerState {
     pub server_process: Mutex<Option<Child>>,
     pub adapter_process: Mutex<Option<Child>>,
@@ -90,6 +182,21 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             return Ok(());
         }
         *starting = true;
+    }
+
+    // If the port is occupied, check whether it's a healthy AmbiCrew server we
+    // can reuse (e.g. crash-recovery, dev hot-reload). If not, kill the orphan
+    // so the new sidecar can bind successfully — otherwise users see
+    // "Server not ready" on app reopen after a hard kill.
+    if is_port_in_use(SERVER_PORT) {
+        if is_our_server_healthy(SERVER_PORT) {
+            let url = format!("http://127.0.0.1:{}", SERVER_PORT);
+            *state.server_url.lock().unwrap() = Some(url.clone());
+            *state.starting.lock().unwrap() = false;
+            log::info!("[tauri] Reusing existing healthy server at {}", url);
+            return Ok(());
+        }
+        kill_existing_on_port(SERVER_PORT);
     }
 
     let resource_dir = get_resource_dir(app);
@@ -187,16 +294,20 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             if Instant::now() >= deadline {
                 break;
             }
-            // TCP fallback: check if port is already listening
-            if std::net::TcpStream::connect_timeout(
-                &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
-                Duration::from_millis(100),
-            ).is_ok() {
-                let url = format!("http://127.0.0.1:{}", SERVER_PORT);
-                *state.server_url.lock().unwrap() = Some(url.clone());
-                log::info!("[tauri] Server detected via TCP at {}", url);
-                found_signal = true;
-                break;
+            // TCP fallback: check if port is already listening, but verify it's
+            // our healthy server (not an orphan from a previous run).
+            if is_port_in_use(SERVER_PORT) {
+                if is_our_server_healthy(SERVER_PORT) {
+                    let url = format!("http://127.0.0.1:{}", SERVER_PORT);
+                    *state.server_url.lock().unwrap() = Some(url.clone());
+                    log::info!("[tauri] Server detected via TCP+health at {}", url);
+                    found_signal = true;
+                    break;
+                }
+                // Port is occupied by something that doesn't respond to /health.
+                // This is likely a stale process. Kill it and let our sidecar retry.
+                log::warn!("[tauri] Port {} occupied but /health failed — killing orphan", SERVER_PORT);
+                kill_existing_on_port(SERVER_PORT);
             }
             std::thread::sleep(Duration::from_millis(150));
         }
