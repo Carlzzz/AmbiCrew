@@ -185,10 +185,15 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
     }
 
     // If the port is occupied, check whether it's a healthy AmbiCrew server we
-    // can reuse (e.g. crash-recovery, dev hot-reload). If not, kill the orphan
-    // so the new sidecar can bind successfully — otherwise users see
-    // "Server not ready" on app reopen after a hard kill.
+    // can reuse (e.g. crash-recovery). If not, kill the orphan so the new
+    // sidecar can bind successfully — otherwise users see "Server not ready"
+    // on app reopen after a hard kill.
+    //
+    // Dev mode: never reuse — code changes between launches must take effect,
+    // and a stale Bun process running yesterday's code would silently mask
+    // edits to TypeScript files.
     if is_port_in_use(SERVER_PORT) {
+        #[cfg(not(debug_assertions))]
         if is_our_server_healthy(SERVER_PORT) {
             let url = format!("http://127.0.0.1:{}", SERVER_PORT);
             *state.server_url.lock().unwrap() = Some(url.clone());

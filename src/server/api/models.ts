@@ -246,23 +246,51 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
 
     if (!token) {
       console.warn('[models] No auth token available for proxy fetch (AUTH_MODE=%s), returning null', process.env.AUTH_MODE)
-      // Return null without attempting a request that will 401.
-      // The caller will return an empty model list and the frontend
-      // will retry after auth is ready.
       return null
     }
 
-    const result = await fetchProxyModelList({
-      baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
-      token,
-    })
+    try {
+      const result = await fetchProxyModelList({
+        baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
+        token,
+      })
 
-    return result.items.map((m: ProxyModelItem) => ({
-      id: m.modelId,
-      name: m.modelAlias,
-      description: m.imageSupport ? 'Supports image input' : '',
-      context: '',
-    }))
+      return result.items.map((m: ProxyModelItem) => ({
+        id: m.modelId,
+        name: m.modelAlias,
+        description: m.imageSupport ? 'Supports image input' : '',
+        context: '',
+      }))
+    } catch (err: unknown) {
+      // If we got a 401/403, the access token may be expired — try refreshing
+      // and retry once before giving up.
+      const category = (err as Error & { category?: string }).category
+      const status = (err as Error & { status?: number }).status
+      if (category === 'AUTH_FAILED' || status === 401 || status === 403) {
+        console.warn('[models] Proxy returned auth error, attempting token refresh...')
+        try {
+          const { centralOAuthService } = await import('../services/centralOAuthService.js')
+          const newToken = await centralOAuthService.refreshToken()
+          if (newToken) {
+            console.info('[models] Token refreshed, retrying proxy fetch')
+            const result = await fetchProxyModelList({
+              baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
+              token: newToken,
+            })
+            return result.items.map((m: ProxyModelItem) => ({
+              id: m.modelId,
+              name: m.modelAlias,
+              description: m.imageSupport ? 'Supports image input' : '',
+              context: '',
+            }))
+          }
+        } catch (retryErr) {
+          console.error('[models] Proxy retry after refresh also failed: %s',
+            retryErr instanceof Error ? retryErr.message : String(retryErr))
+        }
+      }
+      throw err // re-throw for outer catch
+    }
   } catch (err) {
     console.error('[models] Proxy model fetch failed (url=%s): %s',
       proxyBaseUrl, err instanceof Error ? err.message : String(err))

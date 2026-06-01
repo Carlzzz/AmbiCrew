@@ -28,7 +28,11 @@ function buildProviderModels(
   labels: Record<'main' | 'haiku' | 'sonnet' | 'opus', string>,
   availableModels: ModelInfo[],
 ): ModelInfo[] {
-  if (provider.presetId === 'crewcentral' && availableModels.length > 0) {
+  // CrewCentral: the real model list comes from the proxy via availableModels.
+  // The provider.models slots (main/haiku/sonnet/opus) are placeholders all set
+  // to the same default — using them as fallback shows only one item until the
+  // proxy responds. Better to show nothing and let the retry path populate it.
+  if (provider.presetId === 'crewcentral') {
     return availableModels
   }
 
