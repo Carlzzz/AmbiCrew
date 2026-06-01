@@ -14,15 +14,17 @@ pub fn run() {
     env_logger::init();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_deep_link::init())
+        // single-instance MUST be first plugin (per Tauri docs)
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // Focus existing window on second instance
+            // Focus existing window when second instance is detected
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            // Handle deep link from second instance argv
+            // Handle deep link from second instance argv (Windows/Linux)
             commands::auth::handle_deep_link_argv(app, &args);
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
@@ -64,8 +66,26 @@ pub fn run() {
             }
 
             // Listen for deep link open events (macOS always, Windows first-launch)
+            // Also check get_current() for URLs that arrived before this listener
+            // was registered (cold-start via deep link on macOS).
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
+
+                // Check buffered URLs first (cold-start scenario)
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    let url_strings: Vec<String> = urls.iter().map(|u| u.to_string()).collect();
+                    if !url_strings.is_empty() {
+                        log::info!("[tauri] Processing buffered deep link from cold start");
+                        let app_handle = app.handle().clone();
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                        commands::auth::handle_deep_link_argv(&app_handle, &url_strings);
+                    }
+                }
+
+                // Register listener for URLs arriving after setup (warm-start)
                 let app_handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();

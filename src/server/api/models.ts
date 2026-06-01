@@ -190,15 +190,15 @@ async function handleModelsList(): Promise<Response> {
           : null,
       })
     }
-    // Proxy unavailable — fall back to CrewCentral provider's configured models
-    if (centralProvider) {
-      const modelList = buildProviderModelList(centralProvider.models)
-      return Response.json({
-        models: modelList,
-        provider: { id: centralProvider.id, name: centralProvider.name },
-      })
-    }
-    return Response.json({ models: DEFAULT_MODELS, provider: null })
+    // Proxy unavailable — return empty list instead of falling back to
+    // CrewCentral's hardcoded defaultModels (all MiniMax, deduped to 1 entry).
+    // The frontend will retry after auth is ready and get the full proxy list.
+    return Response.json({
+      models: DEFAULT_MODELS,
+      provider: centralProvider
+        ? { id: centralProvider.id, name: centralProvider.name }
+        : null,
+    })
   }
 
   if (activeProvider) {
@@ -245,7 +245,11 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
     }
 
     if (!token) {
-      console.warn('[models] No auth token available for proxy fetch (AUTH_MODE=%s)', process.env.AUTH_MODE)
+      console.warn('[models] No auth token available for proxy fetch (AUTH_MODE=%s), returning null', process.env.AUTH_MODE)
+      // Return null without attempting a request that will 401.
+      // The caller will return an empty model list and the frontend
+      // will retry after auth is ready.
+      return null
     }
 
     const result = await fetchProxyModelList({

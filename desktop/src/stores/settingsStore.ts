@@ -92,6 +92,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         isLoading: false,
         error: null,
       })
+
+      // When CrewCentral is the active provider but the model list is empty,
+      // the server's auth/token sync may not have completed yet. Retry after
+      // a short delay so the user doesn't see an empty model selector.
+      if (modelsRes.provider?.name && modelsRes.models.length === 0) {
+        setTimeout(() => {
+          const state = get()
+          if (state.activeProviderName && state.availableModels.length === 0 && !state.isLoading) {
+            void state.fetchAll()
+          }
+        }, 2000)
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Failed to load desktop settings'
