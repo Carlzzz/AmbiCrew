@@ -129,11 +129,11 @@ ws.addEventListener('message', (event) => {
         if (text.includes('trigger api error')) {
           emit(ws, {
             type: 'assistant',
-            error: 'invalid_request',
+            error: text.includes('invalid_api_key') ? 'invalid_api_key' : 'invalid_request',
             isApiErrorMessage: true,
             message: {
               role: 'assistant',
-              content: [{ type: 'text', text: 'Prompt is too long' }],
+              content: [{ type: 'text', text: text.includes('invalid_api_key') ? 'Invalid API key' : 'Prompt is too long' }],
             },
             session_id: sessionId,
           })
@@ -145,7 +145,7 @@ ws.addEventListener('message', (event) => {
             type: 'result',
             subtype: 'success',
             is_error: true,
-            result: 'Prompt is too long',
+            result: text.includes('invalid_api_key') ? 'Invalid API key' : 'Prompt is too long',
             usage: { input_tokens: 0, output_tokens: 0 },
             session_id: sessionId,
           })

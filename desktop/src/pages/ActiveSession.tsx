@@ -20,6 +20,7 @@ import {
 import { useTranslation } from '../i18n'
 import { MessageList } from '../components/chat/MessageList'
 import { ChatInput } from '../components/chat/ChatInput'
+import { AuthRestartBanner } from '../components/chat/AuthRestartBanner'
 import { ComputerUsePermissionModal } from '../components/chat/ComputerUsePermissionModal'
 import { AskUserQuestionModal } from '../components/chat/AskUserQuestionModal'
 import { TextQuestionModal } from '../components/chat/TextQuestionModal'
@@ -419,6 +420,7 @@ export function ActiveSession() {
                 </div>
               )}
 
+              {activeTabId && <AuthRestartBanner sessionId={activeTabId} />}
               <MessageList compact={showWorkspacePanel} />
             </>
           )}
