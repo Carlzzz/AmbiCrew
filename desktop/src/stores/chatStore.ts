@@ -61,6 +61,8 @@ export type PerSessionState = {
     attachments?: UIAttachment[]
     nonce: number
   } | null
+  authRestartState?: 'restarting' | 'failed'
+  lastUserMessage?: { content: string }
 }
 
 const DEFAULT_SESSION_STATE: PerSessionState = {
