@@ -280,6 +280,7 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
   const lastSessionIdRef = useRef<string | null | undefined>(resolvedSessionId)
+  const prevMessageCountRef = useRef(messages.length)
   const t = useTranslation()
   const [turnChangeCards, setTurnChangeCards] = useState<TurnChangeCardModel[]>([])
   const [turnChangeLoadError, setTurnChangeLoadError] = useState<string | null>(null)
@@ -299,10 +300,13 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
   const scrollRafRef = useRef<number>(0)
 
   useEffect(() => {
-    if (lastSessionIdRef.current !== resolvedSessionId) {
+    const isSessionSwitch = lastSessionIdRef.current !== resolvedSessionId
+    const isHistoryLoad = prevMessageCountRef.current === 0 && messages.length > 0
+    if (isSessionSwitch) {
       shouldAutoScrollRef.current = true
       lastSessionIdRef.current = resolvedSessionId
     }
+    prevMessageCountRef.current = messages.length
 
     // Force auto-scroll when a permission dialog appears so the user
     // never misses a confirmation prompt stuck below the fold.
@@ -312,15 +316,26 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
 
     if (!shouldAutoScrollRef.current) return
 
+    const needsInstantScroll =
+      isSessionSwitch || isHistoryLoad ||
+      chatState === 'streaming' || chatState === 'tool_executing'
+
+    const doScroll = () => {
+      const behavior = needsInstantScroll ? ('auto' as const) : ('smooth' as const)
+      bottomRef.current?.scrollIntoView?.({ behavior })
+    }
+
     // Batch scroll updates into a single animation frame to avoid layout thrashing
     cancelAnimationFrame(scrollRafRef.current)
-    scrollRafRef.current = requestAnimationFrame(() => {
-      const behavior =
-        chatState === 'streaming' || chatState === 'tool_executing'
-          ? ('auto' as const)
-          : ('smooth' as const)
-      bottomRef.current?.scrollIntoView?.({ behavior })
-    })
+    if (isSessionSwitch || isHistoryLoad) {
+      // On session switch or initial history load, wait two frames:
+      // one for React DOM commit, one for browser layout, then scroll.
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = requestAnimationFrame(doScroll)
+      })
+    } else {
+      scrollRafRef.current = requestAnimationFrame(doScroll)
+    }
   }, [messages.length, resolvedSessionId, streamingText, chatState])
 
   const { toolResultMap, childToolCallsByParent, renderItems } = useMemo(
