@@ -381,6 +381,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             statusVerb: isMemberSession ? '' : randomSpinnerVerb(),
             elapsedTimer: timer,
             connectionState: isMemberSession ? 'connected' : session.connectionState,
+            authRestartState: undefined,
           },
         },
       }
@@ -589,6 +590,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ...(msg.verb && msg.verb !== 'Thinking' ? { statusVerb: msg.verb } : {}),
             ...(msg.tokens ? { tokenUsage: { ...session.tokenUsage, output_tokens: msg.tokens } } : {}),
             ...(msg.state === 'idle' ? { activeThinkingId: null, statusVerb: '' } : {}),
+            ...(msg.state === 'thinking' ? { authRestartState: undefined } : {}),
             ...(shouldFlush ? {
               messages: appendAssistantTextMessage(session.messages, pendingText, Date.now()),
               streamingText: '',
@@ -621,6 +623,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ...(pendingText !== s.streamingText ? { streamingText: pendingText } : {}),
             chatState: 'streaming',
             activeThinkingId: null,
+            authRestartState: undefined,
           }))
         } else if (msg.blockType === 'tool_use') {
           update(() => ({
@@ -629,6 +632,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamingToolInput: '',
             chatState: 'tool_executing',
             activeThinkingId: null,
+            authRestartState: undefined,
           }))
         }
         break
@@ -813,6 +817,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             newMessages = appendAssistantTextMessage(newMessages, pendingText, Date.now())
           }
           newMessages = [...newMessages, { id: nextId(), type: 'error', message: msg.message, code: msg.code, timestamp: Date.now() }]
+          const wasRestarting = s.authRestartState === 'restarting'
           return {
             messages: newMessages,
             chatState: 'idle',
@@ -820,6 +825,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamingText: '',
             pendingPermission: null,
             pendingComputerUsePermission: null,
+            authRestartState: wasRestarting ? 'failed' : undefined,
           }
         })
         useTabStore.getState().updateTabStatus(sessionId, 'error')
@@ -847,6 +853,40 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         useSessionStore.getState().updateSessionTitle(msg.sessionId, msg.title)
         useTabStore.getState().updateTabTitle(msg.sessionId, msg.title)
         break
+      case 'auth_restarting': {
+        update(() => ({
+          authRestartState: 'restarting',
+          chatState: 'idle',
+          streamingText: '',
+          activeThinkingId: null,
+        }))
+        // Clear elapsed timer
+        {
+          const session = get().sessions[sessionId]
+          if (session?.elapsedTimer) {
+            clearInterval(session.elapsedTimer)
+            update(() => ({ elapsedTimer: null }))
+          }
+        }
+        // Save last user message for retry, then auto-retry after delay
+        {
+          const session = get().sessions[sessionId]
+          if (session) {
+            const lastUserMsg = [...session.messages].reverse().find((m) => m.type === 'user_text')
+            if (lastUserMsg && lastUserMsg.type === 'user_text') {
+              const retryContent = lastUserMsg.modelContent || lastUserMsg.content
+              update(() => ({ lastUserMessage: { content: retryContent } }))
+              setTimeout(() => {
+                const currentState = get().sessions[sessionId]
+                if (currentState?.authRestartState === 'restarting') {
+                  get().sendMessage(sessionId, retryContent, undefined)
+                }
+              }, 1000)
+            }
+          }
+        }
+        break
+      }
       case 'system_notification':
         if (msg.subtype === 'slash_commands' && Array.isArray(msg.data)) {
           update(() => ({ slashCommands: msg.data as Array<{ name: string; description: string }> }))
