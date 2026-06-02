@@ -1,12 +1,3 @@
 {
-  "tasks": [
-    {
-      "id": "094a4f43",
-      "cron": "0 9 * * *",
-      "prompt": "test prompt",
-      "createdAt": 1779700770470,
-      "lastFiredAt": 1780277185442,
-      "recurring": true
-    }
-  ]
+  "tasks": []
 }
