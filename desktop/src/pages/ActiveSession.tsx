@@ -331,7 +331,7 @@ export function ActiveSession() {
             </div>
           )}
 
-          {isEmpty ? (
+          {isEmpty && (
             <div className="flex flex-1 flex-col items-center justify-center p-8 pb-32">
               <div className="flex max-w-md flex-col items-center text-center">
                 {isMemberSession ? (
@@ -356,16 +356,16 @@ export function ActiveSession() {
                 )}
               </div>
             </div>
-          ) : (
-            <>
-              {!isMemberSession && (
-                <div
-                  className={
-                    showWorkspacePanel
-                      ? 'flex w-full items-center border-b border-[var(--color-border)]/70 px-4 py-3'
-                      : 'mx-auto flex w-full max-w-[860px] items-center border-b border-outline-variant/10 px-8 py-3'
-                  }
-                >
+          )}
+
+          {!isMemberSession && !isEmpty && (
+            <div
+              className={
+                showWorkspacePanel
+                  ? 'flex w-full items-center border-b border-[var(--color-border)]/70 px-4 py-3'
+                  : 'mx-auto flex w-full max-w-[860px] items-center border-b border-outline-variant/10 px-8 py-3'
+              }
+            >
                   <div className="min-w-0 flex-1">
                     <h1
                       className={
@@ -421,9 +421,7 @@ export function ActiveSession() {
               )}
 
               {activeTabId && <AuthRestartBanner sessionId={activeTabId} />}
-              <MessageList compact={showWorkspacePanel} />
-            </>
-          )}
+              <MessageList compact={showWorkspacePanel} hidden={isEmpty} />
 
           {!isMemberSession && <SessionTaskBar />}
 

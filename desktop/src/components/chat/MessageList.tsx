@@ -247,6 +247,7 @@ export function normalizeTurnCheckpoints(response: unknown): SessionTurnCheckpoi
 type MessageListProps = {
   sessionId?: string | null
   compact?: boolean
+  hidden?: boolean
 }
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 48
@@ -258,7 +259,7 @@ function isNearScrollBottom(element: HTMLElement) {
   )
 }
 
-export function MessageList({ sessionId, compact = false }: MessageListProps = {}) {
+export function MessageList({ sessionId, compact = false, hidden = false }: MessageListProps = {}) {
   const activeTabId = useTabStore((s) => s.activeTabId)
   const resolvedSessionId = sessionId ?? activeTabId
   const sessionState = useChatStore((s) =>
@@ -549,7 +550,7 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
     <div
       ref={scrollContainerRef}
       onScroll={updateAutoScrollState}
-      className={`flex-1 overflow-y-auto [will-change:transform] ${compact ? 'px-3 py-3 pb-5' : 'px-4 py-4'}`}
+      className={`flex-1 overflow-y-auto [will-change:transform] ${hidden ? 'hidden' : ''} ${compact ? 'px-3 py-3 pb-5' : 'px-4 py-4'}`}
     >
       <div className={compact ? 'mx-auto max-w-full' : 'mx-auto max-w-[860px]'}>
         {renderItems.map((item, index) => {
