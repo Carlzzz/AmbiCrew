@@ -20,14 +20,18 @@ const pairedUserCache = new Map<string, Set<string>>()
 
 // 启动时从文件预热缓存，确保 sidecar 重启后不丢失配对状态
 ;(function warmCache() {
+  const configPath = getConfigPath()
+  console.log(`[pairing] config path: ${configPath}`)
   try {
     const file = readConfigFile()
-    for (const platform of ['telegram', 'feishu', 'wechat', 'dingtalk'] as ImPlatform[]) {
+    const platforms = ['telegram', 'feishu', 'wechat', 'dingtalk'] as ImPlatform[]
+    for (const platform of platforms) {
       const pairedUsers: PairedUser[] = file[platform]?.pairedUsers ?? []
       if (pairedUsers.length > 0) {
         const set = new Set<string>()
         for (const p of pairedUsers) set.add(String(p.userId))
         pairedUserCache.set(platform, set)
+        console.log(`[pairing] cached ${pairedUsers.length} paired user(s) for ${platform}`)
       }
     }
   } catch { /* best effort */ }
@@ -67,11 +71,16 @@ function getConfigPath(): string {
 }
 
 function readConfigFile(): Record<string, any> {
+  const configPath = getConfigPath()
   try {
-    return JSON.parse(fs.readFileSync(getConfigPath(), 'utf-8'))
+    const content = fs.readFileSync(configPath, 'utf-8')
+    const parsed = JSON.parse(content)
+    return parsed
   } catch (err: any) {
     if (err?.code !== 'ENOENT') {
-      console.warn('[pairing] readConfigFile failed (concurrent write?):', err?.message)
+      console.warn('[pairing] readConfigFile failed:', configPath, err?.message)
+    } else {
+      console.warn('[pairing] config file not found:', configPath)
     }
     return {}
   }
@@ -124,6 +133,8 @@ export function tryPair(
   const file = readConfigFile()
   const pairing: PairingState = file.pairing ?? { code: null, expiresAt: null, createdAt: null }
 
+  console.log(`[pairing] tryPair: input="${messageText.trim()}", code=${pairing.code ? '***' : 'null'}, expiresAt=${pairing.expiresAt}, now=${Date.now()}`)
+
   // 速率限制检查
   if (isRateLimited(senderInfo.userId)) return false
 
@@ -174,6 +185,10 @@ export function isAllowedUser(platform: ImPlatform, userId: string | number): bo
   try {
     const cfgFile = readConfigFile()
     const result = isPaired(platform, userId, cfgFile)
+    console.log(`[pairing] isAllowedUser(${platform}, ${userId}) → ${result}`, {
+      pairedUsers: cfgFile[platform]?.pairedUsers?.length ?? 0,
+      allowedUsers: cfgFile[platform]?.allowedUsers?.length ?? 0,
+    })
     if (result) {
       // 写入缓存，后续请求不再依赖磁盘
       if (!pairedUserCache.has(cacheKey)) pairedUserCache.set(cacheKey, new Set())

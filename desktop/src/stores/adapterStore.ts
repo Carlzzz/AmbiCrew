@@ -44,7 +44,7 @@ type AdapterStore = {
   error: string | null
 
   fetchConfig: () => Promise<void>
-  updateConfig: (patch: Partial<AdapterFileConfig>) => Promise<void>
+  updateConfig: (patch: Partial<AdapterFileConfig>, opts?: { restart?: boolean }) => Promise<void>
   generatePairingCode: () => Promise<string>
   startWechatLogin: () => Promise<{ qrcodeUrl?: string; message: string; sessionKey: string }>
   pollWechatLogin: (sessionKey: string) => Promise<{ connected: boolean; status?: string; message?: string }>
@@ -71,27 +71,25 @@ export const useAdapterStore = create<AdapterStore>((set, get) => ({
     }
   },
 
-  updateConfig: async (patch) => {
+  updateConfig: async (patch, { restart = true } = {}) => {
     const config = await adaptersApi.updateConfig(patch)
     set({ config })
-    // 配置文件已写入磁盘，重启 adapter sidecar 让新凭据被新进程读到。
-    // pairing code / paired users 这种轻量更新也会触发重启 ——
-    // 这是个有意为之的简化：保证"任何配置变更都立刻生效"。
-    void notifyRestartAdapters()
+    if (restart) {
+      void notifyRestartAdapters()
+    }
   },
 
   generatePairingCode: async () => {
     const code = generateCode()
     const now = Date.now()
-    // 只写入配对码，不重启 sidecar —— sidecar 的 tryPair 每次直接读文件
-    await adaptersApi.updateConfig({
+    // 配对码变更不需要重启 sidecar —— tryPair 每次消息到来时直接从文件读
+    await get().updateConfig({
       pairing: {
         code,
         expiresAt: now + CODE_TTL_MS,
         createdAt: now,
       },
-    })
-    set({ config: await adaptersApi.getConfig() })
+    }, { restart: false })
     return code
   },
 
