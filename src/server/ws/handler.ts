@@ -886,11 +886,15 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
         streamState.lastApiError = { message, code }
 
         if (code === 'invalid_api_key') {
+          // Guard: if we already handled an auth restart for this turn, skip
+          if (streamState.authRetryCount > 0 && !conversationService.hasSession(sessionId)) {
+            return []
+          }
           conversationService.stopSession(sessionId)
           const attempt = streamState.authRetryCount + 1
           streamState.authRetryCount = attempt
           if (attempt <= 1) {
-            return [{ type: 'auth_restarting', attempt }]
+            return [{ type: 'auth_restarting', attempt }, { type: 'status', state: 'idle' }]
           }
           // attempt >= 2: not retryable, show normal error
           return [{ type: 'error', message, code, retryable: false }]
