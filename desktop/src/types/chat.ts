@@ -7,7 +7,7 @@ import type { RuntimeSelection } from './runtime'
 
 export type ClientMessage =
   | { type: 'prewarm_session' }
-  | { type: 'user_message'; content: string; attachments?: AttachmentRef[] }
+  | { type: 'user_message'; content: string; attachments?: AttachmentRef[]; isAutoRetry?: boolean }
   | {
       type: 'permission_response'
       requestId: string

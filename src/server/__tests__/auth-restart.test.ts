@@ -128,4 +128,153 @@ describe('Auth Restart on invalid_api_key', () => {
       conversationService.stopSession(sessionId)
     }
   })
+
+  it('should return non-retryable error on second invalid_api_key in same retry chain', async () => {
+    const sessionId = await createSession()
+    const messages: any[] = []
+    const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`)
+
+    // Track state manually
+    let gotAuthRestarting = false
+    let secondMessageSent = false
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close()
+          reject(new Error('Timed out'))
+        }, 30000)
+
+        ws.onmessage = (e) => {
+          const msg = JSON.parse(e.data as string)
+          messages.push(msg)
+
+          // First connected - send initial message
+          if (msg.type === 'connected' && !gotAuthRestarting) {
+            ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key' }))
+          }
+
+          // Got auth_restarting - this is the first attempt
+          if (msg.type === 'auth_restarting') {
+            gotAuthRestarting = true
+          }
+
+          // Got idle after auth_restarting - now send the auto-retry
+          if (msg.type === 'status' && msg.state === 'idle' && gotAuthRestarting && !secondMessageSent) {
+            secondMessageSent = true
+            // Send auto-retry - should NOT reset counter
+            ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key', isAutoRetry: true }))
+          }
+
+          // Got error - success!
+          if (msg.type === 'error') {
+            clearTimeout(timeout)
+            ws.close()
+            resolve()
+          }
+        }
+
+        ws.onerror = () => {
+          clearTimeout(timeout)
+          ws.close()
+          reject(new Error('WebSocket error'))
+        }
+      })
+
+      // Verify first auth_restarting was sent with attempt 1
+      const authRestarting = messages.find(m => m.type === 'auth_restarting')
+      expect(authRestarting).toBeDefined()
+      expect(authRestarting?.attempt).toBe(1)
+
+      // Verify error was sent with retryable: false on second attempt
+      const errorMsg = messages.find(m => m.type === 'error')
+      expect(errorMsg).toBeDefined()
+      expect(errorMsg?.code).toBe('invalid_api_key')
+      expect(errorMsg?.retryable).toBe(false)
+    } finally {
+      ws.close()
+      const { conversationService } = await import('../services/conversationService.js')
+      conversationService.stopSession(sessionId)
+    }
+  }, { timeout: 30000 })
+
+  it('should reset authRetryCount when a manual user message is sent after error', async () => {
+    const sessionId = await createSession()
+    const messages: any[] = []
+    const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`)
+
+    // Track state
+    let phase = 0 // 0: first message, 1: auto-retry, 2: manual message
+    let gotFirstAuthRestarting = false
+    let gotError = false
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close()
+          reject(new Error('Timed out'))
+        }, 45000)
+
+        ws.onmessage = (e) => {
+          const msg = JSON.parse(e.data as string)
+          messages.push(msg)
+
+          // First connected - send initial message
+          if (msg.type === 'connected' && phase === 0) {
+            phase = 1
+            ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key' }))
+          }
+
+          // First auth_restarting - send auto-retry
+          if (msg.type === 'auth_restarting' && phase === 1 && !gotFirstAuthRestarting) {
+            gotFirstAuthRestarting = true
+          }
+
+          // After first auth_restarting idle - send auto-retry
+          if (msg.type === 'status' && msg.state === 'idle' && phase === 1 && gotFirstAuthRestarting && !gotError) {
+            phase = 2
+            ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key', isAutoRetry: true }))
+          }
+
+          // Got error - now send manual message to reset counter
+          if (msg.type === 'error' && phase === 2) {
+            gotError = true
+            phase = 3
+            setTimeout(() => {
+              // Manual message - should reset counter!
+              ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key' }))
+            }, 100)
+          }
+
+          // Got second auth_restarting - success! Counter was reset!
+          if (msg.type === 'auth_restarting' && phase === 3) {
+            clearTimeout(timeout)
+            ws.close()
+            resolve()
+          }
+        }
+
+        ws.onerror = () => {
+          clearTimeout(timeout)
+          ws.close()
+          reject(new Error('WebSocket error'))
+        }
+      })
+
+      // Verify we got two auth_restarting messages
+      const authRestartingMessages = messages.filter(m => m.type === 'auth_restarting')
+      expect(authRestartingMessages.length).toBe(2)
+      expect(authRestartingMessages[0].attempt).toBe(1)
+      expect(authRestartingMessages[1].attempt).toBe(1) // Both have attempt 1 - means reset worked!
+
+      // Verify we got the intermediate error
+      const errorMsg = messages.find(m => m.type === 'error')
+      expect(errorMsg).toBeDefined()
+      expect(errorMsg?.retryable).toBe(false)
+    } finally {
+      ws.close()
+      const { conversationService } = await import('../services/conversationService.js')
+      conversationService.stopSession(sessionId)
+    }
+  }, { timeout: 45000 })
 })

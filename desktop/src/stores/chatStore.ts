@@ -887,7 +887,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                       statusVerb: randomSpinnerVerb(),
                     })),
                   }))
-                  wsManager.send(sessionId, { type: 'user_message', content: retryContent })
+                  wsManager.send(sessionId, { type: 'user_message', content: retryContent, isAutoRetry: true })
                 }
               }, 1000)
               update(() => ({ authRetryTimer: timer }))
