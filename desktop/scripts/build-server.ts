@@ -169,15 +169,11 @@ try {
   console.log('Sidecar binary built successfully.')
 
   // Phase 2b: Build adapter sidecar
-  // Adapter source files use static top-level imports of these packages.
-  // Unlike EXTERNAL_PACKAGES (which are only loaded via dynamic import()),
-  // Bun --compile must resolve the named exports at build time, so stubs
-  // are not sufficient — the real packages must be installed.
+  // Adapter packages (dingtalk-stream, @larksuiteoapi/node-sdk, grammy) are
+  // bundled INTO the binary so the compiled sidecar has no runtime dependency
+  // on node_modules. Only the base EXTERNAL_PACKAGES remain external.
   const ADAPTER_EXTERNAL_PACKAGES = [
     ...EXTERNAL_PACKAGES,
-    'dingtalk-stream',
-    '@larksuiteoapi/node-sdk',
-    'grammy',
   ]
 
   const adaptersDir = path.join(repoRoot, 'adapters')

@@ -99,11 +99,6 @@ if (existsSync(adaptersDir)) {
     outfileBase: path.join(sidecarsDir, `adapter-sidecar-${targetTriple}`),
     productName: 'Adapter Sidecar',
     bunTarget,
-    external: [
-      'dingtalk-stream',
-      '@larksuiteoapi/node-sdk',
-      'grammy',
-    ],
   })
 
   // Clean up linked dirs
