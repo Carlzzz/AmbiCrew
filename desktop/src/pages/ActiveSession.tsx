@@ -284,7 +284,7 @@ export function ActiveSession() {
       <div data-testid="active-session-content-row" className="flex min-h-0 min-w-0 flex-1">
         <div
           data-testid="active-session-chat-column"
-          className={`flex flex-col ${showWorkspacePanel ? CHAT_COLUMN_WITH_WORKSPACE_CLASS : 'min-w-[360px] flex-1'}`}
+          className={`relative flex flex-col ${showWorkspacePanel ? CHAT_COLUMN_WITH_WORKSPACE_CLASS : 'min-w-[360px] flex-1'}`}
         >
           {isMemberSession && (
             <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-container)]">
@@ -331,8 +331,8 @@ export function ActiveSession() {
             </div>
           )}
 
-          {isEmpty ? (
-            <div className="flex flex-1 flex-col items-center justify-center p-8 pb-32">
+          {isEmpty && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-8 pb-32 bg-background">
               <div className="flex max-w-md flex-col items-center text-center">
                 {isMemberSession ? (
                   <>
@@ -356,16 +356,16 @@ export function ActiveSession() {
                 )}
               </div>
             </div>
-          ) : (
-            <>
-              {!isMemberSession && (
-                <div
-                  className={
-                    showWorkspacePanel
-                      ? 'flex w-full items-center border-b border-[var(--color-border)]/70 px-4 py-3'
-                      : 'mx-auto flex w-full max-w-[860px] items-center border-b border-outline-variant/10 px-8 py-3'
-                  }
-                >
+          )}
+
+          {!isMemberSession && !isEmpty && (
+            <div
+              className={
+                showWorkspacePanel
+                  ? 'flex w-full items-center border-b border-[var(--color-border)]/70 px-4 py-3'
+                  : 'mx-auto flex w-full max-w-[860px] items-center border-b border-outline-variant/10 px-8 py-3'
+              }
+            >
                   <div className="min-w-0 flex-1">
                     <h1
                       className={
@@ -422,8 +422,6 @@ export function ActiveSession() {
 
               {activeTabId && <AuthRestartBanner sessionId={activeTabId} />}
               <MessageList compact={showWorkspacePanel} />
-            </>
-          )}
 
           {!isMemberSession && <SessionTaskBar />}
 
