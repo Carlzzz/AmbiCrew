@@ -227,6 +227,8 @@ async function handleUserMessage(
   // Clear any stale stop flag from a previous turn
   sessionStopRequested.delete(sessionId)
   clearPrewarmState(sessionId)
+  const streamState = getStreamState(sessionId)
+  streamState.authRetryCount = 0
 
   const desktopSlashCommand = getDesktopSlashCommand(message.content)
   if (desktopSlashCommand?.commandName === 'clear' && desktopSlashCommand.args.trim()) {
@@ -699,6 +701,7 @@ type SessionStreamState = {
     message: string
     code: string
   }
+  authRetryCount: number
 }
 
 const sessionStreamStates = new Map<string, SessionStreamState>()
@@ -712,6 +715,7 @@ function getStreamState(sessionId: string): SessionStreamState {
       activeToolBlocks: new Map(),
       pendingToolBlocks: new Map(),
       lastApiError: undefined,
+      authRetryCount: 0,
     }
     sessionStreamStates.set(sessionId, state)
   }
@@ -880,6 +884,18 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
         const message = extractAssistantText(cliMsg) || cliMsg.error || 'Unknown API error'
         const code = typeof cliMsg.error === 'string' ? cliMsg.error : 'API_ERROR'
         streamState.lastApiError = { message, code }
+
+        if (code === 'invalid_api_key') {
+          conversationService.stopSession(sessionId)
+          const attempt = streamState.authRetryCount + 1
+          streamState.authRetryCount = attempt
+          if (attempt <= 1) {
+            return [{ type: 'auth_restarting', attempt }]
+          }
+          // attempt >= 2: not retryable, show normal error
+          return [{ type: 'error', message, code, retryable: false }]
+        }
+
         return [{
           type: 'error',
           message,
