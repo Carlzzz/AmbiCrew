@@ -279,8 +279,10 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
-  const lastSessionIdRef = useRef<string | null | undefined>(resolvedSessionId)
-  const prevMessageCountRef = useRef(messages.length)
+  const lastSessionIdRef = useRef<string | null | undefined>(undefined)
+  const prevMessageCountRef = useRef(0)
+  const forcedScrollPendingRef = useRef(false)
+  const forcedScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const t = useTranslation()
   const [turnChangeCards, setTurnChangeCards] = useState<TurnChangeCardModel[]>([])
   const [turnChangeLoadError, setTurnChangeLoadError] = useState<string | null>(null)
@@ -293,20 +295,65 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
   const updateAutoScrollState = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
+    // Don't let scroll events override auto-scroll while a forced scroll
+    // (session switch / history load) is still in flight.
+    if (forcedScrollPendingRef.current) return
     shouldAutoScrollRef.current = isNearScrollBottom(container)
     setShowJumpToLatest(!shouldAutoScrollRef.current && messages.length > 10)
   }, [messages.length])
 
   const scrollRafRef = useRef<number>(0)
 
+  // Force-scroll to bottom for session switches and history loads.
+  // Uses a separate timer (not rAF) so it can't be cancelled by the
+  // regular useEffect scroll logic when dependencies re-fire.
+  const scheduleForceScroll = useCallback(() => {
+    if (forcedScrollTimerRef.current !== null) {
+      clearTimeout(forcedScrollTimerRef.current)
+    }
+    forcedScrollPendingRef.current = true
+    shouldAutoScrollRef.current = true
+    // Use setTimeout(0) to run after the current React commit, then
+    // use rAF inside to ensure browser layout is settled.
+    forcedScrollTimerRef.current = setTimeout(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const container = scrollContainerRef.current
+          if (container) {
+            container.scrollTop = container.scrollHeight
+          }
+          forcedScrollPendingRef.current = false
+          forcedScrollTimerRef.current = null
+          shouldAutoScrollRef.current = true
+          setShowJumpToLatest(false)
+        })
+      })
+    }, 0)
+  }, [])
+
   useEffect(() => {
-    const isSessionSwitch = lastSessionIdRef.current !== resolvedSessionId
+    return () => {
+      if (forcedScrollTimerRef.current !== null) {
+        clearTimeout(forcedScrollTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const isFirstMount = lastSessionIdRef.current === undefined
+    const isSessionSwitch = !isFirstMount && lastSessionIdRef.current !== resolvedSessionId
     const isHistoryLoad = prevMessageCountRef.current === 0 && messages.length > 0
-    if (isSessionSwitch) {
-      shouldAutoScrollRef.current = true
+    if (isFirstMount || isSessionSwitch) {
       lastSessionIdRef.current = resolvedSessionId
     }
     prevMessageCountRef.current = messages.length
+
+    // Initial mount, actual session switch, or history load → force-scroll via the separate
+    // timer so that regular rAF cancellation in this effect can't interfere.
+    if (isFirstMount || isSessionSwitch || isHistoryLoad) {
+      scheduleForceScroll()
+      return
+    }
 
     // Force auto-scroll when a permission dialog appears so the user
     // never misses a confirmation prompt stuck below the fold.
@@ -314,10 +361,12 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
       shouldAutoScrollRef.current = true
     }
 
+    // If a forced scroll is still pending, don't schedule a competing rAF.
+    if (forcedScrollPendingRef.current) return
+
     if (!shouldAutoScrollRef.current) return
 
     const needsInstantScroll =
-      isSessionSwitch || isHistoryLoad ||
       chatState === 'streaming' || chatState === 'tool_executing'
 
     const doScroll = () => {
@@ -327,16 +376,8 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
 
     // Batch scroll updates into a single animation frame to avoid layout thrashing
     cancelAnimationFrame(scrollRafRef.current)
-    if (isSessionSwitch || isHistoryLoad) {
-      // On session switch or initial history load, wait two frames:
-      // one for React DOM commit, one for browser layout, then scroll.
-      scrollRafRef.current = requestAnimationFrame(() => {
-        scrollRafRef.current = requestAnimationFrame(doScroll)
-      })
-    } else {
-      scrollRafRef.current = requestAnimationFrame(doScroll)
-    }
-  }, [messages.length, resolvedSessionId, streamingText, chatState])
+    scrollRafRef.current = requestAnimationFrame(doScroll)
+  }, [messages.length, resolvedSessionId, streamingText, chatState, scheduleForceScroll])
 
   const { toolResultMap, childToolCallsByParent, renderItems } = useMemo(
     () => buildRenderModel(messages),

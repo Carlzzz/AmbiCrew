@@ -458,6 +458,11 @@ describe('MessageList nested tool calls', () => {
       },
     })
 
+    // Wait for the mount force-scroll to finish
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
     scrollIntoView.mockClear()
     fireEvent.scroll(scroller)
 
@@ -516,6 +521,11 @@ describe('MessageList nested tool calls', () => {
       },
     })
 
+    // Wait for the mount force-scroll to finish
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
     scrollIntoView.mockClear()
     fireEvent.scroll(scroller)
 
@@ -533,8 +543,8 @@ describe('MessageList nested tool calls', () => {
 
     await waitFor(() => {
       expect(screen.getByText('streaming next token')).toBeTruthy()
+      expect(scrollIntoView).toHaveBeenCalled()
     })
-    expect(scrollIntoView).toHaveBeenCalled()
   })
 
   it('keeps user actions anchored to the right bubble and assistant actions to the left bubble', () => {
