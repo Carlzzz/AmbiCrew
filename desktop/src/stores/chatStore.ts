@@ -62,7 +62,7 @@ export type PerSessionState = {
     nonce: number
   } | null
   authRestartState?: 'restarting' | 'failed'
-  lastUserMessage?: { content: string }
+  authRetryTimer?: ReturnType<typeof setTimeout> | null
 }
 
 const DEFAULT_SESSION_STATE: PerSessionState = {
@@ -288,6 +288,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   disconnectSession: (sessionId) => {
     const session = get().sessions[sessionId]
     if (session?.elapsedTimer) clearInterval(session.elapsedTimer)
+    if (session?.authRetryTimer) clearTimeout(session.authRetryTimer)
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
     if (pendingDelta) {
       const text = consumePendingDelta()
@@ -875,13 +876,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             const lastUserMsg = [...session.messages].reverse().find((m) => m.type === 'user_text')
             if (lastUserMsg && lastUserMsg.type === 'user_text') {
               const retryContent = lastUserMsg.modelContent || lastUserMsg.content
-              update(() => ({ lastUserMessage: { content: retryContent } }))
-              setTimeout(() => {
+              const timer = setTimeout(() => {
+                update(() => ({ authRetryTimer: null }))
                 const currentState = get().sessions[sessionId]
                 if (currentState?.authRestartState === 'restarting') {
-                  get().sendMessage(sessionId, retryContent, undefined)
+                  // Send WS directly without re-appending user message to UI
+                  set((s) => ({
+                    sessions: updateSessionIn(s.sessions, sessionId, () => ({
+                      chatState: 'thinking',
+                      statusVerb: randomSpinnerVerb(),
+                    })),
+                  }))
+                  wsManager.send(sessionId, { type: 'user_message', content: retryContent })
                 }
               }, 1000)
+              update(() => ({ authRetryTimer: timer }))
             }
           }
         }
