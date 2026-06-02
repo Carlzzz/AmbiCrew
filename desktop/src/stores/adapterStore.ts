@@ -83,13 +83,15 @@ export const useAdapterStore = create<AdapterStore>((set, get) => ({
   generatePairingCode: async () => {
     const code = generateCode()
     const now = Date.now()
-    await get().updateConfig({
+    // 只写入配对码，不重启 sidecar —— sidecar 的 tryPair 每次直接读文件
+    await adaptersApi.updateConfig({
       pairing: {
         code,
         expiresAt: now + CODE_TTL_MS,
         createdAt: now,
       },
     })
+    set({ config: await adaptersApi.getConfig() })
     return code
   },
 

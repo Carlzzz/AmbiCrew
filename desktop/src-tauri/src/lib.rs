@@ -139,6 +139,21 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let state = window.app_handle().state::<commands::server::ServerState>();
+                let adapter = state.adapter_process.lock().unwrap().take();
+                let server = state.server_process.lock().unwrap().take();
+                if let Some(mut child) = adapter {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                if let Some(mut child) = server {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running AmbiCrew");
 }

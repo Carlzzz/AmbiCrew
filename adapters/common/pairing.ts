@@ -15,6 +15,24 @@ import type { PairedUser, PairingState } from './config.js'
 const SAFE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // 排除 0/O/1/I/L
 export type ImPlatform = 'telegram' | 'feishu' | 'wechat' | 'dingtalk'
 
+// 内存缓存：已确认配对的用户集合，避免文件 I/O 竞态导致间歇性未授权
+const pairedUserCache = new Map<string, Set<string>>()
+
+// 启动时从文件预热缓存，确保 sidecar 重启后不丢失配对状态
+;(function warmCache() {
+  try {
+    const file = readConfigFile()
+    for (const platform of ['telegram', 'feishu', 'wechat', 'dingtalk'] as ImPlatform[]) {
+      const pairedUsers: PairedUser[] = file[platform]?.pairedUsers ?? []
+      if (pairedUsers.length > 0) {
+        const set = new Set<string>()
+        for (const p of pairedUsers) set.add(String(p.userId))
+        pairedUserCache.set(platform, set)
+      }
+    }
+  } catch { /* best effort */ }
+})()
+
 // 速率限制：每个 userId 在 RATE_LIMIT_WINDOW_MS 内最多 RATE_LIMIT_MAX_ATTEMPTS 次失败尝试
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000 // 5 minutes
 const RATE_LIMIT_MAX_ATTEMPTS = 5
@@ -51,7 +69,10 @@ function getConfigPath(): string {
 function readConfigFile(): Record<string, any> {
   try {
     return JSON.parse(fs.readFileSync(getConfigPath(), 'utf-8'))
-  } catch {
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') {
+      console.warn('[pairing] readConfigFile failed (concurrent write?):', err?.message)
+    }
     return {}
   }
 }
@@ -136,15 +157,31 @@ export function tryPair(
   file.pairing = { code: null, expiresAt: null, createdAt: null } // 一次性使用
   writeConfigFile(file)
 
+  // 立即更新内存缓存，避免写入后下一条消息因竞态读不到
+  if (!pairedUserCache.has(platform)) pairedUserCache.set(platform, new Set())
+  pairedUserCache.get(platform)!.add(String(senderInfo.userId))
+
   return true
 }
 
 /** 统一的用户授权检查（供各 adapter 调用） */
 export function isAllowedUser(platform: ImPlatform, userId: string | number): boolean {
+  // 先查内存缓存（不受文件 I/O 竞态影响）
+  const cacheKey = platform
+  const cached = pairedUserCache.get(cacheKey)
+  if (cached?.has(String(userId))) return true
+
   try {
     const cfgFile = readConfigFile()
-    return isPaired(platform, userId, cfgFile)
+    const result = isPaired(platform, userId, cfgFile)
+    if (result) {
+      // 写入缓存，后续请求不再依赖磁盘
+      if (!pairedUserCache.has(cacheKey)) pairedUserCache.set(cacheKey, new Set())
+      pairedUserCache.get(cacheKey)!.add(String(userId))
+    }
+    return result
   } catch {
-    return false
+    // 文件读取失败时 fallback 到缓存（而非直接拒绝）
+    return cached?.has(String(userId)) ?? false
   }
 }

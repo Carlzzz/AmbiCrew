@@ -20,6 +20,37 @@ fn hide_console(cmd: &mut Command) {
     }
 }
 
+/// Send SIGTERM first, wait briefly, then SIGKILL if the process is still alive.
+/// This gives the sidecar a chance to disconnect DingTalk Stream gracefully.
+fn graceful_kill(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        // Send SIGTERM via kill command
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(child.id().to_string())
+            .output();
+        let deadline = Instant::now() + Duration::from_millis(1500);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => return,
+                _ => {}
+            }
+            if Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
 /// Check if the given TCP port is currently accepting connections on 127.0.0.1.
 fn is_port_in_use(port: u16) -> bool {
     let addr = format!("127.0.0.1:{}", port);
@@ -30,9 +61,8 @@ fn is_port_in_use(port: u16) -> bool {
     }
 }
 
-/// Verify that the server listening on the port is actually responding to
-/// /health. Returns true if it's our (healthy) server, false if it's an
-/// orphan/stale process that should be killed.
+/// Verify that the server listening on the port is actually our server AND
+/// running the same version. Returns true only if it's healthy and version-matched.
 fn is_our_server_healthy(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{}/health", port);
     let client = match reqwest::blocking::Client::builder()
@@ -43,7 +73,19 @@ fn is_our_server_healthy(port: u16) -> bool {
         Err(_) => return false,
     };
     match client.get(&url).send() {
-        Ok(resp) => resp.status().is_success(),
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                return false;
+            }
+            let expected = env!("CARGO_PKG_VERSION");
+            match resp.json::<serde_json::Value>() {
+                Ok(body) => body.get("version")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == expected)
+                    .unwrap_or(false),
+                Err(_) => false,
+            }
+        }
         Err(_) => false,
     }
 }
@@ -288,6 +330,7 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             .current_dir(&repo_root)
             .env("SERVER_PORT", SERVER_PORT.to_string())
             .env("DESKTOP_MODE", "1")
+            .env("APP_VERSION", env!("CARGO_PKG_VERSION"))
             .env("CLAUDE_RUNTIME_DIR", repo_root.join("runtime").to_string_lossy().to_string())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -300,6 +343,7 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         cmd.args(["server", "--app-root", &resource_dir])
             .env("SERVER_PORT", SERVER_PORT.to_string())
             .env("DESKTOP_MODE", "1")
+            .env("APP_VERSION", env!("CARGO_PKG_VERSION"))
             .env("CLAUDE_RUNTIME_DIR", format!("{}/runtime", resource_dir))
             .env("CLAUDE_APP_ROOT", &resource_dir)
             .env("AUTH_MODE", std::env::var("AUTH_MODE").unwrap_or_else(|_| "central".to_string()))
@@ -402,6 +446,9 @@ pub fn get_server_url(state: tauri::State<'_, ServerState>) -> Option<String> {
 
 #[tauri::command]
 pub fn stop_server(state: tauri::State<'_, ServerState>) {
+    if let Some(mut child) = state.adapter_process.lock().unwrap().take() {
+        graceful_kill(&mut child);
+    }
     if let Some(mut child) = state.server_process.lock().unwrap().take() {
         let _ = child.kill();
         let _ = child.wait();
@@ -413,10 +460,9 @@ pub fn stop_server(state: tauri::State<'_, ServerState>) {
 pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
     let state = app.state::<ServerState>();
 
-    // Kill existing
+    // Gracefully stop existing adapter sidecar
     if let Some(mut child) = state.adapter_process.lock().unwrap().take() {
-        let _ = child.kill();
-        let _ = child.wait();
+        graceful_kill(&mut child);
     }
 
     let resource_dir = get_resource_dir(&app);
