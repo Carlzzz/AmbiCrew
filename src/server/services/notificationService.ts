@@ -218,14 +218,82 @@ async function sendFeishu(
   }
 }
 
+// ─── DingTalk ─────────────────────────────────────────────────────────────────
+
+const DINGTALK_API = 'https://api.dingtalk.com'
+
+// access token 2h 过期；模块级缓存避免每条通知都重新换 token
+let dingtalkTokenCache: { token: string; expiresAt: number } | null = null
+
+async function getDingtalkAccessToken(
+  clientId: string,
+  clientSecret: string,
+): Promise<string | null> {
+  const now = Date.now()
+  if (dingtalkTokenCache && dingtalkTokenCache.expiresAt > now + 60_000) {
+    return dingtalkTokenCache.token
+  }
+  try {
+    const resp = await fetch(`${DINGTALK_API}/v1.0/oauth2/accessToken`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appKey: clientId, appSecret: clientSecret }),
+    })
+    const data = (await resp.json()) as { accessToken?: string; expireIn?: number }
+    if (data.accessToken) {
+      dingtalkTokenCache = {
+        token: data.accessToken,
+        expiresAt: now + (data.expireIn ?? 7200) * 1000,
+      }
+      return data.accessToken
+    }
+    console.error('[Notification] DingTalk token failed:', data)
+    return null
+  } catch (err) {
+    console.error('[Notification] DingTalk token error:', err)
+    return null
+  }
+}
+
+async function sendDingtalk(
+  token: string,
+  robotCode: string,
+  userId: string,
+  run: TaskRun,
+): Promise<void> {
+  const title = `${statusEmoji(run.status)} ${run.taskName}`
+  const text = buildMarkdown(run)
+
+  // oToMessages 仅支持 DM；群推送暂不支持(MVP)
+  const resp = await fetch(`${DINGTALK_API}/v1.0/robot/oToMessages/batchSend`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-acs-dingtalk-access-token': token,
+    },
+    body: JSON.stringify({
+      robotCode,
+      userIds: [userId],
+      msgKey: 'sampleMarkdown',
+      msgParam: JSON.stringify({ title, text }),
+    }),
+  })
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '')
+    console.error(`[Notification] DingTalk send failed (${resp.status}):`, body)
+  }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function sendTaskNotification(
   run: TaskRun,
   notification: TaskNotificationConfig,
 ): Promise<void> {
-  const imChannels = notification.channels.filter((channel): channel is 'telegram' | 'feishu' =>
-    channel === 'telegram' || channel === 'feishu',
+  const imChannels = notification.channels.filter(
+    (channel): channel is 'telegram' | 'feishu' | 'dingtalk' =>
+      channel === 'telegram' || channel === 'feishu' || channel === 'dingtalk',
   )
   if (!notification.enabled || imChannels.length === 0) return
 
@@ -272,6 +340,25 @@ export async function sendTaskNotification(
         ]
         for (const user of users) {
           await sendFeishu(token, String(user.userId), run)
+        }
+      }
+
+      if (channel === 'dingtalk') {
+        const clientId = config.dingtalk?.clientId
+        const clientSecret = config.dingtalk?.clientSecret
+        if (!clientId || !clientSecret) {
+          console.warn('[Notification] DingTalk credentials not configured, skipping')
+          continue
+        }
+        const token = await getDingtalkAccessToken(clientId, clientSecret)
+        if (!token) continue
+
+        const users = [
+          ...(config.dingtalk?.pairedUsers ?? []),
+          ...(config.dingtalk?.allowedUsers ?? []).map((id) => ({ userId: id })),
+        ]
+        for (const user of users) {
+          await sendDingtalk(token, clientId, String(user.userId), run)
         }
       }
     } catch (err) {

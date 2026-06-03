@@ -12,7 +12,7 @@ import { describeCron, isValidCron, parseCron, type FrequencyKey } from '../../l
 import type { PermissionMode } from '../../types/settings'
 import type { CronTask } from '../../types/task'
 
-type NotificationChannel = 'desktop' | 'telegram' | 'feishu'
+type NotificationChannel = 'desktop' | 'telegram' | 'feishu' | 'dingtalk'
 
 type Props = {
   open: boolean
@@ -73,6 +73,8 @@ export function NewTaskModal({ open, onClose, editTask }: Props) {
     && ((adapterConfig.feishu?.pairedUsers?.length ?? 0) > 0 || (adapterConfig.feishu?.allowedUsers?.length ?? 0) > 0))
   const isTelegramConfigured = !!(adapterConfig.telegram?.botToken
     && ((adapterConfig.telegram?.pairedUsers?.length ?? 0) > 0 || (adapterConfig.telegram?.allowedUsers?.length ?? 0) > 0))
+  const isDingtalkConfigured = !!(adapterConfig.dingtalk?.clientId && adapterConfig.dingtalk?.clientSecret
+    && ((adapterConfig.dingtalk?.pairedUsers?.length ?? 0) > 0 || (adapterConfig.dingtalk?.allowedUsers?.length ?? 0) > 0))
 
   const isEdit = !!editTask
   const parsed = editTask ? parseCron(editTask.cron) : null
@@ -394,6 +396,23 @@ export function NewTaskModal({ open, onClose, editTask }: Props) {
                   />
                   <span className="text-sm text-[var(--color-text-primary)]">{t('settings.adapters.telegram')}</span>
                   {!isTelegramConfigured && (
+                    <span className="text-[10px] text-[var(--color-warning)]">{t('newTask.notConfigured')}</span>
+                  )}
+                </label>
+                <label className={`flex items-center gap-2 ${isDingtalkConfigured ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
+                  <input
+                    type="checkbox"
+                    checked={notifyChannels.includes('dingtalk')}
+                    disabled={!isDingtalkConfigured}
+                    onChange={(e) => {
+                      setNotifyChannels((prev) =>
+                        e.target.checked ? [...prev, 'dingtalk'] : prev.filter((c) => c !== 'dingtalk'),
+                      )
+                    }}
+                    className="w-3.5 h-3.5 rounded border-[var(--color-border)] accent-[var(--color-brand)]"
+                  />
+                  <span className="text-sm text-[var(--color-text-primary)]">{t('settings.adapters.dingtalk')}</span>
+                  {!isDingtalkConfigured && (
                     <span className="text-[10px] text-[var(--color-warning)]">{t('newTask.notConfigured')}</span>
                   )}
                 </label>

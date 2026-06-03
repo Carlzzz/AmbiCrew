@@ -15,6 +15,7 @@ import * as crypto from 'crypto'
 import { CronService, type CronTask } from './cronService.js'
 import { SessionService } from './sessionService.js'
 import { sendTaskNotification } from './notificationService.js'
+import { resolveClaudeCliLauncher, buildClaudeCliArgs } from '../../utils/desktopBundledCli.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -398,7 +399,6 @@ export class CronScheduler {
 
     // Resolve paths relative to project root
     const projectRoot = path.resolve(import.meta.dir, '../../..')
-    const cliPath = path.join(projectRoot, 'src/entrypoints/cli.tsx')
     const preloadPath = path.join(projectRoot, 'preload.ts')
 
     const inputPayload = JSON.stringify({
@@ -411,27 +411,43 @@ export class CronScheduler {
       session_id: sessionId || '',
     }) + '\n'
 
-    const proc = Bun.spawn(
-      [
-        'bun',
-        '--preload',
-        preloadPath,
-        cliPath,
-        '--print',
-        '--verbose',
-        '--input-format',
-        'stream-json',
-        '--output-format',
-        'stream-json',
-        ...(sessionId ? ['--session-id', sessionId] : []),
-      ],
-      {
-        stdin: 'pipe',
-        stdout: 'pipe',
-        stderr: 'pipe',
-        cwd: workDir,
-      },
-    )
+    // Resolve CLI launcher — same logic as conversationService.resolveCliArgs().
+    // In bundled sidecar mode this picks `claude-sidecar cli`; in dev/source
+    // mode it falls back to `bun --preload preload.ts src/entrypoints/cli.tsx`.
+    const launcher = resolveClaudeCliLauncher({
+      cliPath: process.env.CLAUDE_CLI_PATH,
+      execPath: process.execPath,
+    })
+
+    const baseArgs = [
+      '--print',
+      '--verbose',
+      '--input-format',
+      'stream-json',
+      '--output-format',
+      'stream-json',
+      ...(sessionId ? ['--session-id', sessionId] : []),
+    ]
+
+    const spawnArgs = launcher
+      ? buildClaudeCliArgs(launcher, baseArgs, process.env.CLAUDE_APP_ROOT)
+      : [
+          // Dev/source fallback: launcher not resolvable (e.g. running under
+          // `bun run dev` outside any compiled sidecar binary). Spawn CLI by
+          // entry script the same way conversationService.resolveCliArgs does.
+          'bun',
+          '--preload',
+          preloadPath,
+          path.join(projectRoot, 'src/entrypoints/cli.tsx'),
+          ...baseArgs,
+        ]
+
+    const proc = Bun.spawn(spawnArgs, {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      cwd: workDir,
+    })
 
     this.runningTasks.set(task.id, { proc, startedAt: Date.now(), runId })
 
