@@ -582,7 +582,16 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       streamingCards.delete(chatId)
       streamingCardText.delete(chatId)
       disabledCardChats.delete(chatId)
-      await sendText(chatId, `❌ ${msg.message}`)
+      if (msg.code === 'SESSION_DELETED') {
+        // Server-side session was deleted — clear local cache and auto-recreate
+        sessionStore.delete(chatId)
+        bridge.resetSession(chatId)
+        clearTransientChatState(chatId)
+        await sendText(chatId, '会话已过期，正在自动创建新会话...')
+        await createSessionForChat(chatId, defaultWorkDir)
+      } else {
+        await sendText(chatId, `❌ ${msg.message}`)
+      }
       break
     case 'system_notification':
       if (msg.subtype === 'init' && msg.data && typeof msg.data === 'object') {

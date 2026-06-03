@@ -440,7 +440,15 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       typingController.stop(chatId)
       blockBuffers.get(chatId)?.reset()
       blockBuffers.delete(chatId)
-      await sendText(chatId, `错误: ${msg.message}`)
+      if ((msg as any).code === 'SESSION_DELETED') {
+        sessionStore.delete(chatId)
+        bridge.resetSession(chatId)
+        clearTransientChatState(chatId)
+        await sendText(chatId, '会话已过期，正在自动创建新会话...')
+        await createSessionForChat(chatId, defaultWorkDir)
+      } else {
+        await sendText(chatId, `错误: ${msg.message}`)
+      }
       break
     case 'system_notification':
       if (msg.subtype === 'init' && msg.data && typeof msg.data === 'object') {

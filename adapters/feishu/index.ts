@@ -939,6 +939,16 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
         } else {
           await sendText(chatId, '⚠️ 会话上下文已失效，请发送 /new 新建会话。')
         }
+      } else if (msg.code === 'SESSION_DELETED') {
+        const stored = sessionStore.get(chatId)
+        const workDir = stored?.workDir || defaultWorkDir
+        await sendText(chatId, '会话已过期，正在自动创建新会话...')
+        bridge.resetSession(chatId)
+        sessionStore.delete(chatId)
+        imageWatchers.delete(chatId)
+        uploadedImageKeys.delete(chatId)
+        runtimeStates.delete(chatId)
+        await createSessionForChat(chatId, workDir)
       } else if (streamingCards.has(chatId)) {
         await abortStreamingCard(chatId, new Error(msg.message ?? 'unknown error'))
       } else {

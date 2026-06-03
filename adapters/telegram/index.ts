@@ -510,6 +510,14 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
         } else {
           await bot.api.sendMessage(numericChatId, '⚠️ 会话上下文已失效，请发送 /new 新建会话。')
         }
+      } else if (msg.code === 'SESSION_DELETED') {
+        const stored = sessionStore.get(chatId)
+        const workDir = stored?.workDir || defaultWorkDir
+        await bot.api.sendMessage(numericChatId, '会话已过期，正在自动创建新会话...')
+        clearTransientChatState(chatId)
+        bridge.resetSession(chatId)
+        sessionStore.delete(chatId)
+        await createSessionForChat(chatId, workDir)
       } else {
         await bot.api.sendMessage(numericChatId, `❌ ${msg.message}`)
       }
