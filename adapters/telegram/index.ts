@@ -68,7 +68,6 @@ const accumulatedText = new Map<string, string>()
 const buffers = new Map<string, MessageBuffer>()
 // Track chats waiting for project selection
 const pendingProjectSelection = new Map<string, boolean>()
-const pendingModelSelection = new Map<string, { providerId: string; models: Record<string, string>; providerName: string }>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const pendingPermissions = new Map<string, Set<string>>()
 const pendingAskUserInputs = new Map<string, unknown>()
@@ -117,7 +116,6 @@ function clearTransientChatState(chatId: string): void {
   placeholders.delete(chatId)
   accumulatedText.delete(chatId)
   buffers.get(chatId)?.reset()
-  pendingModelSelection.delete(chatId)
   const runtime = getRuntimeState(chatId)
   runtime.state = 'idle'
   runtime.verb = undefined
@@ -558,7 +556,6 @@ async function startNewSession(chatId: string, query?: string): Promise<void> {
   buffers.get(chatId)?.reset()
   buffers.delete(chatId)
   pendingProjectSelection.delete(chatId)
-  pendingModelSelection.delete(chatId)
   pendingPermissions.delete(chatId)
   runtimeStates.delete(chatId)
   tgImageWatchers.delete(chatId)
@@ -649,51 +646,6 @@ for (const command of ['allow', 'always', 'allow-always', 'deny'] as const) {
   })
 }
 
-async function handleModelCommand(chatId: string, numericChatId: number, arg: string): Promise<void> {
-  try {
-    const models = await httpClient.listAvailableModels()
-    if (models.length === 0) {
-      await bot.api.sendMessage(numericChatId, '未找到可用模型。')
-      return
-    }
-
-    if (!arg) {
-      const lines = models.map((m, i) => `${i + 1}. ${m.id}`)
-      pendingModelSelection.set(chatId, { models: Object.fromEntries(models.map(m => [m.id, m.id])), providerId: '', providerName: '' })
-      await bot.api.sendMessage(numericChatId, `可用模型：\n\n${lines.join('\n')}\n\n回复编号切换，或发送 /model <模型名>`)
-      return
-    }
-
-    const num = parseInt(arg, 10)
-    if (!isNaN(num) && num >= 1 && num <= models.length) {
-      const selected = models[num - 1]!
-      await tgSwitchModel(chatId, numericChatId, selected.id)
-    } else {
-      const lower = arg.toLowerCase()
-      const match = models.find(m => m.id.toLowerCase() === lower || m.alias.toLowerCase() === lower)
-      if (match) {
-        await tgSwitchModel(chatId, numericChatId, match.id)
-      } else {
-        await bot.api.sendMessage(numericChatId, `未知模型：${arg}。发送 /model 查看可用列表。`)
-        return
-      }
-    }
-    pendingModelSelection.delete(chatId)
-  } catch (err) {
-    await bot.api.sendMessage(numericChatId, `获取模型列表失败: ${err instanceof Error ? err.message : String(err)}`)
-  }
-}
-
-async function tgSwitchModel(chatId: string, numericChatId: number, modelId: string): Promise<void> {
-  const stored = sessionStore.get(chatId)
-  if (!stored) {
-    await bot.api.sendMessage(numericChatId, '请先发送一条消息启动会话，然后再切换模型。')
-    return
-  }
-  bridge.sendSetRuntimeConfig(chatId, modelId)
-  await bot.api.sendMessage(numericChatId, `已切换至：${modelId}`)
-}
-
 /** Shared per-user-message pipeline: dedup, pairing check, project-pick
  *  routing, enqueue, ensureSession, sendUserMessage with attachments.
  *  Caller has already extracted text and attachments from the context. */
@@ -750,27 +702,6 @@ async function routeUserMessage(
       if (text.trim()) await startNewSession(chatId, text.trim())
       return
     }
-
-    if (pendingModelSelection.has(chatId) && /^\d{1,2}$/.test(text.trim())) {
-      const pending = pendingModelSelection.get(chatId)!
-      const entries = Object.entries(pending.models)
-      const num = parseInt(text.trim(), 10)
-      if (num >= 1 && num <= entries.length) {
-        const [modelId] = entries[num - 1]!
-        await tgSwitchModel(chatId, numericChatId, modelId)
-        pendingModelSelection.delete(chatId)
-      } else {
-        await bot.api.sendMessage(numericChatId, `无效编号，请输入 1-${entries.length}`)
-      }
-      return
-    }
-
-    if (attachments.length === 0 && (text === '/model' || text.startsWith('/model '))) {
-      const arg = text.startsWith('/model ') ? text.slice(7).trim() : ''
-      await handleModelCommand(chatId, numericChatId, arg)
-      return
-    }
-
     const ready = await ensureSession(chatId)
     if (!ready) return
     const effective =

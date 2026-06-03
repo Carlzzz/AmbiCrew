@@ -31,7 +31,6 @@ const IM_HELP_LINES = [
   '/status / 状态 — 查看当前会话状态',
   '/clear / 清空 — 清空当前会话上下文',
   '/stop / 停止 — 停止当前生成',
-  '/model [类型] — 查看可用模型或切换 (main/haiku/sonnet/opus)',
   '/help / 帮助 — 显示这份帮助',
   '权限审批：/allow <id>、/always <id>、/deny <id>',
 ]

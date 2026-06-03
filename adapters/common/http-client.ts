@@ -13,15 +13,6 @@ export type RecentProject = {
   sessionCount: number
 }
 
-export type ProviderModelInfo = {
-  providerId: string
-  providerName: string
-  isActive: boolean
-  models: { main: string; haiku: string; sonnet: string; opus: string }
-}
-
-export type AvailableModel = { id: string; alias: string }
-
 export type GitInfo = {
   branch: string | null
   repoName: string | null
@@ -176,51 +167,6 @@ export class AdapterHttpClient {
       }
       const data = (await res.json()) as { tasks?: SessionTask[] }
       return Array.isArray(data.tasks) ? data.tasks : []
-    } finally {
-      clearTimeout(timer)
-    }
-  }
-
-  async listModels(): Promise<ProviderModelInfo[]> {
-    const { controller, timer } = this.createTimeoutController()
-    try {
-      const res = await fetch(`${this.httpBaseUrl}/api/providers`, {
-        signal: controller.signal,
-      })
-      if (!res.ok) {
-        throw new Error(`Failed to list models: ${res.statusText}`)
-      }
-      const data = (await res.json()) as {
-        providers: Array<{
-          id: string
-          name: string
-          models: { main: string; haiku: string; sonnet: string; opus: string }
-        }>
-        activeId: string | null
-      }
-      return data.providers.map((p) => ({
-        providerId: p.id,
-        providerName: p.name,
-        isActive: p.id === data.activeId,
-        models: p.models,
-      }))
-    } finally {
-      clearTimeout(timer)
-    }
-  }
-
-  /** Fetch the actual available models from the proxy (not the provider slots). */
-  async listAvailableModels(): Promise<AvailableModel[]> {
-    const { controller, timer } = this.createTimeoutController()
-    try {
-      const res = await fetch(`${this.httpBaseUrl}/api/providers/available-models`, {
-        signal: controller.signal,
-      })
-      if (!res.ok) {
-        throw new Error(`Failed to list available models: ${res.statusText}`)
-      }
-      const data = (await res.json()) as { models: AvailableModel[] }
-      return data.models
     } finally {
       clearTimeout(timer)
     }

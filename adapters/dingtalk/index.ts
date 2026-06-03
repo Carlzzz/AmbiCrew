@@ -68,7 +68,6 @@ const media = new DingTalkMediaService(attachmentStore)
 const aiCards = new DingTalkAiCardService(getAccessToken, config.dingtalk.clientId)
 const sessionWebhooks = new Map<string, string>()
 const pendingProjectSelection = new Map<string, boolean>()
-const pendingModelSelection = new Map<string, { providerId: string; models: Record<string, string>; providerName: string }>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const aiCardBuffers = new Map<string, MessageBuffer>()
 const aiCardTargets = new Map<string, DingTalkAiCardTarget>()
@@ -361,7 +360,6 @@ function clearTransientChatState(chatId: string): void {
   runtime.state = 'idle'
   runtime.verb = undefined
   runtime.pendingPermissionCount = 0
-  pendingModelSelection.delete(chatId)
 }
 
 function clearPendingPermissions(chatId: string): void {
@@ -725,55 +723,6 @@ function applyPermissionDecision(chatId: string, decision: PermissionDecision): 
   return sent
 }
 
-async function handleModelCommand(chatId: string, arg: string): Promise<void> {
-  try {
-    const models = await httpClient.listAvailableModels()
-    if (models.length === 0) {
-      await sendText(chatId, '未找到可用模型。')
-      return
-    }
-
-    if (!arg) {
-      const lines = models.map(
-        (m, i) => `${i + 1}. \`${m.id}\``,
-      )
-      pendingModelSelection.set(chatId, { models: Object.fromEntries(models.map(m => [m.id, m.id])), providerId: '', providerName: '' })
-      await sendText(chatId, `可用模型：\n\n${lines.join('\n')}\n\n回复编号切换，或发送 /model <模型名>`)
-      return
-    }
-
-    // Try as 1-based index first, then as model name/id
-    const num = parseInt(arg, 10)
-    if (!isNaN(num) && num >= 1 && num <= models.length) {
-      const selected = models[num - 1]!
-      await switchModel(chatId, selected.id)
-    } else {
-      // Match by id or alias (case-insensitive)
-      const lower = arg.toLowerCase()
-      const match = models.find(m => m.id.toLowerCase() === lower || m.alias.toLowerCase() === lower)
-      if (match) {
-        await switchModel(chatId, match.id)
-      } else {
-        await sendText(chatId, `未知模型：${arg}。发送 /model 查看可用列表。`)
-        return
-      }
-    }
-    pendingModelSelection.delete(chatId)
-  } catch (err) {
-    await sendText(chatId, `获取模型列表失败: ${err instanceof Error ? err.message : String(err)}`)
-  }
-}
-
-async function switchModel(chatId: string, modelId: string): Promise<void> {
-  const stored = sessionStore.get(chatId)
-  if (!stored) {
-    await sendText(chatId, '请先发送一条消息启动会话，然后再切换模型。')
-    return
-  }
-  bridge.sendSetRuntimeConfig(chatId, modelId)
-  await sendText(chatId, `已切换至：\`${modelId}\``)
-}
-
 async function routeUserMessage(chatId: string, text: string, attachments: AttachmentRef[] = []): Promise<void> {
   enqueue(chatId, async () => {
     const trimmed = text.trim()
@@ -783,20 +732,6 @@ async function routeUserMessage(chatId: string, text: string, attachments: Attac
 
     if (!hasAttachments && pendingProjectSelection.has(chatId)) {
       if (trimmed) await startNewSession(chatId, trimmed)
-      return
-    }
-
-    if (!hasAttachments && pendingModelSelection.has(chatId) && /^\d{1,2}$/.test(trimmed)) {
-      const pending = pendingModelSelection.get(chatId)!
-      const entries = Object.entries(pending.models)
-      const num = parseInt(trimmed, 10)
-      if (num >= 1 && num <= entries.length) {
-        const [modelId] = entries[num - 1]!
-        await switchModel(chatId, modelId)
-        pendingModelSelection.delete(chatId)
-      } else {
-        await sendText(chatId, `无效编号，请输入 1-${entries.length}`)
-      }
       return
     }
 
@@ -839,12 +774,6 @@ async function routeUserMessage(chatId: string, text: string, attachments: Attac
     }
     if (!hasAttachments && (trimmed === '/projects' || trimmed === '项目列表')) {
       await showProjectPicker(chatId)
-      return
-    }
-
-    if (!hasAttachments && (trimmed === '/model' || trimmed.startsWith('/model '))) {
-      const arg = trimmed.startsWith('/model ') ? trimmed.slice(7).trim() : ''
-      await handleModelCommand(chatId, arg)
       return
     }
 
