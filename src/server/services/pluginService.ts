@@ -20,9 +20,13 @@ import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsMana
 import {
   addMarketplaceSource,
   getMarketplace,
+  getMarketplacesCacheDir,
   loadKnownMarketplacesConfig,
   refreshMarketplace,
+  saveKnownMarketplacesConfig,
 } from '../../utils/plugins/marketplaceManager.js'
+import { checkGitAvailable } from '../../utils/plugins/gitAvailability.js'
+import { fetchOfficialMarketplaceFromGcs } from '../../utils/plugins/officialMarketplaceGcs.js'
 import {
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
@@ -296,6 +300,33 @@ export class PluginService {
   private async ensureOfficialMarketplace(): Promise<void> {
     const marketplaceConfig = await loadKnownMarketplacesConfig()
     if (marketplaceConfig[OFFICIAL_MARKETPLACE_NAME]) return
+
+    // Try GCS mirror first — doesn't need git, doesn't hit GitHub rate limits.
+    const cacheDir = getMarketplacesCacheDir()
+    const installLocation = join(cacheDir, OFFICIAL_MARKETPLACE_NAME)
+    const gcsSha = await fetchOfficialMarketplaceFromGcs(
+      installLocation,
+      cacheDir,
+    )
+    if (gcsSha !== null) {
+      const known = await loadKnownMarketplacesConfig()
+      known[OFFICIAL_MARKETPLACE_NAME] = {
+        source: OFFICIAL_MARKETPLACE_SOURCE,
+        installLocation,
+        lastUpdated: new Date().toISOString(),
+      }
+      await saveKnownMarketplacesConfig(known)
+      return
+    }
+
+    // GCS failed — fall back to git. Check availability first so the user
+    // gets a clear error instead of "An unexpected error occurred".
+    if (!(await checkGitAvailable())) {
+      throw ApiError.badRequest(
+        'Cannot browse plugins: Git is not available and the official ' +
+          'marketplace could not be fetched. Please install Git or try again later.',
+      )
+    }
 
     await addMarketplaceSource(OFFICIAL_MARKETPLACE_SOURCE)
   }
