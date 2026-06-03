@@ -54,6 +54,7 @@ const httpClient = new AdapterHttpClient(config.serverUrl, { allowedProjectRoots
 const attachmentStore = new AttachmentStore()
 const media = new WechatMediaService(attachmentStore)
 const pendingProjectSelection = new Map<string, boolean>()
+const pendingModelSelection = new Map<string, { providerId: string; models: Record<string, string>; providerName: string }>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const blockBuffers = new Map<string, MessageBuffer>()
 const contextTokens = new Map<string, string>()
@@ -182,6 +183,7 @@ function clearTransientChatState(chatId: string): void {
   blockBuffers.delete(chatId)
   pendingPermissions.delete(chatId)
   pendingAskUserInputs.clear()
+  pendingModelSelection.delete(chatId)
   typingController.stop(chatId)
   const runtime = getRuntimeState(chatId)
   runtime.state = 'idle'
@@ -459,6 +461,51 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
   }
 }
 
+async function handleModelCommand(chatId: string, arg: string): Promise<void> {
+  try {
+    const models = await httpClient.listAvailableModels()
+    if (models.length === 0) {
+      await sendText(chatId, '未找到可用模型。')
+      return
+    }
+
+    if (!arg) {
+      const lines = models.map((m, i) => `${i + 1}. ${m.id}`)
+      pendingModelSelection.set(chatId, { models: Object.fromEntries(models.map(m => [m.id, m.id])), providerId: '', providerName: '' })
+      await sendText(chatId, `可用模型：\n\n${lines.join('\n')}\n\n回复编号切换，或发送 /model <模型名>`)
+      return
+    }
+
+    const num = parseInt(arg, 10)
+    if (!isNaN(num) && num >= 1 && num <= models.length) {
+      const selected = models[num - 1]!
+      await wxSwitchModel(chatId, selected.id)
+    } else {
+      const lower = arg.toLowerCase()
+      const match = models.find(m => m.id.toLowerCase() === lower || m.alias.toLowerCase() === lower)
+      if (match) {
+        await wxSwitchModel(chatId, match.id)
+      } else {
+        await sendText(chatId, `未知模型：${arg}。发送 /model 查看可用列表。`)
+        return
+      }
+    }
+    pendingModelSelection.delete(chatId)
+  } catch (err) {
+    await sendText(chatId, `获取模型列表失败: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+async function wxSwitchModel(chatId: string, modelId: string): Promise<void> {
+  const stored = sessionStore.get(chatId)
+  if (!stored) {
+    await sendText(chatId, '请先发送一条消息启动会话，然后再切换模型。')
+    return
+  }
+  bridge.sendSetRuntimeConfig(chatId, modelId)
+  await sendText(chatId, `已切换至：${modelId}`)
+}
+
 async function routeUserMessage(message: WechatMessage): Promise<void> {
   const chatId = message.from_user_id
   if (!chatId) return
@@ -496,6 +543,11 @@ async function routeUserMessage(message: WechatMessage): Promise<void> {
     }
     if (!hasAttachments && (text === '/projects' || text === '项目列表')) {
       await showProjectPicker(chatId)
+      return
+    }
+    if (!hasAttachments && (text === '/model' || text.startsWith('/model '))) {
+      const arg = text.startsWith('/model ') ? text.slice(7).trim() : ''
+      await handleModelCommand(chatId, arg)
       return
     }
     if (!hasAttachments && (text === '/new' || text === '新会话' || text.startsWith('/new '))) {
@@ -573,6 +625,19 @@ async function routeUserMessage(message: WechatMessage): Promise<void> {
         pending.delete(requestId)
       }
       await sendText(chatId, sent ? `${formatPermissionDecisionStatus(permissionDecision)}。` : '权限响应发送失败，请检查会话状态。')
+      return
+    }
+    if (!hasAttachments && pendingModelSelection.has(chatId) && /^\d{1,2}$/.test(text.trim())) {
+      const pending = pendingModelSelection.get(chatId)!
+      const entries = Object.entries(pending.models)
+      const num = parseInt(text.trim(), 10)
+      if (num >= 1 && num <= entries.length) {
+        const [modelId] = entries[num - 1]!
+        await wxSwitchModel(chatId, modelId)
+        pendingModelSelection.delete(chatId)
+      } else {
+        await sendText(chatId, `无效编号，请输入 1-${entries.length}`)
+      }
       return
     }
     if (!hasAttachments && pendingProjectSelection.has(chatId)) {
