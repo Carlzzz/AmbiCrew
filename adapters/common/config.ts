@@ -152,9 +152,9 @@ function resolveUserDefaultWorkDir(): string {
   const candidates = [
     process.env.ADAPTER_DEFAULT_PROJECT_DIR,
     process.env.CLAUDE_ADAPTER_DEFAULT_WORK_DIR,
+    os.homedir(),
     process.env.PWD,
     process.cwd(),
-    os.homedir(),
   ]
 
   for (const candidate of candidates) {
