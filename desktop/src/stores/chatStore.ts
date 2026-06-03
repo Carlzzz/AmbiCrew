@@ -855,6 +855,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         useTabStore.getState().updateTabTitle(msg.sessionId, msg.title)
         break
       case 'auth_restarting': {
+        // Clear any pending retry timer from a previous auth_restarting event
+        {
+          const prev = get().sessions[sessionId]
+          if (prev?.authRetryTimer) {
+            clearTimeout(prev.authRetryTimer)
+          }
+        }
         update(() => ({
           authRestartState: 'restarting',
           chatState: 'idle',

@@ -129,44 +129,43 @@ describe('Auth Restart on invalid_api_key', () => {
     }
   })
 
-  it('should return non-retryable error on second invalid_api_key in same retry chain', async () => {
+  it('should return auth_restarting for first 3 attempts, then non-retryable error on 4th in same retry chain', async () => {
     const sessionId = await createSession()
     const messages: any[] = []
     const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`)
 
-    // Track state manually
-    let gotAuthRestarting = false
-    let secondMessageSent = false
+    let authRestartCount = 0
+    let messageCount = 0
 
     try {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           ws.close()
           reject(new Error('Timed out'))
-        }, 30000)
+        }, 45000)
 
         ws.onmessage = (e) => {
           const msg = JSON.parse(e.data as string)
           messages.push(msg)
 
           // First connected - send initial message
-          if (msg.type === 'connected' && !gotAuthRestarting) {
+          if (msg.type === 'connected' && messageCount === 0) {
+            messageCount++
             ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key' }))
           }
 
-          // Got auth_restarting - this is the first attempt
+          // Got auth_restarting - send auto-retry (up to MAX_AUTH_RETRY_ATTEMPTS=3 times)
           if (msg.type === 'auth_restarting') {
-            gotAuthRestarting = true
+            authRestartCount++
           }
 
-          // Got idle after auth_restarting - now send the auto-retry
-          if (msg.type === 'status' && msg.state === 'idle' && gotAuthRestarting && !secondMessageSent) {
-            secondMessageSent = true
-            // Send auto-retry - should NOT reset counter
+          // Got idle after auth_restarting - send next auto-retry
+          if (msg.type === 'status' && msg.state === 'idle' && authRestartCount > 0 && authRestartCount <= 3 && messageCount <= authRestartCount) {
+            messageCount++
             ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key', isAutoRetry: true }))
           }
 
-          // Got error - success!
+          // Got final error — success!
           if (msg.type === 'error') {
             clearTimeout(timeout)
             ws.close()
@@ -181,12 +180,14 @@ describe('Auth Restart on invalid_api_key', () => {
         }
       })
 
-      // Verify first auth_restarting was sent with attempt 1
-      const authRestarting = messages.find(m => m.type === 'auth_restarting')
-      expect(authRestarting).toBeDefined()
-      expect(authRestarting?.attempt).toBe(1)
+      // Verify 3 auth_restarting messages with attempts 1, 2, 3
+      const authRestartingMessages = messages.filter(m => m.type === 'auth_restarting')
+      expect(authRestartingMessages.length).toBe(3)
+      expect(authRestartingMessages[0].attempt).toBe(1)
+      expect(authRestartingMessages[1].attempt).toBe(2)
+      expect(authRestartingMessages[2].attempt).toBe(3)
 
-      // Verify error was sent with retryable: false on second attempt
+      // Verify error was sent with retryable: false on 4th attempt
       const errorMsg = messages.find(m => m.type === 'error')
       expect(errorMsg).toBeDefined()
       expect(errorMsg?.code).toBe('invalid_api_key')
@@ -196,16 +197,15 @@ describe('Auth Restart on invalid_api_key', () => {
       const { conversationService } = await import('../services/conversationService.js')
       conversationService.stopSession(sessionId)
     }
-  }, { timeout: 30000 })
+  }, { timeout: 45000 })
 
   it('should reset authRetryCount when a manual user message is sent after error', async () => {
     const sessionId = await createSession()
     const messages: any[] = []
     const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`)
 
-    // Track state
-    let phase = 0 // 0: first message, 1: auto-retry, 2: manual message
-    let gotFirstAuthRestarting = false
+    let authRestartCount = 0
+    let messageCount = 0
     let gotError = false
 
     try {
@@ -213,41 +213,40 @@ describe('Auth Restart on invalid_api_key', () => {
         const timeout = setTimeout(() => {
           ws.close()
           reject(new Error('Timed out'))
-        }, 45000)
+        }, 60000)
 
         ws.onmessage = (e) => {
           const msg = JSON.parse(e.data as string)
           messages.push(msg)
 
           // First connected - send initial message
-          if (msg.type === 'connected' && phase === 0) {
-            phase = 1
+          if (msg.type === 'connected' && messageCount === 0) {
+            messageCount++
             ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key' }))
           }
 
-          // First auth_restarting - send auto-retry
-          if (msg.type === 'auth_restarting' && phase === 1 && !gotFirstAuthRestarting) {
-            gotFirstAuthRestarting = true
+          // Got auth_restarting
+          if (msg.type === 'auth_restarting') {
+            authRestartCount++
           }
 
-          // After first auth_restarting idle - send auto-retry
-          if (msg.type === 'status' && msg.state === 'idle' && phase === 1 && gotFirstAuthRestarting && !gotError) {
-            phase = 2
+          // Got idle after auth_restarting — send next auto-retry (up to 3)
+          if (msg.type === 'status' && msg.state === 'idle' && authRestartCount > 0 && !gotError && messageCount <= authRestartCount) {
+            messageCount++
             ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key', isAutoRetry: true }))
           }
 
-          // Got error - now send manual message to reset counter
-          if (msg.type === 'error' && phase === 2) {
+          // Got final error — now send manual message to reset counter
+          if (msg.type === 'error' && !gotError) {
             gotError = true
-            phase = 3
             setTimeout(() => {
-              // Manual message - should reset counter!
+              // Manual message (no isAutoRetry) — should reset counter!
               ws.send(JSON.stringify({ type: 'user_message', content: 'trigger api error invalid_api_key' }))
             }, 100)
           }
 
-          // Got second auth_restarting - success! Counter was reset!
-          if (msg.type === 'auth_restarting' && phase === 3) {
+          // Got auth_restarting after manual message — counter was reset!
+          if (msg.type === 'auth_restarting' && gotError) {
             clearTimeout(timeout)
             ws.close()
             resolve()
@@ -261,13 +260,16 @@ describe('Auth Restart on invalid_api_key', () => {
         }
       })
 
-      // Verify we got two auth_restarting messages
-      const authRestartingMessages = messages.filter(m => m.type === 'auth_restarting')
-      expect(authRestartingMessages.length).toBe(2)
-      expect(authRestartingMessages[0].attempt).toBe(1)
-      expect(authRestartingMessages[1].attempt).toBe(1) // Both have attempt 1 - means reset worked!
+      // Verify first 3 auth_restarting messages from auto-retry chain
+      const firstChainAuthRestarting = messages.filter(m => m.type === 'auth_restarting')
+      expect(firstChainAuthRestarting.length).toBe(4) // 3 auto + 1 after manual reset
+      expect(firstChainAuthRestarting[0].attempt).toBe(1)
+      expect(firstChainAuthRestarting[1].attempt).toBe(2)
+      expect(firstChainAuthRestarting[2].attempt).toBe(3)
+      // After manual message reset, attempt should be back to 1
+      expect(firstChainAuthRestarting[3].attempt).toBe(1)
 
-      // Verify we got the intermediate error
+      // Verify the intermediate error was retryable: false
       const errorMsg = messages.find(m => m.type === 'error')
       expect(errorMsg).toBeDefined()
       expect(errorMsg?.retryable).toBe(false)
@@ -276,5 +278,5 @@ describe('Auth Restart on invalid_api_key', () => {
       const { conversationService } = await import('../services/conversationService.js')
       conversationService.stopSession(sessionId)
     }
-  }, { timeout: 45000 })
+  }, { timeout: 60000 })
 })

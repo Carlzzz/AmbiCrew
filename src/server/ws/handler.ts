@@ -68,6 +68,9 @@ const prewarmedSessions = new Set<string>()
 const prewarmIdleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const DEFAULT_PREWARM_IDLE_TIMEOUT_MS = 5 * 60_000
 
+/** Number of times to auto-restart CLI + retry before showing "Not logged in" to the user. */
+const MAX_AUTH_RETRY_ATTEMPTS = 3
+
 export function getSlashCommands(sessionId: string): Array<{ name: string; description: string }> {
   return sessionSlashCommands.get(sessionId) || []
 }
@@ -893,11 +896,11 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
           conversationService.stopSession(sessionId)
           streamState.authRetryCount = attempt
 
-          if (attempt <= 1) {
+          if (attempt <= MAX_AUTH_RETRY_ATTEMPTS) {
             return [{ type: 'auth_restarting', attempt }, { type: 'status', state: 'idle' }]
           }
 
-          // attempt >= 2: not retryable, show normal error
+          // Exhausted all retries — not retryable, show error to user
           return [{ type: 'error', message, code, retryable: false }]
         }
 
