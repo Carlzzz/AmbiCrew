@@ -154,6 +154,33 @@ fn kill_existing_on_port(port: u16) {
     log::warn!("[server] Port {} still in use after kill attempt", port);
 }
 
+/// Best-effort cleanup for adapter sidecars left behind by a previous app
+/// instance. Adapter sidecars don't hold a local TCP port, so port cleanup can't
+/// find them; kill by executable/script name before starting the new owner.
+fn kill_stale_adapter_sidecars() {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let patterns = ["adapter-sidecar", "desktop/sidecars/adapter-sidecar.ts"];
+        for pattern in patterns {
+            let _ = Command::new("pkill").args(["-f", pattern]).output();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "adapter-sidecar.exe"])
+            .output();
+
+        let script = r#"Get-CimInstance Win32_Process |
+Where-Object { $_.Name -eq 'bun.exe' -and $_.CommandLine -like '*desktop/sidecars/adapter-sidecar.ts*' } |
+ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"#;
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .output();
+    }
+}
+
 /// Read ~/.claude/adapters.json and return the flags needed to start the
 /// adapter sidecar (--dingtalk, --feishu, --wechat, --telegram). Returns an
 /// empty Vec if no adapters are configured with credentials.
@@ -464,6 +491,7 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
     if let Some(mut child) = state.adapter_process.lock().unwrap().take() {
         graceful_kill(&mut child);
     }
+    kill_stale_adapter_sidecars();
 
     let resource_dir = get_resource_dir(&app);
     let sidecar_path = get_sidecar_path(&app, "adapter-sidecar");
@@ -483,18 +511,21 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
+    let parent_pid = std::process::id().to_string();
+
     let mut child = if cfg!(debug_assertions) {
         // Dev mode: bun needs to run from the repo root so it can resolve
         // sidecars/adapter-sidecar.ts (Tauri's CWD is desktop/src-tauri/).
         let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .ancestors().nth(2).unwrap().to_path_buf();
         let mut cmd = Command::new("bun");
-        cmd.args(["run", "desktop/sidecars/adapter-sidecar.ts"]);
+        cmd.args(["run", "desktop/sidecars/adapter-sidecar.ts", "--parent-pid", &parent_pid]);
         for flag in &adapter_flags {
             cmd.arg(flag);
         }
         cmd.current_dir(&repo_root)
             .env("ADAPTER_SERVER_URL", &server_url)
+            .env("AMBICREW_PARENT_PID", &parent_pid)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hide_console(&mut cmd);
@@ -502,11 +533,13 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
             .map_err(|e| format!("Failed to spawn adapter sidecar: {}", e))?
     } else {
         let mut cmd = Command::new(&sidecar_path);
+        cmd.args(["--parent-pid", &parent_pid]);
         for flag in &adapter_flags {
             cmd.arg(flag);
         }
         cmd.env("ADAPTER_SERVER_URL", &server_url)
             .env("CLAUDE_APP_ROOT", &resource_dir)
+            .env("AMBICREW_PARENT_PID", &parent_pid)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hide_console(&mut cmd);

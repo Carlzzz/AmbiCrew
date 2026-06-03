@@ -10,6 +10,7 @@
  */
 
 let appRoot: string | null = process.env.CLAUDE_APP_ROOT ?? null
+let parentPid = Number(process.env.AMBICREW_PARENT_PID || 0)
 let enableFeishu = false
 let enableTelegram = false
 let enableWechat = false
@@ -19,6 +20,11 @@ for (let i = 0; i < process.argv.length; i++) {
   const arg = process.argv[i]
   if (arg === '--app-root') {
     appRoot = process.argv[i + 1] ?? null
+    i += 1
+    continue
+  }
+  if (arg === '--parent-pid') {
+    parentPid = Number(process.argv[i + 1] ?? 0)
     i += 1
     continue
   }
@@ -37,6 +43,18 @@ if (appRoot) {
   process.env.CLAUDE_APP_ROOT = appRoot
 }
 process.env.CALLER_DIR ||= process.cwd()
+
+if (Number.isFinite(parentPid) && parentPid > 0) {
+  const timer = setInterval(() => {
+    try {
+      process.kill(parentPid, 0)
+    } catch {
+      console.warn(`[adapter-sidecar] parent process ${parentPid} is gone — exiting`)
+      process.exit(0)
+    }
+  }, 5000)
+  timer.unref?.()
+}
 
 await import('../../preload.ts')
 
