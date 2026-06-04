@@ -376,6 +376,18 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             .env("AUTH_MODE", std::env::var("AUTH_MODE").unwrap_or_else(|_| "central".to_string()))
             .env("LLM_PROXY_BASE_URL", std::env::var("LLM_PROXY_BASE_URL").unwrap_or_else(|_| "https://crew.ambilight.com/woicrew/proxy".to_string()))
             .env("CREWCENTRAL_AUTH_LOGIN_URL", std::env::var("CREWCENTRAL_AUTH_LOGIN_URL").unwrap_or_else(|_| "https://crew.ambilight.com/woicrew/auth/login".to_string()))
+            // Disable non-essential outbound traffic by default in packaged mode.
+            // Without these the upstream CLI/SDK silently fires off telemetry,
+            // MCP registry queries, Statsig flag fetches etc — on slow/cross-region
+            // links those requests stall every turn and make the bundled app feel
+            // markedly less responsive than the dev build (which loads them from .env).
+            .env("DISABLE_TELEMETRY", std::env::var("DISABLE_TELEMETRY").unwrap_or_else(|_| "1".to_string()))
+            .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", std::env::var("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC").unwrap_or_else(|_| "1".to_string()))
+            // Auth helpers that dev mode also reads from .env; mirroring the
+            // values here keeps the OAuth deep-link / api base derivation
+            // consistent between dev and packaged runs.
+            .env("AUTH_CALLBACK_SCHEME", std::env::var("AUTH_CALLBACK_SCHEME").unwrap_or_else(|_| "testcrew".to_string()))
+            .env("AUTH_SERVER_BASE_URL", std::env::var("AUTH_SERVER_BASE_URL").unwrap_or_else(|_| "https://crew.ambilight.com/woicrew".to_string()))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hide_console(&mut cmd);
