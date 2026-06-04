@@ -349,9 +349,10 @@ async function handleCurrentModel(req: Request): Promise<Response> {
         if (proxyModels && proxyModels.length > 0) {
           const isValid = proxyModels.some((m) => m.id === currentModelId)
           if (!isValid || !currentModelId) {
-            const defaultModel = activeProvider.models.main
-            const defaultIsValid = defaultModel && proxyModels.some((m) => m.id === defaultModel)
-            const resolved = defaultIsValid ? defaultModel : proxyModels[0].id
+            // Use the first model from the proxy as the authoritative default.
+            // Preset defaults (e.g. MiniMax-M3) are not guaranteed to be in the
+            // user's allowlist — proxy is the source of truth.
+            const resolved = proxyModels[0].id
             const resolvedEntry = proxyModels.find((m) => m.id === resolved)
             currentModelId = resolved
             currentModelName = resolvedEntry?.name ?? resolved

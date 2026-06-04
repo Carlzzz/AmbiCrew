@@ -42,6 +42,11 @@ export async function handleProvidersApi(
       return await handleTestUnsaved(req)
     }
 
+    // GET /api/providers/available-models — fetch real model list from proxy
+    if (id === 'available-models' && req.method === 'GET') {
+      return handleAvailableModels()
+    }
+
     // GET /api/providers/presets
     if (id === 'presets' && req.method === 'GET') {
       const filteredPresets = PROVIDER_PRESETS.filter(p => p.id !== 'official' && p.id !== 'custom')
@@ -193,6 +198,36 @@ async function handleTestUnsaved(req: Request): Promise<Response> {
     }
     if (err instanceof z.ZodError) throw ApiError.badRequest(err.issues.map((i) => i.message).join('; '))
     throw err
+  }
+}
+
+async function handleAvailableModels(): Promise<Response> {
+  try {
+    const proxyBaseUrl =
+      process.env.LLM_PROXY_BASE_URL?.trim() ||
+      process.env.ANTHROPIC_BASE_URL?.trim()
+    if (!proxyBaseUrl) {
+      return Response.json({ models: [] })
+    }
+
+    const { getCentralAccessToken } = await import('../../utils/auth.js')
+    const token = (await getCentralAccessToken()) ||
+      process.env.LLM_PROXY_API_KEY?.trim() ||
+      process.env.LLM_DIRECT_API_KEY?.trim() ||
+      undefined
+
+    const { fetchProxyModelList } = await import('../../services/central/proxy-client.js')
+    const result = await fetchProxyModelList({
+      baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
+      token,
+    })
+
+    return Response.json({
+      models: result.items.map((m) => ({ id: m.modelId, alias: m.modelAlias })),
+    })
+  } catch (err) {
+    console.warn('[providers] Failed to fetch available models:', err instanceof Error ? err.message : err)
+    return Response.json({ models: [] })
   }
 }
 

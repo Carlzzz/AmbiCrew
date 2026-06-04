@@ -28,7 +28,7 @@ import {
   type PermissionDecision,
 } from '../common/permission.js'
 import { SessionStore } from '../common/session-store.js'
-import { AdapterHttpClient } from '../common/http-client.js'
+import { AdapterHttpClient, type AvailableModel } from '../common/http-client.js'
 import { isAllowedUser, tryPair } from '../common/pairing.js'
 import { TelegramMediaService } from './media.js'
 import { AttachmentStore } from '../common/attachment/attachment-store.js'
@@ -68,6 +68,7 @@ const accumulatedText = new Map<string, string>()
 const buffers = new Map<string, MessageBuffer>()
 // Track chats waiting for project selection
 const pendingProjectSelection = new Map<string, boolean>()
+const pendingModelSelection = new Map<string, AvailableModel[]>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const pendingPermissions = new Map<string, Set<string>>()
 const pendingAskUserInputs = new Map<string, unknown>()
@@ -123,6 +124,7 @@ function clearTransientChatState(chatId: string): void {
   pendingPermissions.delete(chatId)
   pendingAskUserInputs.clear()
   tgImageWatchers.delete(chatId)
+  pendingModelSelection.delete(chatId)
 }
 
 async function handlePermissionDecision(chatId: string, decision: PermissionDecision): Promise<void> {
@@ -559,6 +561,7 @@ async function startNewSession(chatId: string, query?: string): Promise<void> {
   pendingPermissions.delete(chatId)
   runtimeStates.delete(chatId)
   tgImageWatchers.delete(chatId)
+  pendingModelSelection.delete(chatId)
 
   if (query) {
     try {
@@ -604,6 +607,11 @@ bot.command('projects', async (ctx) => {
   await showProjectPicker(chatId)
 })
 
+bot.command('model', async (ctx) => {
+  const chatId = String(ctx.chat.id)
+  await handleModelCommand(chatId, Number(ctx.chat.id), ctx.match?.trim() || '')
+})
+
 bot.command('stop', (ctx) => {
   const chatId = String(ctx.chat.id)
   void (async () => {
@@ -644,6 +652,66 @@ for (const command of ['allow', 'always', 'allow-always', 'deny'] as const) {
   bot.command(command, async (ctx) => {
     await routeUserMessage(ctx, `/${command}${ctx.match ? ` ${ctx.match}` : ''}`, [])
   })
+}
+
+async function handleModelCommand(chatId: string, numericChatId: number, arg: string): Promise<void> {
+  let models: AvailableModel[]
+  try {
+    models = await httpClient.listAvailableModels()
+  } catch (err) {
+    await bot.api.sendMessage(numericChatId, `获取模型列表失败：${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
+  if (models.length === 0) {
+    await bot.api.sendMessage(numericChatId, '未找到可用模型。')
+    return
+  }
+
+  if (!arg) {
+    const lines = models.map((m, i) => `${i + 1}. ${m.id}${m.alias && m.alias !== m.id ? ` (${m.alias})` : ''}`)
+    pendingModelSelection.set(chatId, models)
+    await bot.api.sendMessage(numericChatId, `可用模型：\n\n${lines.join('\n')}\n\n回复编号切换，或发送 /model <模型名>`)
+    return
+  }
+
+  const target = resolveModel(models, arg)
+  if (!target) {
+    await bot.api.sendMessage(numericChatId, `未知模型：${arg}。发送 /model 查看可用列表。`)
+    return
+  }
+  pendingModelSelection.delete(chatId)
+  await tgSwitchModel(chatId, numericChatId, target.id)
+}
+
+/** Match by 1-based index, exact id, or alias (case-insensitive). */
+function resolveModel(models: AvailableModel[], arg: string): AvailableModel | null {
+  const num = parseInt(arg, 10)
+  if (String(num) === arg && num >= 1 && num <= models.length) {
+    return models[num - 1]!
+  }
+  const lower = arg.toLowerCase()
+  return models.find((m) => m.id.toLowerCase() === lower || m.alias.toLowerCase() === lower) ?? null
+}
+
+async function tgSwitchModel(chatId: string, numericChatId: number, modelId: string): Promise<void> {
+  const stored = sessionStore.get(chatId)
+  if (!stored) {
+    await bot.api.sendMessage(numericChatId, '请先发送一条消息启动会话，然后再切换模型。')
+    return
+  }
+  let providerId: string | null
+  try {
+    providerId = await httpClient.getActiveProviderId()
+  } catch (err) {
+    await bot.api.sendMessage(numericChatId, `切换失败：无法读取当前服务商（${err instanceof Error ? err.message : String(err)}）。`)
+    return
+  }
+  const ok = bridge.sendSetRuntimeConfig(chatId, modelId, providerId)
+  if (!ok) {
+    await bot.api.sendMessage(numericChatId, '⚠️ 切换请求发送失败，连接可能已断开。请发送 /new 重新开始。')
+    return
+  }
+  await bot.api.sendMessage(numericChatId, `✅ 已请求切换至 ${modelId}。\n服务端正在重启会话以应用新模型，下条消息将使用新模型回答。`)
 }
 
 /** Shared per-user-message pipeline: dedup, pairing check, project-pick
@@ -695,6 +763,18 @@ async function routeUserMessage(
       : null
     if (permissionDecision) {
       await handlePermissionDecision(chatId, permissionDecision)
+      return
+    }
+
+    if (pendingModelSelection.has(chatId) && attachments.length === 0 && /^\d{1,2}$/.test(text.trim())) {
+      const models = pendingModelSelection.get(chatId)!
+      const num = parseInt(text.trim(), 10)
+      if (num >= 1 && num <= models.length) {
+        pendingModelSelection.delete(chatId)
+        await tgSwitchModel(chatId, Number(chatId), models[num - 1]!.id)
+      } else {
+        await bot.api.sendMessage(Number(chatId), `无效编号，请输入 1-${models.length}`)
+      }
       return
     }
 

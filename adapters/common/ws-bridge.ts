@@ -112,6 +112,17 @@ export class WsBridge {
     return this.send(chatId, { type: 'stop_generation' })
   }
 
+  /** Switch the model (and provider) for a running session.
+   *  providerId must match the server's active provider so the proxy
+   *  auth/base-URL env survives the CLI restart; pass null for official mode. */
+  sendSetRuntimeConfig(chatId: string, modelId: string, providerId: string | null): boolean {
+    return this.send(chatId, {
+      type: 'set_runtime_config',
+      modelId,
+      providerId,
+    })
+  }
+
   /** Register (or replace) the handler for server messages on a specific chatId. */
   onServerMessage(chatId: string, handler: MessageHandler): void {
     this.handlers.set(chatId, handler)

@@ -23,7 +23,7 @@ import {
   type PermissionDecision,
 } from '../common/permission.js'
 import { SessionStore } from '../common/session-store.js'
-import { AdapterHttpClient, type RecentProject } from '../common/http-client.js'
+import { AdapterHttpClient, type RecentProject, type AvailableModel } from '../common/http-client.js'
 import { isAllowedUser, tryPair } from '../common/pairing.js'
 import { AttachmentStore } from '../common/attachment/attachment-store.js'
 import { checkAttachmentLimit } from '../common/attachment/attachment-limits.js'
@@ -68,6 +68,7 @@ const media = new DingTalkMediaService(attachmentStore)
 const aiCards = new DingTalkAiCardService(getAccessToken, config.dingtalk.clientId)
 const sessionWebhooks = new Map<string, string>()
 const pendingProjectSelection = new Map<string, boolean>()
+const pendingModelSelection = new Map<string, AvailableModel[]>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const aiCardBuffers = new Map<string, MessageBuffer>()
 const aiCardTargets = new Map<string, DingTalkAiCardTarget>()
@@ -360,6 +361,7 @@ function clearTransientChatState(chatId: string): void {
   runtime.state = 'idle'
   runtime.verb = undefined
   runtime.pendingPermissionCount = 0
+  pendingModelSelection.delete(chatId)
 }
 
 function clearPendingPermissions(chatId: string): void {
@@ -723,6 +725,69 @@ function applyPermissionDecision(chatId: string, decision: PermissionDecision): 
   return sent
 }
 
+async function handleModelCommand(chatId: string, arg: string): Promise<void> {
+  let models: AvailableModel[]
+  try {
+    models = await httpClient.listAvailableModels()
+  } catch (err) {
+    await sendText(chatId, `获取模型列表失败：${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
+  if (models.length === 0) {
+    await sendText(chatId, '未找到可用模型。')
+    return
+  }
+
+  if (!arg) {
+    const lines = models.map((m, i) => `${i + 1}. \`${m.id}\`${m.alias && m.alias !== m.id ? ` (${m.alias})` : ''}`)
+    pendingModelSelection.set(chatId, models)
+    await sendText(chatId, `可用模型：\n\n${lines.join('\n')}\n\n回复编号切换，或发送 /model <模型名>`)
+    return
+  }
+
+  const target = resolveModel(models, arg)
+  if (!target) {
+    await sendText(chatId, `未知模型：${arg}。发送 /model 查看可用列表。`)
+    return
+  }
+  pendingModelSelection.delete(chatId)
+  await switchModel(chatId, target.id)
+}
+
+/** Match by 1-based index, exact id, or alias (case-insensitive). */
+function resolveModel(models: AvailableModel[], arg: string): AvailableModel | null {
+  const num = parseInt(arg, 10)
+  if (String(num) === arg && num >= 1 && num <= models.length) {
+    return models[num - 1]!
+  }
+  const lower = arg.toLowerCase()
+  return models.find((m) => m.id.toLowerCase() === lower || m.alias.toLowerCase() === lower) ?? null
+}
+
+async function switchModel(chatId: string, modelId: string): Promise<void> {
+  const stored = sessionStore.get(chatId)
+  if (!stored) {
+    await sendText(chatId, '请先发送一条消息启动会话，然后再切换模型。')
+    return
+  }
+  // Pair the model with the active provider id so the server keeps the proxy
+  // auth/base-URL env when it restarts the CLI. Sending modelId alone makes the
+  // server treat it as official mode and strip the proxy env.
+  let providerId: string | null
+  try {
+    providerId = await httpClient.getActiveProviderId()
+  } catch (err) {
+    await sendText(chatId, `切换失败：无法读取当前服务商（${err instanceof Error ? err.message : String(err)}）。`)
+    return
+  }
+  const ok = bridge.sendSetRuntimeConfig(chatId, modelId, providerId)
+  if (!ok) {
+    await sendText(chatId, '⚠️ 切换请求发送失败，连接可能已断开。请发送 /new 重新开始。')
+    return
+  }
+  await sendText(chatId, `✅ 已请求切换至 \`${modelId}\`。\n服务端正在重启会话以应用新模型，下条消息将使用新模型回答。`)
+}
+
 async function routeUserMessage(chatId: string, text: string, attachments: AttachmentRef[] = []): Promise<void> {
   enqueue(chatId, async () => {
     const trimmed = text.trim()
@@ -732,6 +797,18 @@ async function routeUserMessage(chatId: string, text: string, attachments: Attac
 
     if (!hasAttachments && pendingProjectSelection.has(chatId)) {
       if (trimmed) await startNewSession(chatId, trimmed)
+      return
+    }
+
+    if (!hasAttachments && pendingModelSelection.has(chatId) && /^\d{1,2}$/.test(trimmed)) {
+      const models = pendingModelSelection.get(chatId)!
+      const num = parseInt(trimmed, 10)
+      if (num >= 1 && num <= models.length) {
+        pendingModelSelection.delete(chatId)
+        await switchModel(chatId, models[num - 1]!.id)
+      } else {
+        await sendText(chatId, `无效编号，请输入 1-${models.length}`)
+      }
       return
     }
 
@@ -774,6 +851,11 @@ async function routeUserMessage(chatId: string, text: string, attachments: Attac
     }
     if (!hasAttachments && (trimmed === '/projects' || trimmed === '项目列表')) {
       await showProjectPicker(chatId)
+      return
+    }
+    if (!hasAttachments && (trimmed === '/model' || trimmed.startsWith('/model '))) {
+      const arg = trimmed.startsWith('/model ') ? trimmed.slice(7).trim() : ''
+      await handleModelCommand(chatId, arg)
       return
     }
 

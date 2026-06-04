@@ -26,6 +26,9 @@ export type SessionTask = {
   status: 'pending' | 'in_progress' | 'completed'
 }
 
+/** A model the proxy actually exposes — id is what we pass to set_runtime_config. */
+export type AvailableModel = { id: string; alias: string }
+
 export class AdapterHttpClient {
   readonly httpBaseUrl: string
   private readonly allowedProjectRoots: string[]
@@ -167,6 +170,42 @@ export class AdapterHttpClient {
       }
       const data = (await res.json()) as { tasks?: SessionTask[] }
       return Array.isArray(data.tasks) ? data.tasks : []
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /** Fetch the actual available models from the proxy (not the provider slots). */
+  async listAvailableModels(): Promise<AvailableModel[]> {
+    const { controller, timer } = this.createTimeoutController()
+    try {
+      const res = await fetch(`${this.httpBaseUrl}/api/providers/available-models`, {
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        throw new Error(`Failed to list available models: ${res.statusText}`)
+      }
+      const data = (await res.json()) as { models?: AvailableModel[] }
+      return Array.isArray(data.models) ? data.models : []
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /** Resolve the currently active provider id (null = official / no custom provider).
+   *  set_runtime_config must carry this id alongside the model so the server keeps
+   *  the proxy auth/base-URL env when restarting the CLI. */
+  async getActiveProviderId(): Promise<string | null> {
+    const { controller, timer } = this.createTimeoutController()
+    try {
+      const res = await fetch(`${this.httpBaseUrl}/api/providers`, {
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        throw new Error(`Failed to read providers: ${res.statusText}`)
+      }
+      const data = (await res.json()) as { activeId?: string | null }
+      return typeof data.activeId === 'string' ? data.activeId : null
     } finally {
       clearTimeout(timer)
     }

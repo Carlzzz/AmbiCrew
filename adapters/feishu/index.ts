@@ -30,7 +30,7 @@ import {
   type PermissionDecision,
 } from '../common/permission.js'
 import { SessionStore } from '../common/session-store.js'
-import { AdapterHttpClient, type RecentProject } from '../common/http-client.js'
+import { AdapterHttpClient, type RecentProject, type AvailableModel } from '../common/http-client.js'
 import { isAllowedUser, tryPair } from '../common/pairing.js'
 import { optimizeMarkdownForFeishu } from './markdown-style.js'
 import { extractInboundPayload } from './extract-payload.js'
@@ -71,6 +71,7 @@ attachmentStore.gc().catch((err) => {
 // One streaming card lifecycle per chatId (CardKit main + patch fallback).
 const streamingCards = new Map<string, StreamingCard>()
 const pendingProjectSelection = new Map<string, boolean>()
+const pendingModelSelection = new Map<string, AvailableModel[]>()
 const runtimeStates = new Map<string, ChatRuntimeState>()
 const pendingPermissions = new Map<string, Set<string>>()
 const pendingAskUserInputs = new Map<string, unknown>()
@@ -221,6 +222,7 @@ function clearTransientChatState(chatId: string): void {
     for (const rid of pending) pendingAskUserInputs.delete(rid)
   }
   pendingPermissions.delete(chatId)
+  pendingModelSelection.delete(chatId)
 }
 
 async function ensureExistingSession(chatId: string): Promise<{ sessionId: string; workDir: string } | null> {
@@ -744,6 +746,7 @@ async function startNewSession(chatId: string, query?: string): Promise<void> {
   imageWatchers.delete(chatId)
   uploadedImageKeys.delete(chatId)
   pendingProjectSelection.delete(chatId)
+  pendingModelSelection.delete(chatId)
   const pending = pendingPermissions.get(chatId)
   if (pending) {
     for (const rid of pending) pendingAskUserInputs.delete(rid)
@@ -978,6 +981,66 @@ function stripMentions(text: string): string {
   return text.replace(/@_user_\d+/g, '').trim()
 }
 
+async function handleModelCommand(chatId: string, arg: string): Promise<void> {
+  let models: AvailableModel[]
+  try {
+    models = await httpClient.listAvailableModels()
+  } catch (err) {
+    await sendText(chatId, `获取模型列表失败：${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
+  if (models.length === 0) {
+    await sendText(chatId, '未找到可用模型。')
+    return
+  }
+
+  if (!arg) {
+    const lines = models.map((m, i) => `${i + 1}. ${m.id}${m.alias && m.alias !== m.id ? ` (${m.alias})` : ''}`)
+    pendingModelSelection.set(chatId, models)
+    await sendText(chatId, `可用模型：\n\n${lines.join('\n')}\n\n回复编号切换，或发送 /model <模型名>`)
+    return
+  }
+
+  const target = resolveModel(models, arg)
+  if (!target) {
+    await sendText(chatId, `未知模型：${arg}。发送 /model 查看可用列表。`)
+    return
+  }
+  pendingModelSelection.delete(chatId)
+  await fsSwitchModel(chatId, target.id)
+}
+
+/** Match by 1-based index, exact id, or alias (case-insensitive). */
+function resolveModel(models: AvailableModel[], arg: string): AvailableModel | null {
+  const num = parseInt(arg, 10)
+  if (String(num) === arg && num >= 1 && num <= models.length) {
+    return models[num - 1]!
+  }
+  const lower = arg.toLowerCase()
+  return models.find((m) => m.id.toLowerCase() === lower || m.alias.toLowerCase() === lower) ?? null
+}
+
+async function fsSwitchModel(chatId: string, modelId: string): Promise<void> {
+  const stored = sessionStore.get(chatId)
+  if (!stored) {
+    await sendText(chatId, '请先发送一条消息启动会话，然后再切换模型。')
+    return
+  }
+  let providerId: string | null
+  try {
+    providerId = await httpClient.getActiveProviderId()
+  } catch (err) {
+    await sendText(chatId, `切换失败：无法读取当前服务商（${err instanceof Error ? err.message : String(err)}）。`)
+    return
+  }
+  const ok = bridge.sendSetRuntimeConfig(chatId, modelId, providerId)
+  if (!ok) {
+    await sendText(chatId, '⚠️ 切换请求发送失败，连接可能已断开。请发送 /new 重新开始。')
+    return
+  }
+  await sendText(chatId, `✅ 已请求切换至 \`${modelId}\`。\n服务端正在重启会话以应用新模型，下条消息将使用新模型回答。`)
+}
+
 // ---------- event handlers ----------
 
 async function handleMessage(data: any): Promise<void> {
@@ -1123,6 +1186,24 @@ async function handleMessage(data: any): Promise<void> {
     }
     if (!hasAttachments && (msgText === '/projects' || msgText === '项目列表')) {
       await showProjectPicker(chatId)
+      return
+    }
+    if (!hasAttachments && (msgText === '/model' || msgText.startsWith('/model '))) {
+      const arg = msgText.startsWith('/model ') ? msgText.slice(7).trim() : ''
+      await handleModelCommand(chatId, arg)
+      return
+    }
+
+    // User is replying to a model picker prompt
+    if (!hasAttachments && pendingModelSelection.has(chatId) && /^\d{1,2}$/.test(msgText.trim())) {
+      const models = pendingModelSelection.get(chatId)!
+      const num = parseInt(msgText.trim(), 10)
+      if (num >= 1 && num <= models.length) {
+        pendingModelSelection.delete(chatId)
+        await fsSwitchModel(chatId, models[num - 1]!.id)
+      } else {
+        await sendText(chatId, `无效编号，请输入 1-${models.length}`)
+      }
       return
     }
 

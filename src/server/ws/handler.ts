@@ -1529,9 +1529,10 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
         : ''
     model = baseModel ? (modelContext ? `${baseModel}:${modelContext}` : baseModel) : undefined
   } else if (isCrewCentral) {
-    // CrewCentral: clear stale model from a previous provider, then fallback
-    // to the provider's default model (if available on the proxy) or the
-    // preferred CrewProxy default, or the first proxy model.
+    // CrewCentral: clear stale model from a previous provider, then use
+    // the first model from the proxy. The proxy is authoritative about
+    // which models the user is authorized to use — preset defaults are
+    // not guaranteed to be in the user's allowlist.
     const staleModel = typeof modelSettings.model === 'string' && modelSettings.model.trim()
     if (staleModel) {
       console.warn(
@@ -1541,13 +1542,7 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     }
     const proxyModels = await tryFetchProxyModelsForRuntime()
     if (proxyModels && proxyModels.length > 0) {
-      const proxyIds = proxyModels.map((m) => m.id)
-      const providerDefault = activeProvider?.models.main
-      if (providerDefault && proxyIds.includes(providerDefault)) {
-        model = providerDefault
-      } else {
-        model = proxyModels[0].id
-      }
+      model = proxyModels[0].id
     }
   }
 
