@@ -37,7 +37,8 @@
     ],
     "resources": {
       "../resources/ripgrep": "ripgrep",
-      "../../runtime": "runtime"
+      "../../runtime": "runtime",
+      "../resources/certs": "certs"
     },
     "externalBin": [
       "sidecars/claude-sidecar",

@@ -230,6 +230,14 @@ export class CentralOAuthService {
     await clearTokens()
   }
 
+  /** Force the next ensureFreshAccessToken() to validate the token against
+   *  the server instead of returning the stale cached value.  Call this when
+   *  a CLI subprocess reports invalid_api_key — the in-memory token might be
+   *  expired even though the 5-minute throttle window hasn't elapsed. */
+  invalidateTokenCache(): void {
+    this.lastTokenValidation = 0
+  }
+
   pruneExpiredSessions(): void {
     const now = Date.now()
     for (const [key, s] of this.sessions.entries()) {

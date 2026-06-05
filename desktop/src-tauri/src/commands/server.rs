@@ -390,6 +390,15 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             .env("AUTH_SERVER_BASE_URL", std::env::var("AUTH_SERVER_BASE_URL").unwrap_or_else(|_| "https://crew.ambilight.com/woicrew".to_string()))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // Bundle the CrewProxy CA root certificate so Bun's TLS (BoringSSL)
+        // trusts the proxy endpoint on systems where the CA is not in the
+        // system trust store (e.g. macOS without the cert in Keychain).
+        // The cert file lives in desktop/resources/certs/ and is packaged
+        // into the .app via tauri.conf.json "resources".
+        let ca_cert_path = format!("{}/certs/crew-proxy-ca.crt", resource_dir);
+        if std::path::Path::new(&ca_cert_path).exists() {
+            cmd.env("NODE_EXTRA_CA_CERTS", &ca_cert_path);
+        }
         hide_console(&mut cmd);
         cmd.spawn()
             .map_err(|e| format!("Failed to spawn sidecar: {}", e))

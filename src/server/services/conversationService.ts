@@ -821,6 +821,26 @@ export class ConversationService {
       explicitProviderEnv.ANTHROPIC_MODEL = options.model.trim()
     }
 
+    // CrewCentral: the proxy is authoritative about which models the user may
+    // use.  If we couldn't resolve a model from the proxy (fetch failed /
+    // returned empty), options.model will be undefined.  In that case the
+    // preset's model keys (ANTHROPIC_MODEL, ANTHROPIC_DEFAULT_*_MODEL, …)
+    // are still sitting in explicitProviderEnv — they may reference models
+    // not in the user's allowlist (e.g. MiniMax-M3), causing a 403 from the
+    // proxy.  Strip them so the CLI negotiates a valid model on its own.
+    if (explicitProviderEnv && !options?.model) {
+      const pid = options?.providerId ?? ''
+      if (pid.startsWith('crewcentral')) {
+        delete explicitProviderEnv.ANTHROPIC_MODEL
+        delete explicitProviderEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL
+        delete explicitProviderEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES
+        delete explicitProviderEnv.ANTHROPIC_DEFAULT_SONNET_MODEL
+        delete explicitProviderEnv.ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES
+        delete explicitProviderEnv.ANTHROPIC_DEFAULT_OPUS_MODEL
+        delete explicitProviderEnv.ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES
+      }
+    }
+
     const cliDiagnosticsPath = diagnosticsService.getCliDiagnosticsPath()
     try {
       fs.mkdirSync(path.dirname(cliDiagnosticsPath), { recursive: true })

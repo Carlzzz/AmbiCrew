@@ -155,6 +155,18 @@ export function startServer(port = PORT, host = HOST) {
           )
           try {
             await centralOAuthService.completeCallback(url.searchParams)
+
+            // Invalidate the token validation cache so the next CLI spawn
+            // will validate the new token instead of using a stale one.
+            centralOAuthService.invalidateTokenCache()
+
+            // Restart any sessions that were stopped due to auth failures,
+            // so they pick up the new credentials automatically.
+            const { restartAuthFailedSessions } = await import(
+              './ws/handler.js'
+            )
+            restartAuthFailedSessions()
+
             return new Response(renderCentralCallbackPage(true, null), {
               status: 200,
               headers: { 'Content-Type': 'text/html; charset=utf-8' },

@@ -71,6 +71,17 @@ const DEFAULT_PREWARM_IDLE_TIMEOUT_MS = 5 * 60_000
 /** Number of times to auto-restart CLI + retry before showing "Not logged in" to the user. */
 const MAX_AUTH_RETRY_ATTEMPTS = 3
 
+/** Invalidate OAuth token validation caches so the next ensureFreshAccessToken()
+ *  call will actually validate the token against the server. Called when a CLI
+ *  subprocess reports invalid_api_key — the cached token might be expired even
+ *  though the 5-minute throttle window hasn't elapsed. */
+async function invalidateOAuthTokenCaches(): Promise<void> {
+  try {
+    const { centralOAuthService } = await import('../services/centralOAuthService.js')
+    centralOAuthService.invalidateTokenCache()
+  } catch { /* service not available in this build */ }
+}
+
 export function getSlashCommands(sessionId: string): Array<{ name: string; description: string }> {
   return sessionSlashCommands.get(sessionId) || []
 }
@@ -892,6 +903,9 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
         streamState.lastApiError = { message, code }
 
         if (code === 'invalid_api_key') {
+          // Invalidate OAuth token caches so the next CLI spawn will
+          // re-validate against the server instead of returning a stale token.
+          void invalidateOAuthTokenCaches()
           const attempt = streamState.authRetryCount + 1
           conversationService.stopSession(sessionId)
           streamState.authRetryCount = attempt
@@ -1638,4 +1652,37 @@ export function sendToSession(sessionId: string, message: ServerMessage): boolea
 
 export function getActiveSessionIds(): string[] {
   return Array.from(activeSessions.keys())
+}
+
+/**
+ * Called after CrewCentral re-login to restart sessions that were stopped
+ * due to exhausted auth retries.  Resets their retry counter and sends
+ * auth_restarting + status:idle so the client auto-retries with the
+ * fresh token.
+ */
+export function restartAuthFailedSessions(): void {
+  for (const [sessionId, ws] of activeSessions.entries()) {
+    const streamState = sessionStreamStates.get(sessionId)
+    if (!streamState || streamState.authRetryCount < MAX_AUTH_RETRY_ATTEMPTS) continue
+
+    // Session had exhausted retries — give it another chance with the
+    // new credentials.
+    streamState.authRetryCount = 0
+    streamState.lastApiError = undefined
+
+    // Stop any lingering CLI process (should already be stopped after
+    // the non-retryable error, but be safe).
+    if (conversationService.hasSession(sessionId)) {
+      conversationService.stopSession(sessionId)
+    }
+
+    // Tell the client auth is being retried so it clears the error
+    // state and sends an auto-retry message.
+    ws.send(JSON.stringify({ type: 'auth_restarting', attempt: 1 }))
+    ws.send(JSON.stringify({ type: 'status', state: 'idle' }))
+
+    console.log(
+      `[WS] Restarted auth-failed session ${sessionId} after credential refresh`,
+    )
+  }
 }
