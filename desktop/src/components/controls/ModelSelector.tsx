@@ -92,7 +92,13 @@ function resolveDefaultRuntimeSelection(
       : null
   )
 
-  const isCurrentModelValid = currentModelId && availableModelIds.includes(currentModelId)
+  // Server is the authority on currentModel — when availableModels hasn't loaded
+  // yet we still trust the server-validated model over the provider preset default.
+  // This prevents the UI from showing "MiniMax-M3" when the server has already
+  // corrected the model to the first entry from CrewProxy.
+  const isCurrentModelValid = currentModelId && (
+    availableModelIds.length === 0 || availableModelIds.includes(currentModelId)
+  )
   const inferredProvider = inferredProviderId
     ? providers.find((provider) => provider.id === inferredProviderId) ?? null
     : null
