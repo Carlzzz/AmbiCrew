@@ -1556,7 +1556,15 @@ async function getDefaultRuntimeSettings(): Promise<RuntimeSettings> {
     }
     const proxyModels = await tryFetchProxyModelsForRuntime()
     if (proxyModels && proxyModels.length > 0) {
-      model = proxyModels[0].id
+      // Prefer the provider preset's main model if it's in the proxy list
+      // (the user has permission for it). Only fall back to proxyModels[0]
+      // as a last resort. This keeps getDefaultRuntimeSettings in sync with
+      // /api/models/current which uses the same preset.main as its preferred
+      // default — otherwise UI shows "MiniMax-M3" but CLI launches with
+      // proxyModels[0] (e.g. doubao-seed-2.0-pro).
+      const mainModel = activeProvider?.models.main?.trim()
+      const mainInProxy = mainModel && proxyModels.some((m) => m.id === mainModel)
+      model = mainInProxy ? mainModel : proxyModels[0].id
     }
   }
 

@@ -9,6 +9,8 @@ import { useTabStore, SETTINGS_TAB_ID, SCHEDULED_TAB_ID } from '../../stores/tab
 import { useChatStore } from '../../stores/chatStore'
 import { useCentralOAuthStore } from '../../stores/centralOAuthStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useProviderStore } from '../../stores/providerStore'
+import { useSessionRuntimeStore } from '../../stores/sessionRuntimeStore'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
 
 type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'older'
@@ -274,6 +276,23 @@ export function Sidebar() {
                 : null
               const workDir = currentSession?.workDir || undefined
               const sessionId = await useSessionStore.getState().createSession(workDir)
+
+              // Seed runtime selection from the active provider + current model so
+              // the new session starts on the model the UI says it's using. Without
+              // this, the backend falls back to proxyModels[0] (which can differ
+              // from what /api/models/current reports) and UI vs CLI diverge.
+              const settingsState = useSettingsStore.getState()
+              const providerState = useProviderStore.getState()
+              const providerId =
+                providerState.activeId
+                ?? (settingsState.activeProviderName
+                  ? providerState.providers.find((p) => p.name === settingsState.activeProviderName)?.id ?? null
+                  : null)
+              const modelId = settingsState.currentModel?.id ?? ''
+              if (modelId) {
+                useSessionRuntimeStore.getState().setSelection(sessionId, { providerId, modelId })
+              }
+
               useTabStore.getState().openTab(sessionId, t('sidebar.newSession'))
               useChatStore.getState().connectToSession(sessionId)
             } catch (error) {
