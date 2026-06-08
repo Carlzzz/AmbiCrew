@@ -332,7 +332,7 @@ async function handleCurrentModel(req: Request): Promise<Response> {
     let currentModelName: string
 
     if (activeProvider) {
-      // Provider is active — only use the provider-managed cc-haha settings.
+      // Provider is active — only use the provider-managed AmbiCrew settings.
       const providerEnvModel = env.ANTHROPIC_MODEL
       if (providerEnvModel && !explicitModel) {
         currentModelId = providerEnvModel

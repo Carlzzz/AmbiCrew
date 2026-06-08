@@ -17,7 +17,7 @@ type GroupMode = 'time' | 'project'
 const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform)
 
 const TIME_GROUP_ORDER: TimeGroup[] = ['today', 'yesterday', 'last7days', 'last30days', 'older']
-const GROUP_MODE_STORAGE_KEY = 'cc-haha-sidebar-group-mode'
+const GROUP_MODE_STORAGE_KEY = 'ambicrew-sidebar-group-mode'
 
 function getStoredGroupMode(): GroupMode {
   try {

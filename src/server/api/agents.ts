@@ -26,6 +26,7 @@ import {
   type AgentDefinition as SharedAgentDefinition,
 } from '../../tools/AgentTool/loadAgentsDir.js'
 import { getCwd } from '../../utils/cwd.js'
+import { AGENT_TEMPLATES } from '../config/agentTemplates.js'
 
 const agentService = new AgentService()
 
@@ -56,6 +57,11 @@ async function handleAgents(
 ): Promise<Response> {
   const method = req.method
   const agentName = segments[2] ? decodeURIComponent(segments[2]) : undefined
+
+  // ── GET /api/agents/templates ─────────────────────────────────────────
+  if (method === 'GET' && agentName === 'templates') {
+    return Response.json({ templates: AGENT_TEMPLATES })
+  }
 
   // ── GET /api/agents ──────────────────────────────────────────────────
   if (method === 'GET' && !agentName) {

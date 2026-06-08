@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { ThemeMode } from '../types/settings'
 
-const THEME_STORAGE_KEY = 'cc-haha-theme'
+const THEME_STORAGE_KEY = 'ambicrew-theme'
 
 function getStoredTheme(): ThemeMode {
   try {

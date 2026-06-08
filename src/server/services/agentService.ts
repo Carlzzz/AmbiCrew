@@ -82,7 +82,7 @@ export class AgentService {
     const dir = this.getAgentsDir()
     await fs.mkdir(dir, { recursive: true })
 
-    const filePath = path.join(dir, `${this.sanitizeName(agent.name)}.yaml`)
+    const filePath = path.join(dir, `${this.sanitizeName(agent.name)}.md`)
     await this.writeAgentFile(filePath, agent)
   }
 

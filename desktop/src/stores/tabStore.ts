@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-const TAB_STORAGE_KEY = 'cc-haha-open-tabs'
+const TAB_STORAGE_KEY = 'ambicrew-open-tabs'
 
 export const SETTINGS_TAB_ID = '__settings__'
 export const SCHEDULED_TAB_ID = '__scheduled__'

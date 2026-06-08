@@ -277,11 +277,11 @@ export async function executeDesktopSmoke(
       'agent-browser',
       'eval',
       [
-        `localStorage.setItem('cc-haha-open-tabs', ${JSON.stringify(JSON.stringify({
+        `localStorage.setItem('ambicrew-open-tabs', ${JSON.stringify(JSON.stringify({
           openTabs: [{ sessionId: session.sessionId, title: 'Desktop Smoke', type: 'session' }],
           activeTabId: session.sessionId,
         }))})`,
-        `localStorage.setItem('cc-haha-session-runtime', ${JSON.stringify(JSON.stringify({
+        `localStorage.setItem('ambicrew-session-runtime', ${JSON.stringify(JSON.stringify({
           [session.sessionId]: runtimeSelection,
         }))})`,
       ].join(';'),

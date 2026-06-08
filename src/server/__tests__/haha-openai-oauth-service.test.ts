@@ -51,7 +51,7 @@ describe('HahaOpenAIOAuthService — file storage', () => {
     }
     await service.saveTokens(tokens)
 
-    const oauthPath = path.join(tmpDir, 'cc-haha', 'openai-oauth.json')
+    const oauthPath = path.join(tmpDir, 'ambicrew', 'openai-oauth.json')
     const stat = await fs.stat(oauthPath)
     if (process.platform !== 'win32') {
       expect(stat.mode & 0o777).toBe(0o600)

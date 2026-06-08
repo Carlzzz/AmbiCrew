@@ -6,7 +6,7 @@ import { isDesktopRuntime } from '../lib/desktopRuntime'
 import type { CronTask, TaskRun } from '../types/task'
 
 const POLL_INTERVAL_MS = 30_000
-const NOTIFIED_RUNS_STORAGE_KEY = 'cc-haha.notifiedDesktopTaskRuns.v1'
+const NOTIFIED_RUNS_STORAGE_KEY = 'ambicrew.notifiedDesktopTaskRuns.v1'
 const MAX_STORED_RUN_IDS = 200
 
 function isTerminalRun(run: TaskRun): boolean {

@@ -5,7 +5,7 @@ import type { PermissionMode, EffortLevel, ModelInfo, ThemeMode, WebSearchSettin
 import type { Locale } from '../i18n'
 import { useUIStore } from './uiStore'
 
-const LOCALE_STORAGE_KEY = 'cc-haha-locale'
+const LOCALE_STORAGE_KEY = 'ambicrew-locale'
 let desktopNotificationsSaveQueue: Promise<void> = Promise.resolve()
 
 function getStoredLocale(): Locale {
@@ -200,7 +200,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const prev = get().autoDreamEnabled
     set({ autoDreamEnabled: enabled })
     try {
-      await settingsApi.updateUser({ autoDreamEnabled: enabled })
+      // AutoDream requires autoMemory to also be enabled (see docs/memory/03-autodream.md)
+      await settingsApi.updateUser({ autoDreamEnabled: enabled, autoMemoryEnabled: enabled })
     } catch {
       set({ autoDreamEnabled: prev })
     }

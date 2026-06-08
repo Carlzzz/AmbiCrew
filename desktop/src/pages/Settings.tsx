@@ -3,11 +3,11 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useTranslation } from '../i18n'
 import { Input } from '../components/shared/Input'
 import { Button } from '../components/shared/Button'
-import { Textarea } from '../components/shared/Textarea'
 import type { PermissionMode, EffortLevel, ThemeMode, WebSearchMode } from '../types/settings'
 import type { Locale } from '../i18n'
 import { AdapterSettings } from './AdapterSettings'
 import { useAgentStore } from '../stores/agentStore'
+import { AgentCreateWizard } from '../components/agents/AgentCreateWizard'
 import { useSessionStore } from '../stores/sessionStore'
 import type { AgentDefinition, AgentSource } from '../api/agents'
 import { MarkdownRenderer } from '../components/markdown/MarkdownRenderer'
@@ -609,9 +609,6 @@ function AgentsSettings() {
     selectedAgentReturnTab,
     fetchAgents,
     selectAgent,
-    createAgent,
-    isCreating,
-    createError,
   } = useAgentStore()
   const sessions = useSessionStore((s) => s.sessions)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
@@ -635,30 +632,13 @@ function AgentsSettings() {
   const sourceCount = AGENT_SOURCE_ORDER.filter((source) => (groupedAgents[source] ?? []).length > 0).length
 
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newDescription, setNewDescription] = useState('')
-  const [newModel, setNewModel] = useState('')
-  const [newSystemPrompt, setNewSystemPrompt] = useState('')
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return
-    const ok = await createAgent({
-      name: newName.trim(),
-      description: newDescription.trim() || undefined,
-      model: newModel.trim() || undefined,
-      systemPrompt: newSystemPrompt.trim() || undefined,
-    })
-    if (ok) {
-      const msg = t('settings.agents.createSuccess')
-      setSuccessMessage(msg)
-      setShowCreateForm(false)
-      setNewName('')
-      setNewDescription('')
-      setNewModel('')
-      setNewSystemPrompt('')
-      setTimeout(() => setSuccessMessage(null), 3000)
-    }
+  const handleWizardCreated = () => {
+    setShowCreateForm(false)
+    setSuccessMessage(t('settings.agents.createSuccess'))
+    void fetchAgents(currentWorkDir)
+    setTimeout(() => setSuccessMessage(null), 3000)
   }
 
   const handleAgentBack = () => {
@@ -774,71 +754,13 @@ function AgentsSettings() {
           )}
 
           {showCreateForm && (
-            <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-[20px] text-[var(--color-brand)]">note_add</span>
-                <h3 className="text-base font-semibold text-[var(--color-text-primary)]">{t('settings.agents.createTitle')}</h3>
-              </div>
-              <p className="text-sm text-[var(--color-text-tertiary)] mb-4">{t('settings.agents.createDescription')}</p>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label={t('settings.agents.createName')}
-                  required
-                  placeholder={t('settings.agents.createNamePlaceholder')}
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
-                <Input
-                  label={t('settings.agents.createModel')}
-                  placeholder={t('settings.agents.createModelPlaceholder')}
-                  value={newModel}
-                  onChange={(e) => setNewModel(e.target.value)}
-                />
-                <div className="sm:col-span-2">
-                  <Input
-                    label={t('settings.agents.createDescriptionLabel')}
-                    placeholder={t('settings.agents.createDescriptionPlaceholder')}
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Textarea
-                    label={t('settings.agents.createSystemPrompt')}
-                    placeholder={t('settings.agents.createSystemPromptPlaceholder')}
-                    value={newSystemPrompt}
-                    onChange={(e) => setNewSystemPrompt(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {createError && (
-                <p className="mt-3 text-sm text-[var(--color-error)]">{createError}</p>
-              )}
-
-              <div className="flex items-center gap-2 mt-4">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={isCreating}
-                  disabled={!newName.trim()}
-                  onClick={() => void handleCreate()}
-                >
-                  {t('settings.agents.createSubmit')}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowCreateForm(false)
-                    setSuccessMessage(null)
-                  }}
-                >
-                  {t('settings.agents.createCancel')}
-                </Button>
-              </div>
-            </section>
+            <AgentCreateWizard
+              onCreated={handleWizardCreated}
+              onCancel={() => {
+                setShowCreateForm(false)
+                setSuccessMessage(null)
+              }}
+            />
           )}
 
           <div className={`grid gap-4 ${sourceCount >= 2 ? 'xl:grid-cols-2' : ''}`}>
