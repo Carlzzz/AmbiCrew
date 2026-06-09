@@ -38,6 +38,18 @@ dotenvy = "0.15"
 cocoa = "0.26"
 objc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+# Used by commands::job_object to bind sidecar children to a Windows JobObject
+# with KILL_ON_JOB_CLOSE — when the Tauri main process dies (even via task
+# manager force-kill), the kernel terminates every sidecar child with it so
+# they cannot orphan and leak the server port across launches.
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
 [profile.release]
 strip = true
 lto = true

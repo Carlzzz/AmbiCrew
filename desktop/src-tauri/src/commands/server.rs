@@ -4,6 +4,8 @@ use std::io::{BufRead, BufReader};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
+use super::job_object::JobHandle;
+
 const SERVER_PORT: u16 = 43124;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -238,6 +240,12 @@ pub struct ServerState {
     pub adapter_process: Mutex<Option<Child>>,
     pub server_url: Arc<Mutex<Option<String>>>,
     starting: Mutex<bool>,
+    // JobObject handles bind sidecar children to the main process lifetime on
+    // Windows: when these are dropped (either via stop_server or because the
+    // main process died), the kernel terminates every assigned child.
+    // No-op on Unix — see commands/job_object.rs for the rationale.
+    server_job: Mutex<Option<JobHandle>>,
+    adapter_job: Mutex<Option<JobHandle>>,
 }
 
 impl Default for ServerState {
@@ -247,6 +255,8 @@ impl Default for ServerState {
             adapter_process: Mutex::new(None),
             server_url: Arc::new(Mutex::new(None)),
             starting: Mutex::new(false),
+            server_job: Mutex::new(None),
+            adapter_job: Mutex::new(None),
         }
     }
 }
@@ -412,6 +422,19 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         }
     };
 
+    // Bind the sidecar to a JobObject (Windows only — no-op on Unix) so it
+    // dies with us no matter how the main process exits. Best-effort: if
+    // job creation/assignment fails we log and continue, because losing
+    // orphan-protection is strictly better than refusing to start.
+    match JobHandle::new().and_then(|j| j.assign(child.id()).map(|_| j)) {
+        Ok(job) => {
+            *state.server_job.lock().unwrap() = Some(job);
+        }
+        Err(e) => {
+            log::warn!("[tauri] Server JobObject setup failed: {} (sidecar may orphan if app is force-killed)", e);
+        }
+    }
+
     // Drain stderr in a background thread so startup errors are visible
     if let Some(stderr) = child.stderr.take() {
         std::thread::spawn(move || {
@@ -459,20 +482,26 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             if Instant::now() >= deadline {
                 break;
             }
-            // TCP fallback: check if port is already listening, but verify it's
+            // TCP fallback: check if port is already listening, AND verify it's
             // our healthy server (not an orphan from a previous run).
-            if is_port_in_use(SERVER_PORT) {
-                if is_our_server_healthy(SERVER_PORT) {
-                    let url = format!("http://127.0.0.1:{}", SERVER_PORT);
-                    *state.server_url.lock().unwrap() = Some(url.clone());
-                    log::info!("[tauri] Server detected via TCP+health at {}", url);
-                    found_signal = true;
-                    break;
-                }
-                // Port is occupied by something that doesn't respond to /health.
-                // This is likely a stale process. Kill it and let our sidecar retry.
-                log::warn!("[tauri] Port {} occupied but /health failed — killing orphan", SERVER_PORT);
-                kill_existing_on_port(SERVER_PORT);
+            //
+            // We do NOT kill an unresponsive listener here, even though it looks
+            // like a stale orphan: in the first 1-2 seconds after bind() our own
+            // freshly-spawned sidecar will look exactly like one (port listening
+            // but /health route not registered yet). Killing it triggers a
+            // spawn → bind → self-kill → respawn loop that surfaces as terminal
+            // windows flashing open and closed.
+            //
+            // Orphans from previous runs are already handled by the one-shot
+            // kill_existing_on_port() call before spawn (see start_server_inner
+            // above). If something binds the port mid-startup that isn't us,
+            // we'll time out cleanly and the next launch will clean it up.
+            if is_port_in_use(SERVER_PORT) && is_our_server_healthy(SERVER_PORT) {
+                let url = format!("http://127.0.0.1:{}", SERVER_PORT);
+                *state.server_url.lock().unwrap() = Some(url.clone());
+                log::info!("[tauri] Server detected via TCP+health at {}", url);
+                found_signal = true;
+                break;
             }
             std::thread::sleep(Duration::from_millis(150));
         }
@@ -501,6 +530,13 @@ pub fn stop_server(state: tauri::State<'_, ServerState>) {
         let _ = child.kill();
         let _ = child.wait();
     }
+    // Drop job handles AFTER killing children directly. Dropping the job alone
+    // would also kill the children (KILL_ON_JOB_CLOSE), but going through the
+    // existing Child::kill path first lets graceful_kill do SIGTERM on Unix
+    // and keeps the orderly-shutdown semantics unchanged. The job drop here is
+    // belt-and-suspenders for the Windows force-quit path.
+    let _ = state.adapter_job.lock().unwrap().take();
+    let _ = state.server_job.lock().unwrap().take();
     *state.server_url.lock().unwrap() = None;
 }
 
@@ -512,6 +548,9 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
     if let Some(mut child) = state.adapter_process.lock().unwrap().take() {
         graceful_kill(&mut child);
     }
+    // Drop the previous job handle so the kernel cleans up any stragglers that
+    // didn't die in graceful_kill (Windows-only effect; no-op on Unix).
+    let _ = state.adapter_job.lock().unwrap().take();
     kill_stale_adapter_sidecars();
 
     let resource_dir = get_resource_dir(&app);
@@ -567,6 +606,18 @@ pub async fn restart_adapters(app: AppHandle) -> Result<(), String> {
         cmd.spawn()
             .map_err(|e| format!("Failed to spawn adapter sidecar: {}", e))?
     };
+
+    // Bind the adapter sidecar to a JobObject so it dies with the main process
+    // even on force-kill. See server_job above for the full rationale.
+    // Best-effort: keep going if it fails.
+    match JobHandle::new().and_then(|j| j.assign(child.id()).map(|_| j)) {
+        Ok(job) => {
+            *state.adapter_job.lock().unwrap() = Some(job);
+        }
+        Err(e) => {
+            log::warn!("[tauri] Adapter JobObject setup failed: {} (sidecar may orphan if app is force-killed)", e);
+        }
+    }
 
     // Drain stdout/stderr in background threads so adapter logs are visible
     // and pipe buffers never fill up and block the child process.
