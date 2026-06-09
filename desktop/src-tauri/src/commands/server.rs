@@ -7,7 +7,35 @@ use tauri::{AppHandle, Manager};
 use super::job_object::JobHandle;
 
 const SERVER_PORT: u16 = 43124;
+/// If the default port is blocked (e.g. by Hyper-V/HNS port reservation on
+/// Windows), try up to this many consecutive ports before giving up.
+const PORT_FALLBACK_RANGE: u16 = 200;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Try to find a port that can be bound on 127.0.0.1, starting from
+/// `SERVER_PORT` and incrementing up to `PORT_FALLBACK_RANGE` times.
+/// Returns the first port where a TCP listener can be opened, or the
+/// original `SERVER_PORT` if none work (sidecar will try and fail with a
+/// clear error).
+fn find_available_port() -> u16 {
+    for offset in 0..PORT_FALLBACK_RANGE {
+        let port = SERVER_PORT + offset;
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            if offset > 0 {
+                log::warn!(
+                    "[server] Port {} blocked (likely Hyper-V/HNS reservation), using {} instead",
+                    SERVER_PORT, port
+                );
+            }
+            return port;
+        }
+    }
+    log::error!(
+        "[server] No available port found in range {}-{}, falling back to {}",
+        SERVER_PORT, SERVER_PORT + PORT_FALLBACK_RANGE - 1, SERVER_PORT
+    );
+    SERVER_PORT
+}
 
 /// Prevent a console window from appearing when spawning the sidecar on Windows.
 fn hide_console(cmd: &mut Command) {
@@ -329,6 +357,13 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         *starting = true;
     }
 
+    // Find an available port — the default 43124 may be blocked by Windows
+    // Hyper-V/HNS port reservations (a known issue in WSL/Docker environments
+    // where kernel-level port reservations don't appear in netstat but block
+    // all TCP binds). If the default port is blocked, try consecutive ports
+    // up to PORT_FALLBACK_RANGE.
+    let port = find_available_port();
+
     // If the port is occupied, check whether it's a healthy AmbiCrew server we
     // can reuse (e.g. crash-recovery). If not, kill the orphan so the new
     // sidecar can bind successfully — otherwise users see "Server not ready"
@@ -337,16 +372,16 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
     // Dev mode: never reuse — code changes between launches must take effect,
     // and a stale Bun process running yesterday's code would silently mask
     // edits to TypeScript files.
-    if is_port_in_use(SERVER_PORT) {
+    if is_port_in_use(port) {
         #[cfg(not(debug_assertions))]
-        if is_our_server_healthy(SERVER_PORT) {
-            let url = format!("http://127.0.0.1:{}", SERVER_PORT);
+        if is_our_server_healthy(port) {
+            let url = format!("http://127.0.0.1:{}", port);
             *state.server_url.lock().unwrap() = Some(url.clone());
             *state.starting.lock().unwrap() = false;
             log::info!("[tauri] Reusing existing healthy server at {}", url);
             return Ok(());
         }
-        kill_existing_on_port(SERVER_PORT);
+        kill_existing_on_port(port);
     }
 
     let resource_dir = get_resource_dir(app);
@@ -365,7 +400,7 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         }
         cmd.arg("src/server/index.ts")
             .current_dir(&repo_root)
-            .env("SERVER_PORT", SERVER_PORT.to_string())
+            .env("SERVER_PORT", port.to_string())
             .env("DESKTOP_MODE", "1")
             .env("APP_VERSION", env!("CARGO_PKG_VERSION"))
             .env("CLAUDE_RUNTIME_DIR", repo_root.join("runtime").to_string_lossy().to_string())
@@ -378,7 +413,7 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         // Packaged mode: use compiled sidecar
         let mut cmd = Command::new(&sidecar_path);
         cmd.args(["server", "--app-root", &resource_dir])
-            .env("SERVER_PORT", SERVER_PORT.to_string())
+            .env("SERVER_PORT", port.to_string())
             .env("DESKTOP_MODE", "1")
             .env("APP_VERSION", env!("CARGO_PKG_VERSION"))
             .env("CLAUDE_RUNTIME_DIR", format!("{}/runtime", resource_dir))
@@ -453,6 +488,7 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         // Read stdout in a background thread, signal via channel
         let (tx, rx) = std::sync::mpsc::channel::<bool>();
         let server_url_clone = state.server_url.clone();
+        let port_for_reader = port;
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
@@ -460,7 +496,7 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
                     Ok(text) => {
                         log::info!("[server] {}", text);
                         if text.contains("running at") {
-                            let url = format!("http://127.0.0.1:{}", SERVER_PORT);
+                            let url = format!("http://127.0.0.1:{}", port_for_reader);
                             *server_url_clone.lock().unwrap() = Some(url.clone());
                             log::info!("[tauri] Server started at {}", url);
                             let _ = tx.send(true);
@@ -496,8 +532,8 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             // kill_existing_on_port() call before spawn (see start_server_inner
             // above). If something binds the port mid-startup that isn't us,
             // we'll time out cleanly and the next launch will clean it up.
-            if is_port_in_use(SERVER_PORT) && is_our_server_healthy(SERVER_PORT) {
-                let url = format!("http://127.0.0.1:{}", SERVER_PORT);
+            if is_port_in_use(port) && is_our_server_healthy(port) {
+                let url = format!("http://127.0.0.1:{}", port);
                 *state.server_url.lock().unwrap() = Some(url.clone());
                 log::info!("[tauri] Server detected via TCP+health at {}", url);
                 found_signal = true;
