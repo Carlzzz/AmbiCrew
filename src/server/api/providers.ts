@@ -202,6 +202,16 @@ async function handleTestUnsaved(req: Request): Promise<Response> {
 }
 
 async function handleAvailableModels(): Promise<Response> {
+  // 鉴权已知失效时，直接 401 让客户端（IM 适配器）区分"拿不到"与"需要重登"，
+  // 同时避免再发一次注定失败的 proxy 请求。
+  const { hasProxyAuthFailed } = await import('./models.js')
+  if (hasProxyAuthFailed()) {
+    return Response.json(
+      { models: [], error: 'AUTH_REQUIRED', message: '认证已失效，请在桌面端重新登录后重试。' },
+      { status: 401 },
+    )
+  }
+
   try {
     const proxyBaseUrl =
       process.env.LLM_PROXY_BASE_URL?.trim() ||
@@ -226,6 +236,15 @@ async function handleAvailableModels(): Promise<Response> {
       models: result.items.map((m) => ({ id: m.modelId, alias: m.modelAlias })),
     })
   } catch (err) {
+    const category = (err as Error & { category?: string }).category
+    const status = (err as Error & { status?: number }).status
+    if (category === 'AUTH_FAILED' || status === 401 || status === 403) {
+      console.warn('[providers] available-models auth failed:', err instanceof Error ? err.message : err)
+      return Response.json(
+        { models: [], error: 'AUTH_REQUIRED', message: '认证已失效，请在桌面端重新登录后重试。' },
+        { status: 401 },
+      )
+    }
     console.warn('[providers] Failed to fetch available models:', err instanceof Error ? err.message : err)
     return Response.json({ models: [] })
   }

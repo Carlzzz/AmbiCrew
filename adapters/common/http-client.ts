@@ -182,6 +182,13 @@ export class AdapterHttpClient {
       const res = await fetch(`${this.httpBaseUrl}/api/providers/available-models`, {
         signal: controller.signal,
       })
+      if (res.status === 401) {
+        // Server signals "auth required" — surface this so the adapter can tell
+        // the user to re-login on desktop, instead of saying "no models".
+        const err = new Error('AUTH_REQUIRED') as Error & { code?: string }
+        err.code = 'AUTH_REQUIRED'
+        throw err
+      }
       if (!res.ok) {
         throw new Error(`Failed to list available models: ${res.statusText}`)
       }

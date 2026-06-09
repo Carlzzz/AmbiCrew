@@ -1,7 +1,14 @@
-import { describe, it, expect } from 'bun:test'
-import { enqueue } from '../chat-queue.js'
+import { describe, it, expect, afterEach } from 'bun:test'
+import {
+  enqueue,
+  __setTaskTimeoutForTest,
+  __resetTaskTimeoutForTest,
+} from '../chat-queue.js'
 
 describe('ChatQueue', () => {
+  afterEach(() => {
+    __resetTaskTimeoutForTest()
+  })
   it('executes tasks for the same chatId serially', async () => {
     const order: number[] = []
 
@@ -57,5 +64,32 @@ describe('ChatQueue', () => {
 
     await new Promise((r) => setTimeout(r, 20))
     expect(order).toEqual([1, 2])
+  })
+
+  it('recovers when a task hangs past the timeout', async () => {
+    __setTaskTimeoutForTest(50)
+    const order: string[] = []
+
+    // First task never resolves — without the timeout the second task would
+    // wait forever, just like the dingtalk "4-5 rounds then silent" report.
+    void enqueue('chat-hang', () => new Promise(() => {}))
+
+    await enqueue('chat-hang', async () => {
+      order.push('recovered')
+    })
+
+    expect(order).toEqual(['recovered'])
+  })
+
+  it('timeout on one chatId does not block other chatIds', async () => {
+    __setTaskTimeoutForTest(30)
+    const order: string[] = []
+
+    void enqueue('chat-stuck', () => new Promise(() => {}))
+    await enqueue('chat-other', async () => {
+      order.push('other-ran')
+    })
+
+    expect(order).toEqual(['other-ran'])
   })
 })

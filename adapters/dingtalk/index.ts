@@ -730,6 +730,11 @@ async function handleModelCommand(chatId: string, arg: string): Promise<void> {
   try {
     models = await httpClient.listAvailableModels()
   } catch (err) {
+    const code = (err as Error & { code?: string }).code
+    if (code === 'AUTH_REQUIRED') {
+      await sendText(chatId, '⚠️ 桌面端登录已失效，请在桌面端重新登录后再试 /model。')
+      return
+    }
     await sendText(chatId, `获取模型列表失败：${err instanceof Error ? err.message : String(err)}`)
     return
   }

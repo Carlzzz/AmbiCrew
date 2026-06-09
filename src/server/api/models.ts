@@ -34,6 +34,31 @@ const DEFAULT_EFFORT = 'medium'
 const settingsService = new SettingsService()
 const providerService = new ProviderService()
 
+/**
+ * 401/AUTH_FAILED 节流：当 proxy 鉴权失败且 token refresh 也救不回来时，
+ * 缓存 30s，期间所有 model fetch 直接抛 AUTH_FAILED，不再打 proxy、不再
+ * 刷屏日志。任何一次成功 fetch 都会清掉缓存。
+ */
+const AUTH_ERROR_CACHE_TTL_MS = 30_000
+let authErrorCache: { at: number; message: string } | null = null
+
+function isAuthCacheActive(): boolean {
+  if (!authErrorCache) return false
+  if (Date.now() - authErrorCache.at >= AUTH_ERROR_CACHE_TTL_MS) {
+    authErrorCache = null
+    return false
+  }
+  return true
+}
+
+function markAuthFailed(message: string): void {
+  authErrorCache = { at: Date.now(), message }
+}
+
+function clearAuthCache(): void {
+  authErrorCache = null
+}
+
 type ApiModelInfo = {
   id: string
   name: string
@@ -228,6 +253,12 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
     return tryGetDirectModels()
   }
 
+  // Short-circuit: token 已知失效，30s 内不再打 proxy、不再尝试 refresh，
+  // 避免前端每 2s poll + 失败重试组合刷屏到日志。
+  if (isAuthCacheActive()) {
+    return null
+  }
+
   try {
     let token = (await getCentralAccessToken()) ||
       process.env.LLM_PROXY_API_KEY?.trim() ||
@@ -254,6 +285,7 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
         baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
         token,
       })
+      clearAuthCache()
 
       return result.items.map((m: ProxyModelItem) => ({
         id: m.modelId,
@@ -277,6 +309,7 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
               baseUrl: proxyBaseUrl.replace(/\/+$/, ''),
               token: newToken,
             })
+            clearAuthCache()
             return result.items.map((m: ProxyModelItem) => ({
               id: m.modelId,
               name: m.modelAlias,
@@ -288,6 +321,12 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
           console.error('[models] Proxy retry after refresh also failed: %s',
             retryErr instanceof Error ? retryErr.message : String(retryErr))
         }
+        // Refresh 没救回来：记住 30s 内别再撞这个墙。
+        const msg = err instanceof Error ? err.message : String(err)
+        markAuthFailed(msg)
+        // 当前调用方都把 null 视作"拿不到模型"，不要抛错破坏 /api/models 的 200。
+        // /api/providers/available-models 单独通过 hasProxyAuthFailed() 查询节流状态。
+        return null
       }
       throw err // re-throw for outer catch
     }
@@ -296,6 +335,11 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
       proxyBaseUrl, err instanceof Error ? err.message : String(err))
     return tryGetDirectModels()
   }
+}
+
+/** 外部端点用：当前 proxy 鉴权是否处于 30s 节流窗口内（即上次 refresh 也失败）。 */
+export function hasProxyAuthFailed(): boolean {
+  return isAuthCacheActive()
 }
 
 /**
