@@ -1731,7 +1731,7 @@ export class SessionService {
     if (options?.title) {
       const titleEntry = {
         type: 'custom-title',
-        title: options.title,
+        customTitle: options.title,
         timestamp: now,
       }
       await fs.appendFile(newFilePath, JSON.stringify(titleEntry) + '\n', 'utf-8')

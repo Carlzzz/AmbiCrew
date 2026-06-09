@@ -125,12 +125,23 @@ export class ConversationService {
         'SESSION_DELETED',
       )
     }
-    if (this.sessions.has(sessionId)) return
+    if (this.sessions.has(sessionId)) {
+      console.warn(
+        `[ConversationService] startSession: session ${sessionId} is already running, skipping`,
+      )
+      return
+    }
 
     const launchInfo = await sessionService.getSessionLaunchInfo(sessionId)
     const shouldResume = !!launchInfo && launchInfo.transcriptMessageCount > 0
     const shouldReplacePlaceholder =
       !!launchInfo && launchInfo.transcriptMessageCount === 0
+
+    console.log(
+      `[ConversationService] startSession ${sessionId}: ` +
+        `transcriptMessageCount=${launchInfo?.transcriptMessageCount ?? 'N/A'}, ` +
+        `shouldResume=${shouldResume}, shouldReplacePlaceholder=${shouldReplacePlaceholder}`,
+    )
 
     if (this.deletedSessions.has(sessionId)) {
       throw new ConversationStartupError(
@@ -158,7 +169,8 @@ export class ConversationService {
     )
 
     console.log(
-      `[ConversationService] Starting CLI for ${sessionId}, cwd: ${workDir} (process.cwd()=${process.cwd()}, CALLER_DIR will be pinned to workDir)`,
+      `[ConversationService] Starting CLI for ${sessionId}, cwd: ${workDir}, ` +
+        `shouldResume=${shouldResume} (process.cwd()=${process.cwd()}, CALLER_DIR will be pinned to workDir)`,
     )
 
     // IMPORTANT (Bug#5): 必须覆盖子进程继承的 CALLER_DIR / PWD。
@@ -596,10 +608,27 @@ export class ConversationService {
     this.sessions.delete(sessionId)
     session.proc.kill()
 
-    await Promise.race([
-      session.proc.exited.catch(() => undefined),
-      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    const exitCode = await Promise.race([
+      session.proc.exited.catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
     ])
+
+    // Force-kill if the process didn't exit within the grace period.
+    // A zombie CLI subprocess with the same session ID would cause a new
+    // session to incorrectly --resume from the old transcript — the most
+    // common root cause of "new session contains old conversation content".
+    if (exitCode === null) {
+      console.warn(
+        `[ConversationService] Session ${sessionId} did not exit within ${timeoutMs}ms, force-killing`,
+      )
+      session.proc.kill('SIGKILL')
+      // Brief wait for the force-kill to take effect before draining output
+      await Promise.race([
+        session.proc.exited.catch(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
+      ])
+    }
+
     await this.waitForProcessOutputDrain(session, timeoutMs)
   }
 
