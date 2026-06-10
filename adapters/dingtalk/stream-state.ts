@@ -25,6 +25,13 @@ export function resetDingTalkStreamingState(
   state.disabledCardChats?.delete(chatId)
 }
 
+export function resetDingTalkStreamingStateOnConnected(
+  state: DingTalkStreamingState,
+  chatId: string,
+): void {
+  resetDingTalkStreamingState(state, chatId)
+}
+
 export async function finishAndResetDingTalkStreamingState(
   state: DingTalkStreamingState,
   chatId: string,

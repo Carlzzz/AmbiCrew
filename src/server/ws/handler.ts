@@ -127,7 +127,10 @@ export const handleWebSocket = {
     if (prewarmedSessions.has(sessionId)) {
       bindPrewarmMetadataCapture(sessionId)
     } else {
-      rebindSessionOutput(sessionId, ws)
+      // A reconnect may attach while a resumed CLI is replaying transcript output.
+      // Keep the socket bound for future errors, but do not forward assistant
+      // content until the next explicit user_message rebinds this session.
+      rebindSessionOutput(sessionId, ws, { shouldForward: isStartupOrRuntimeError })
     }
 
     const msg: ServerMessage = { type: 'connected', sessionId }
@@ -1363,6 +1366,13 @@ function getCompactBoundaryMessage(cliMsg: any): string {
   if (content) return content
 
   return 'Context compacted'
+}
+
+function isStartupOrRuntimeError(cliMsg: any): boolean {
+  return Boolean(
+    (cliMsg?.type === 'result' && cliMsg.is_error) ||
+      (cliMsg?.type === 'assistant' && (cliMsg.error || cliMsg.isApiErrorMessage)),
+  )
 }
 
 function rebindSessionOutput(

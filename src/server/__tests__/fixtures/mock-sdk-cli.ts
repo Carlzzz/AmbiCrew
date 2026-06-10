@@ -32,6 +32,7 @@ const exitAfterFirstUserMs = Number(process.env.MOCK_SDK_EXIT_AFTER_FIRST_USER_M
 const mcpStatusDelayMs = Number(process.env.MOCK_SDK_MCP_STATUS_DELAY_MS || '0')
 const startupStdout = process.env.MOCK_SDK_STARTUP_STDOUT || ''
 const exitBeforeSdkMs = Number(process.env.MOCK_SDK_EXIT_BEFORE_SDK_MS || '0')
+const replayOnOpenText = process.env.MOCK_SDK_REPLAY_ON_OPEN_TEXT || ''
 let initSent = false
 let firstUserExitScheduled = false
 
@@ -69,6 +70,44 @@ ws.addEventListener('open', () => {
     } else {
       sendInit()
     }
+  }
+  if (replayOnOpenText) {
+    emit(ws, {
+      type: 'stream_event',
+      event: { type: 'message_start' },
+      session_id: sessionId,
+    })
+    emit(ws, {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      },
+      session_id: sessionId,
+    })
+    emit(ws, {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: replayOnOpenText },
+      },
+      session_id: sessionId,
+    })
+    emit(ws, {
+      type: 'stream_event',
+      event: { type: 'content_block_stop', index: 0 },
+      session_id: sessionId,
+    })
+    emit(ws, {
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: replayOnOpenText,
+      usage: { input_tokens: 0, output_tokens: 0 },
+      session_id: sessionId,
+    })
   }
   if (exitAfterOpenMs > 0) {
     setTimeout(() => process.exit(1), exitAfterOpenMs)
@@ -206,6 +245,46 @@ ws.addEventListener('message', (event) => {
           subtype: 'success',
           is_error: false,
           result: 'Interrupted',
+          usage: { input_tokens: 0, output_tokens: 0 },
+          session_id: sessionId,
+        })
+      }
+
+      if (parsed.type === 'control_request' && parsed.request?.subtype === 'emit_replay') {
+        const text = typeof parsed.request.text === 'string' ? parsed.request.text : 'stale replay'
+        emit(ws, {
+          type: 'stream_event',
+          event: { type: 'message_start' },
+          session_id: sessionId,
+        })
+        emit(ws, {
+          type: 'stream_event',
+          event: {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'text', text: '' },
+          },
+          session_id: sessionId,
+        })
+        emit(ws, {
+          type: 'stream_event',
+          event: {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'text_delta', text },
+          },
+          session_id: sessionId,
+        })
+        emit(ws, {
+          type: 'stream_event',
+          event: { type: 'content_block_stop', index: 0 },
+          session_id: sessionId,
+        })
+        emit(ws, {
+          type: 'result',
+          subtype: 'success',
+          is_error: false,
+          result: text,
           usage: { input_tokens: 0, output_tokens: 0 },
           session_id: sessionId,
         })

@@ -3,12 +3,15 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { getCwdState, setCwdState } from '../../bootstrap/state.js'
+import { getSkillDirCommands, clearSkillCaches } from '../../skills/loadSkillsDir.js'
 import { handleSkillsApi } from '../api/skills.js'
 
 let tmpHome: string
 let originalHome: string | undefined
 let originalUserProfile: string | undefined
 let originalClaudeConfigDir: string | undefined
+let originalSkillHubBaseUrl: string | undefined
+let originalFetch: typeof globalThis.fetch
 let originalCwdState: string
 
 function makeRequest(urlStr: string): { req: Request; url: URL; segments: string[] } {
@@ -27,18 +30,33 @@ async function writeSkill(root: string, skillName: string, content: string): Pro
   await fs.writeFile(path.join(skillDir, 'SKILL.md'), content, 'utf-8')
 }
 
+function stubHubManifest(items: Array<{ id: string; name?: string; description?: string; version?: string; downloadUrl: string }>) {
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = String(input)
+    if (url.endsWith('/index.json')) {
+      return new Response(JSON.stringify({ items }))
+    }
+    return new Response('not found', { status: 404 })
+  }) as typeof fetch
+}
+
 describe('Skills API', () => {
   beforeEach(async () => {
     tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-skills-test-'))
     originalHome = process.env.HOME
     originalUserProfile = process.env.USERPROFILE
     originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR
+    originalSkillHubBaseUrl = process.env.SKILL_HUB_BASE_URL
+    originalFetch = globalThis.fetch
     originalCwdState = getCwdState()
 
     process.env.HOME = tmpHome
     process.env.USERPROFILE = tmpHome
     process.env.CLAUDE_CONFIG_DIR = path.join(tmpHome, '.claude')
+    process.env.SKILL_HUB_BASE_URL = 'http://skill-hub.test'
+    globalThis.fetch = (async () => new Response(JSON.stringify({ items: [] }))) as typeof fetch
     setCwdState(tmpHome)
+    clearSkillCaches()
   })
 
   afterEach(async () => {
@@ -60,7 +78,15 @@ describe('Skills API', () => {
       process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir
     }
 
+    if (originalSkillHubBaseUrl === undefined) {
+      delete process.env.SKILL_HUB_BASE_URL
+    } else {
+      process.env.SKILL_HUB_BASE_URL = originalSkillHubBaseUrl
+    }
+    globalThis.fetch = originalFetch
+
     setCwdState(originalCwdState)
+    clearSkillCaches()
     await fs.rm(tmpHome, { recursive: true, force: true })
   })
 
@@ -87,6 +113,75 @@ describe('Skills API', () => {
     const body = await res.json() as { skills: Array<{ name: string; source: string }> }
     expect(body.skills).toContainEqual(expect.objectContaining({ name: 'user-skill', source: 'user' }))
     expect(body.skills).toContainEqual(expect.objectContaining({ name: 'project-skill', source: 'project' }))
+  })
+
+  it('reports installed CrewCentral skills with local content length and invocation name', async () => {
+    const userSkillsRoot = path.join(tmpHome, '.claude', 'skills')
+    const skillContent = ['---', 'description: Hub installed skill', '---', '', '# Hub skill body'].join('\n')
+
+    stubHubManifest([
+      {
+        id: 'weather',
+        name: 'Weather',
+        description: 'Hub weather skill',
+        version: '1.2.3',
+        downloadUrl: 'http://skill-hub.test/weather.zip',
+      },
+      {
+        id: 'not-installed',
+        name: 'Not Installed',
+        description: 'Available from hub only',
+        version: '1.0.0',
+        downloadUrl: 'http://skill-hub.test/not-installed.zip',
+      },
+    ])
+    await writeSkill(userSkillsRoot, 'crewcentral_weather', skillContent)
+
+    const { req, url, segments } = makeRequest('/api/skills')
+    const res = await handleSkillsApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { skills: Array<{ name: string; source: string; contentLength: number; hasDirectory: boolean }> }
+    expect(body.skills).not.toContainEqual(expect.objectContaining({ name: 'crewcentral_weather', source: 'user' }))
+    expect(body.skills).toContainEqual(expect.objectContaining({
+      name: 'crewcentral:weather',
+      source: 'crewcentral',
+      contentLength: skillContent.length,
+      hasDirectory: true,
+    }))
+
+    clearSkillCaches()
+    const commands = await getSkillDirCommands(tmpHome)
+    expect(commands).toContainEqual(expect.objectContaining({
+      name: 'crewcentral:weather',
+      source: 'userSettings',
+      userInvocable: true,
+      contentLength: '# Hub skill body'.length,
+    }))
+  })
+
+  it('keeps uninstalled CrewCentral skills at zero local content length', async () => {
+    stubHubManifest([
+      {
+        id: 'not-installed',
+        name: 'Not Installed',
+        description: 'Available from hub only',
+        version: '1.0.0',
+        downloadUrl: 'http://skill-hub.test/not-installed.zip',
+      },
+    ])
+
+    const { req, url, segments } = makeRequest('/api/skills')
+    const res = await handleSkillsApi(req, url, segments)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { skills: Array<{ name: string; source: string; contentLength: number; hasDirectory: boolean }> }
+    expect(body.skills).toContainEqual(expect.objectContaining({
+      name: 'crewcentral:not-installed',
+      source: 'crewcentral',
+      contentLength: 0,
+      hasDirectory: false,
+    }))
   })
 
   it('resolves project skill details from the nearest project skills directory', async () => {
@@ -122,4 +217,5 @@ describe('Skills API', () => {
       expect.objectContaining({ path: 'SKILL.md', body: 'child body' }),
     )
   })
+
 })

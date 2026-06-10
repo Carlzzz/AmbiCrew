@@ -1,8 +1,33 @@
 import { describe, expect, it } from 'bun:test'
 import { MessageBuffer } from '../../common/message-buffer.js'
-import { finishAndResetDingTalkStreamingState, resetDingTalkStreamingState } from '../stream-state.js'
+import { finishAndResetDingTalkStreamingState, resetDingTalkStreamingState, resetDingTalkStreamingStateOnConnected } from '../stream-state.js'
 
 describe('DingTalk streaming state', () => {
+  it('drops stale stream state when the websocket reconnects', () => {
+    let resetCalled = false
+    const buffer = new MessageBuffer(async () => {}, 100, 1000)
+    const originalReset = buffer.reset.bind(buffer)
+    buffer.reset = () => {
+      resetCalled = true
+      originalReset()
+    }
+
+    const state = {
+      aiCardBuffers: new Map([['chat-1', buffer]]),
+      streamingCards: new Map([['chat-1', { cardPromise: Promise.resolve(null), createdAt: Date.now(), consecutiveErrors: 0 }]]),
+      streamingCardText: new Map([['chat-1', 'stale reconnect text']]),
+      disabledCardChats: new Set<string>(['chat-1']),
+    }
+
+    resetDingTalkStreamingStateOnConnected(state, 'chat-1')
+
+    expect(resetCalled).toBe(true)
+    expect(state.aiCardBuffers.has('chat-1')).toBe(false)
+    expect(state.streamingCards.has('chat-1')).toBe(false)
+    expect(state.streamingCardText.has('chat-1')).toBe(false)
+    expect(state.disabledCardChats!.has('chat-1')).toBe(false)
+  })
+
   it('drops the active AI card stream when permission interrupts output ordering', async () => {
     let resetCalled = false
     const buffer = new MessageBuffer(async () => {}, 100, 1000)

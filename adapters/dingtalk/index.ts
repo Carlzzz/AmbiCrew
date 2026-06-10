@@ -47,7 +47,7 @@ import {
   DINGTALK_PERMISSION_CARD_CALLBACK_ROUTE,
   parseDingTalkPermissionCardAction,
 } from './permission-card.js'
-import { finishAndResetDingTalkStreamingState, resetDingTalkStreamingState } from './stream-state.js'
+import { finishAndResetDingTalkStreamingState, resetDingTalkStreamingState, resetDingTalkStreamingStateOnConnected } from './stream-state.js'
 
 const DINGTALK_API = 'https://api.dingtalk.com'
 
@@ -542,6 +542,7 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
 
   switch (msg.type) {
     case 'connected':
+      resetDingTalkStreamingStateOnConnected({ aiCardBuffers, streamingCards, streamingCardText, disabledCardChats }, chatId)
       break
     case 'status':
       runtime.state = msg.state

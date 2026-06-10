@@ -30,6 +30,7 @@ import {
   getAccessToken,
   loadTokens,
 } from '../../services/central/token-store.js'
+import { clearCommandsCache } from '../../commands.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -244,7 +245,15 @@ async function collectSkillsFromRoots(
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith('.') || seenNames.has(entry.name)) {
+      // CrewCentral skills are stored as crewcentral_<slug> (":" → "_" for Windows).
+      // They are managed by collectHubSkills with source='crewcentral'; skip them
+      // here so they don't incorrectly show up under the user/project group.
+      if (
+        !entry.isDirectory() ||
+        entry.name.startsWith('.') ||
+        entry.name.startsWith('crewcentral_') ||
+        seenNames.has(entry.name)
+      ) {
         continue
       }
 
@@ -435,11 +444,15 @@ async function hubItemToSkillMeta(item: HubSkillItem): Promise<SkillMeta> {
   const name = `crewcentral:${item.id}`
   const existingDir = path.join(getUserSkillsDir(), crewcentralNameToDir(name))
   let hasDirectory = false
+  let contentLength = 0
   try {
     const stat = await fs.stat(existingDir)
     hasDirectory = stat.isDirectory()
+    if (hasDirectory) {
+      contentLength = (await fs.readFile(path.join(existingDir, 'SKILL.md'), 'utf-8')).length
+    }
   } catch {
-    // Not installed locally
+    // Not installed locally, or missing/unreadable SKILL.md.
   }
 
   return {
@@ -449,7 +462,7 @@ async function hubItemToSkillMeta(item: HubSkillItem): Promise<SkillMeta> {
     source: 'crewcentral',
     userInvocable: true,
     version: item.version,
-    contentLength: 0,
+    contentLength,
     hasDirectory,
     pluginName: item.author,
   }
@@ -652,8 +665,10 @@ async function installHubSkill(req: Request): Promise<Response> {
     try { await fs.unlink(tmpZip) } catch { /* cleanup best-effort */ }
   }
 
-  // Invalidate hub cache so listSkills picks up hasDirectory=true
+  // Invalidate hub and command caches so listSkills and slash-command loading
+  // pick up the newly installed CrewCentral skill immediately.
   hubManifestCache = null
+  clearCommandsCache()
 
   return Response.json({
     ok: true,
