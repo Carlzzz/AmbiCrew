@@ -67,6 +67,8 @@ const prewarmPendingSessions = new Set<string>()
 const prewarmedSessions = new Set<string>()
 const prewarmIdleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const DEFAULT_PREWARM_IDLE_TIMEOUT_MS = 5 * 60_000
+/** Rate-limit "Rejected SDK connection" log spam from zombie CLI processes. */
+const sdkRejectLogTimes = new Map<string, number>()
 
 /** Number of times to auto-restart CLI + retry before showing "Not logged in" to the user. */
 const MAX_AUTH_RETRY_ATTEMPTS = 3
@@ -104,7 +106,14 @@ export const handleWebSocket = {
 
     if (channel === 'sdk') {
       if (!conversationService.authorizeSdkConnection(sessionId, sdkToken)) {
-        console.warn(`[WS] Rejected SDK connection for session: ${sessionId}`)
+        // Rate-limit this warning — a zombie CLI process can spam it every second
+        const key = `sdk_reject:${sessionId}`
+        const now = Date.now()
+        const last = sdkRejectLogTimes.get(key) ?? 0
+        if (now - last > 30_000) {
+          console.warn(`[WS] Rejected SDK connection for session: ${sessionId}`)
+          sdkRejectLogTimes.set(key, now)
+        }
         ws.close(1008, 'Invalid SDK token')
         return
       }
@@ -910,7 +919,11 @@ function translateCliMessage(cliMsg: any, sessionId: string): ServerMessage[] {
           // re-validate against the server instead of returning a stale token.
           void invalidateOAuthTokenCaches()
           const attempt = streamState.authRetryCount + 1
-          conversationService.stopSession(sessionId)
+          // Use stopSessionAndWait to ensure the old CLI process fully exits
+          // before a new one is spawned. A lingering zombie CLI can flood the
+          // log with "Rejected SDK connection" and, worse, cause the next
+          // --resume to replay stale transcript content to the adapter.
+          void conversationService.stopSessionAndWait(sessionId)
           streamState.authRetryCount = attempt
 
           if (attempt <= MAX_AUTH_RETRY_ATTEMPTS) {

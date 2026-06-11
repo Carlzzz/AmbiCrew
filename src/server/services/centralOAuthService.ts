@@ -181,9 +181,10 @@ export class CentralOAuthService {
           this.lastTokenValidation = now
           return newToken
         }
-        // Refresh failed — token is dead, but return it anyway so the caller
-        // sees the same 401 and surfaces "Not logged in" to the user.
-        return token
+        // Refresh failed — token is unrecoverable. Return null so the caller
+        // knows auth is dead rather than spawning a CLI with a stale token
+        // that will immediately 401 again.
+        return null
       }
       // Non-401 error (network, 5xx) — return cached token, might still work
       return token

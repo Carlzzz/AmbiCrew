@@ -16,6 +16,7 @@ import { ProviderService } from './services/providerService.js'
 import { handleHahaOAuthCallback } from './api/haha-oauth.js'
 import { handleHahaOpenAIOAuthCallback } from './api/haha-openai-oauth.js'
 import { ensureDesktopCliLauncherInstalled } from './services/desktopCliLauncherService.js'
+import { startCentralTokenRefreshTimer } from './services/centralTokenRefreshTimer.js'
 import { enableConfigs } from '../utils/config.js'
 import { diagnosticsService } from './services/diagnosticsService.js'
 
@@ -282,6 +283,11 @@ export function startServer(port = PORT, host = HOST) {
 
   // Start the cron scheduler to execute scheduled tasks
   cronScheduler.start()
+
+  // Proactively refresh CrewCentral tokens so they don't silently expire
+  // while CLI subprocesses are idle (the Tauri frontend heartbeat doesn't
+  // run in this process).
+  startCentralTokenRefreshTimer()
 
   // Install the bundled CLI launcher (ambi) into ~/.local/bin BEFORE
   // signaling readiness. Otherwise the Electron main process opens the
