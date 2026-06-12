@@ -22,6 +22,8 @@ type CLITaskStore = {
   completedAndDismissed: boolean
   /** Snapshot of the completed task set that was dismissed */
   dismissedCompletionKey: string | null
+  /** True while a fetchSessionTasks request is in flight */
+  _fetching: boolean
 
   /** Fetch tasks for a given session (uses sessionId as taskListId) */
   fetchSessionTasks: (sessionId: string) => Promise<void>
@@ -86,8 +88,11 @@ export const useCLITaskStore = create<CLITaskStore>((set, get) => ({
   expanded: false,
   completedAndDismissed: false,
   dismissedCompletionKey: null,
+  _fetching: false,
 
   fetchSessionTasks: async (sessionId) => {
+    // Skip if a previous fetch is still in-flight to prevent request pileup
+    if (get()._fetching) return
     if (get().sessionId !== sessionId) {
       set({
         sessionId,
@@ -99,6 +104,7 @@ export const useCLITaskStore = create<CLITaskStore>((set, get) => ({
       })
     }
 
+    set({ _fetching: true })
     try {
       const { tasks } = await cliTasksApi.getTasksForList(sessionId)
       // Only update if still tracking the same session
@@ -113,6 +119,8 @@ export const useCLITaskStore = create<CLITaskStore>((set, get) => ({
       if (get().sessionId === sessionId && !get().resetting) {
         set({ tasks: [], completedAndDismissed: false, dismissedCompletionKey: null, expanded: false })
       }
+    } finally {
+      set({ _fetching: false })
     }
   },
 

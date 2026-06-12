@@ -30,6 +30,9 @@ import { AGENT_TEMPLATES } from '../config/agentTemplates.js'
 
 const agentService = new AgentService()
 
+/** In-flight dedup for task-list reads (polled every 1s by the client) */
+const inflightTaskList = new Map<string, Promise<Response>>()
+
 export async function handleAgentsApi(
   req: Request,
   url: URL,
@@ -164,9 +167,15 @@ async function handleTasksApi(
     }
 
     if (taskListId) {
-      // GET /api/tasks/lists/:taskListId
-      const tasks = await taskService.getTasksForList(taskListId)
-      return Response.json({ tasks })
+      // GET /api/tasks/lists/:taskListId — deduplicate concurrent reads
+      const inflight = inflightTaskList.get(taskListId)
+      if (inflight) return (await inflight).clone()
+      const promise = (async () => {
+        const tasks = await taskService.getTasksForList(taskListId)
+        return Response.json({ tasks })
+      })().finally(() => inflightTaskList.delete(taskListId))
+      inflightTaskList.set(taskListId, promise)
+      return await promise
     }
 
     // GET /api/tasks/lists

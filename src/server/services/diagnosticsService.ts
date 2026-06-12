@@ -58,6 +58,7 @@ export class DiagnosticsService {
   private processCaptureInstalled = false
   private originalConsoleError: typeof console.error | null = null
   private originalConsoleWarn: typeof console.warn | null = null
+  private _lastRetentionRun = 0
 
   getLogDir(): string {
     return path.join(this.getConfigDir(), 'ambicrew', 'diagnostics')
@@ -512,6 +513,11 @@ export class DiagnosticsService {
   }
 
   private async enforceRetention(): Promise<void> {
+    // Throttle: run at most once per 5 minutes to avoid I/O storms under high error rates
+    const now = Date.now()
+    if (now - this._lastRetentionRun < 5 * 60 * 1000) return
+    this._lastRetentionRun = now
+
     const dir = this.getLogDir()
     const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
     const files = await this.listFiles(dir)

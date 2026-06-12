@@ -44,7 +44,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown, options?: { timeout?: number }): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, options?: { timeout?: number; signal?: AbortSignal }): Promise<T> {
   const url = `${baseUrl}${path}`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -53,6 +53,16 @@ async function request<T>(method: string, path: string, body?: unknown, options?
   const controller = new AbortController()
   const timeoutMs = options?.timeout ?? 30_000
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  // If an external signal is provided, abort our controller when it fires
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(timeout)
+      throw new Error('Request aborted')
+    }
+    options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+
   try {
     const res = await fetch(url, {
       method,
@@ -119,8 +129,8 @@ export function rawRecordDiagnosticEvent(event: {
 }
 
 export const api = {
-  get: <T>(path: string, options?: { timeout?: number }) => request<T>('GET', path, undefined, options),
-  post: <T>(path: string, body?: unknown, options?: { timeout?: number }) => request<T>('POST', path, body, options),
+  get: <T>(path: string, options?: { timeout?: number; signal?: AbortSignal }) => request<T>('GET', path, undefined, options),
+  post: <T>(path: string, body?: unknown, options?: { timeout?: number; signal?: AbortSignal }) => request<T>('POST', path, body, options),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),

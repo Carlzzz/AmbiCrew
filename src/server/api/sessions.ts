@@ -41,6 +41,13 @@ const workspaceService = new WorkspaceService(
   async (sessionId) => sessionService.getSessionFileHistorySnapshots(sessionId),
 )
 
+/**
+ * In-flight deduplication for expensive per-session endpoints.
+ * If a request for the same key is already in progress, subsequent callers
+ * share the same Promise instead of issuing parallel work.
+ */
+const inflightInspection = new Map<string, Promise<Response>>()
+
 export async function handleSessionsApi(
   req: Request,
   url: URL,
@@ -145,7 +152,7 @@ export async function handleSessionsApi(
           { status: 405 }
         )
       }
-      return await getSessionInspection(sessionId, url)
+      return await getSessionInspectionDeduped(sessionId, url)
     }
 
     if (subResource === 'workspace') {
@@ -369,6 +376,25 @@ async function getSessionSlashCommands(sessionId: string): Promise<Response> {
     }))
 
   return Response.json({ commands: slashCommands })
+}
+
+/**
+ * Deduplicates concurrent inspection requests for the same session+params.
+ * If a request with the same key is already in flight, callers share the result.
+ */
+async function getSessionInspectionDeduped(sessionId: string, url: URL): Promise<Response> {
+  const key = `${sessionId}:${url.searchParams.toString()}`
+  const inflight = inflightInspection.get(key)
+  if (inflight) {
+    // Clone the response so each caller gets their own readable body
+    const resp = await inflight
+    return resp.clone()
+  }
+  const promise = getSessionInspection(sessionId, url).finally(() => {
+    inflightInspection.delete(key)
+  })
+  inflightInspection.set(key, promise)
+  return promise
 }
 
 async function getSessionInspection(sessionId: string, url: URL): Promise<Response> {

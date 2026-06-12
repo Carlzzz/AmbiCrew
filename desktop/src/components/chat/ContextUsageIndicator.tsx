@@ -70,6 +70,7 @@ export function ContextUsageIndicator({
   const [updatedAt, setUpdatedAt] = useState<number | null>(null)
   const [inspectionModel, setInspectionModel] = useState<string | null>(null)
   const requestSeq = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
   const contextIdentityRef = useRef('')
 
   const refresh = useCallback(async () => {
@@ -77,6 +78,11 @@ export function ContextUsageIndicator({
       setLoading(false)
       return
     }
+    // Abort the previous in-flight request to prevent pileup
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     const activeSessionId = sessionId
     const seq = requestSeq.current + 1
     requestSeq.current = seq
@@ -87,6 +93,7 @@ export function ContextUsageIndicator({
         includeContext: true,
         contextOnly: true,
         timeout: CONTEXT_REQUEST_TIMEOUT_MS,
+        signal: controller.signal,
       })
       if (seq !== requestSeq.current) return
       const nextContext = inspection.context ?? inspection.contextEstimate ?? null
