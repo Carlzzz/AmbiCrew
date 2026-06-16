@@ -127,6 +127,9 @@ export const useCLITaskStore = create<CLITaskStore>((set, get) => ({
   refreshTasks: async () => {
     const { sessionId } = get()
     if (!sessionId) return
+    // Same in-flight guard as fetchSessionTasks — both call the same endpoint.
+    if (get()._fetching) return
+    set({ _fetching: true })
     try {
       const { tasks } = await cliTasksApi.getTasksForList(sessionId)
       if (get().sessionId === sessionId && !get().resetting) {
@@ -137,6 +140,8 @@ export const useCLITaskStore = create<CLITaskStore>((set, get) => ({
       }
     } catch {
       // ignore
+    } finally {
+      set({ _fetching: false })
     }
   },
 

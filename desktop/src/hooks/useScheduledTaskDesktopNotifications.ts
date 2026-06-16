@@ -114,13 +114,27 @@ export function useScheduledTaskDesktopNotifications(): void {
     }
 
     void poll()
-    const interval = window.setInterval(() => {
-      void poll()
-    }, POLL_INTERVAL_MS)
+    // Recursive scheduling — only queue the next poll AFTER this one resolves.
+    // Prevents request pile-up when the sidecar is slow (each tick fires 2
+    // parallel requests, and a 30s interval is shorter than the 30s request
+    // timeout, so a stalled server would otherwise accumulate requests).
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const scheduleNext = () => {
+      if (stopped) return
+      timer = setTimeout(async () => {
+        if (stopped) return
+        try {
+          await poll()
+        } finally {
+          scheduleNext()
+        }
+      }, POLL_INTERVAL_MS)
+    }
+    scheduleNext()
 
     return () => {
       stopped = true
-      window.clearInterval(interval)
+      if (timer) clearTimeout(timer)
     }
   }, [])
 }

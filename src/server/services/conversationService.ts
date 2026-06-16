@@ -558,12 +558,26 @@ export class ConversationService {
         if (msg?.type === 'system' && msg.subtype === 'init') {
           session.initMessage = msg
         }
+        // Dedup CLI-side replays of unanswered can_use_tool requests:
+        // CLI subprocesses may re-emit the same control_request (same request_id)
+        // after their own internal timeout, or after an SDK socket reconnect.
+        // Without this guard we fan-out a second permission_request to the WS
+        // client, causing duplicate UI prompts and re-allocating large tool lists
+        // in memory.
+        let isDuplicateControlRequest = false
         if (
           msg?.type === 'control_request' &&
           msg.request?.subtype === 'can_use_tool' &&
           typeof msg.request_id === 'string'
         ) {
-          if (msg.request.tool_name === 'AskUserQuestion') {
+          if (session.pendingPermissionRequests.has(msg.request_id)) {
+            isDuplicateControlRequest = true
+            if (msg.request.tool_name === 'AskUserQuestion') {
+              console.warn(
+                `[ConversationService:AskUserQuestion] dropping duplicate control_request requestId=${msg.request_id}`,
+              )
+            }
+          } else if (msg.request.tool_name === 'AskUserQuestion') {
             console.warn(
               `[ConversationService:AskUserQuestion] handleSdkPayload received control_request toolUseId=${msg.request.tool_use_id} requestId=${msg.request_id} callbackCount=${session.outputCallbacks.length}`,
             )
@@ -582,8 +596,10 @@ export class ConversationService {
               : undefined,
           })
         }
-        for (const cb of session.outputCallbacks) {
-          cb(msg)
+        if (!isDuplicateControlRequest) {
+          for (const cb of session.outputCallbacks) {
+            cb(msg)
+          }
         }
       } catch {
         console.warn(

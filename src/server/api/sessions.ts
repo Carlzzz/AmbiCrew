@@ -17,6 +17,7 @@
 import { sessionService } from '../services/sessionService.js'
 import { conversationService } from '../services/conversationService.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
+import { createInflightDedup } from '../middleware/inflightDedup.js'
 import { getSlashCommands } from '../ws/handler.js'
 import { getCommandName } from '../../commands.js'
 import { getSkillDirCommands } from '../../skills/loadSkillsDir.js'
@@ -42,11 +43,13 @@ const workspaceService = new WorkspaceService(
 )
 
 /**
- * In-flight deduplication for expensive per-session endpoints.
- * If a request for the same key is already in progress, subsequent callers
- * share the same Promise instead of issuing parallel work.
+ * In-flight deduplication for expensive per-session GET endpoints.
+ * Collapses concurrent identical requests onto a single Promise. Each entry
+ * has a 60s safety-net lifetime to recover from hung upstream calls.
  */
-const inflightInspection = new Map<string, Promise<Response>>()
+const dedupInspection = createInflightDedup()
+const dedupListSessions = createInflightDedup()
+const dedupGitInfo = createInflightDedup()
 
 export async function handleSessionsApi(
   req: Request,
@@ -64,7 +67,7 @@ export async function handleSessionsApi(
     if (!sessionId) {
       switch (req.method) {
         case 'GET':
-          return await listSessions(url)
+          return await dedupListSessions(url.searchParams.toString(), () => listSessions(url))
         case 'POST':
           return await createSession(req)
         default:
@@ -100,7 +103,7 @@ export async function handleSessionsApi(
           { status: 405 }
         )
       }
-      return await getGitInfo(sessionId)
+      return await dedupGitInfo(sessionId, () => getGitInfo(sessionId))
     }
 
     if (subResource === 'rewind') {
@@ -384,17 +387,7 @@ async function getSessionSlashCommands(sessionId: string): Promise<Response> {
  */
 async function getSessionInspectionDeduped(sessionId: string, url: URL): Promise<Response> {
   const key = `${sessionId}:${url.searchParams.toString()}`
-  const inflight = inflightInspection.get(key)
-  if (inflight) {
-    // Clone the response so each caller gets their own readable body
-    const resp = await inflight
-    return resp.clone()
-  }
-  const promise = getSessionInspection(sessionId, url).finally(() => {
-    inflightInspection.delete(key)
-  })
-  inflightInspection.set(key, promise)
-  return promise
+  return dedupInspection(key, () => getSessionInspection(sessionId, url))
 }
 
 async function getSessionInspection(sessionId: string, url: URL): Promise<Response> {

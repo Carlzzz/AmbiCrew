@@ -134,10 +134,31 @@ export function ContextUsageIndicator({
 
   useEffect(() => {
     if (chatState === 'idle') return
-    const timer = setInterval(() => {
-      void refresh()
-    }, ACTIVE_REFRESH_MS)
-    return () => clearInterval(timer)
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    // Recursive scheduling — same rationale as ActiveSession's task poll.
+    // refresh() already aborts the previous in-flight request via abortRef,
+    // but timer-based re-entry can still queue work while the server is slow.
+    // Only schedule the next refresh AFTER this one resolves.
+    const scheduleNext = (delayMs: number) => {
+      if (cancelled) return
+      timer = setTimeout(async () => {
+        if (cancelled) return
+        try {
+          await refresh()
+        } finally {
+          scheduleNext(ACTIVE_REFRESH_MS)
+        }
+      }, delayMs)
+    }
+
+    scheduleNext(ACTIVE_REFRESH_MS)
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [chatState, messageCount, refresh])
 
   const details = useMemo(() => {

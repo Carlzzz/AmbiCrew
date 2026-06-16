@@ -13,8 +13,12 @@
 import { CronService, type CronTask } from '../services/cronService.js'
 import { cronScheduler } from '../services/cronScheduler.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
+import { createInflightDedup } from '../middleware/inflightDedup.js'
 
 const cronService = new CronService()
+
+/** In-flight dedup for GET endpoints — collapse parallel reads onto one promise. */
+const dedupGet = createInflightDedup()
 
 export async function handleScheduledTasksApi(
   req: Request,
@@ -30,20 +34,26 @@ export async function handleScheduledTasksApi(
     if (method === 'GET' && taskId === 'runs') {
       const url = new URL(req.url)
       const limit = parseInt(url.searchParams.get('limit') || '50', 10)
-      const runs = await cronScheduler.getRecentRuns(limit)
-      return Response.json({ runs })
+      return dedupGet(`runs:${limit}`, async () => {
+        const runs = await cronScheduler.getRecentRuns(limit)
+        return Response.json({ runs })
+      })
     }
 
     // ── GET /api/scheduled-tasks/:id/runs ────────────────────────────────
     if (method === 'GET' && taskId && subResource === 'runs') {
-      const runs = await cronScheduler.getTaskRuns(taskId)
-      return Response.json({ runs })
+      return dedupGet(`task-runs:${taskId}`, async () => {
+        const runs = await cronScheduler.getTaskRuns(taskId)
+        return Response.json({ runs })
+      })
     }
 
     // ── GET /api/scheduled-tasks ──────────────────────────────────────────
     if (method === 'GET' && !taskId) {
-      const tasks = await cronService.listTasks()
-      return Response.json({ tasks })
+      return dedupGet('list', async () => {
+        const tasks = await cronService.listTasks()
+        return Response.json({ tasks })
+      })
     }
 
     // ── POST /api/scheduled-tasks ─────────────────────────────────────────

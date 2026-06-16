@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTaskStore } from '../../stores/taskStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useTabStore } from '../../stores/tabStore'
@@ -63,41 +63,57 @@ export function TaskRunsPanel({ taskId, onClose, refreshKey }: Props) {
     connectToSession(sessionId)
   }
 
-  const refresh = () => {
-    fetchTaskRuns(taskId).then((r) => {
+  const refreshing = useRef(false)
+  const refresh = async () => {
+    if (refreshing.current) return
+    refreshing.current = true
+    try {
+      const r = await fetchTaskRuns(taskId)
       setRuns(r)
+    } catch {
+      // ignore
+    } finally {
       setLoading(false)
-    }).catch(() => setLoading(false))
+      refreshing.current = false
+    }
   }
 
   // Initial fetch + re-fetch when refreshKey changes
   useEffect(() => {
     setLoading(true)
-    refresh()
+    void refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, fetchTaskRuns, refreshKey])
 
   // Auto-poll while any run is "running" or shortly after a manual trigger.
   // Uses faster 1s polling for the first 10s after refreshKey changes, then 3s.
+  // Recursive scheduling so a slow sidecar can't accumulate parallel fetches.
   const hasRunning = runs.some((r) => r.status === 'running')
   useEffect(() => {
     if (!hasRunning && refreshKey === 0) return // no reason to poll initially
-    // Start with fast polling (1s) to give snappy feedback after "Run Now"
-    let interval = 1000
-    let timer = setInterval(refresh, interval)
-    // After 10s, switch to slower 3s polling if still running
-    const slowDown = setTimeout(() => {
-      clearInterval(timer)
-      if (hasRunning) {
-        timer = setInterval(refresh, 3000)
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const startedAt = Date.now()
+    const stopAt = hasRunning ? Infinity : startedAt + 12000
+
+    const tick = async () => {
+      if (cancelled) return
+      try {
+        await refresh()
+      } finally {
+        if (cancelled) return
+        if (Date.now() >= stopAt) return
+        const delay = Date.now() - startedAt < 10000 ? 1000 : 3000
+        timer = setTimeout(tick, delay)
       }
-    }, 10000)
-    // If nothing is running and initial window passes, stop entirely
-    const stopTimer = hasRunning ? undefined : setTimeout(() => clearInterval(timer), 12000)
-    return () => {
-      clearInterval(timer)
-      clearTimeout(slowDown)
-      if (stopTimer) clearTimeout(stopTimer)
     }
+    timer = setTimeout(tick, 1000)
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasRunning, taskId, refreshKey])
 
   return (

@@ -244,13 +244,32 @@ export function ActiveSession() {
 
     if (!shouldPollTasks) return
 
-    void fetchSessionTasks(activeTabId)
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
 
-    const timer = setInterval(() => {
-      void fetchSessionTasks(activeTabId)
-    }, TASK_POLL_INTERVAL_MS)
+    // Recursive scheduling: only queue the next poll AFTER the previous one
+    // resolves. This prevents request pile-up when the server is slow — the
+    // store's _fetching guard alone is not enough because the client-side
+    // request timeout (30s) releases the guard before the server actually
+    // finishes processing, allowing a backlog to form on every interval tick.
+    const scheduleNext = (delayMs: number) => {
+      if (cancelled) return
+      timer = setTimeout(async () => {
+        if (cancelled) return
+        try {
+          await fetchSessionTasks(activeTabId)
+        } finally {
+          scheduleNext(TASK_POLL_INTERVAL_MS)
+        }
+      }, delayMs)
+    }
 
-    return () => clearInterval(timer)
+    scheduleNext(0)
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [
     activeTabId,
     isMemberSession,
