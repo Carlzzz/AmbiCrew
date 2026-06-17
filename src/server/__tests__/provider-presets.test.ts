@@ -41,23 +41,23 @@ function makeRequest(
 }
 
 describe('provider presets API', () => {
-  test('GET /api/providers/presets returns the configured presets', async () => {
+  test('GET /api/providers/presets returns the configured presets (excluding the internal "official" entry)', async () => {
     const { req, url, segments } = makeRequest('GET', '/api/providers/presets')
     const response = await handleProvidersApi(req, url, segments)
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ presets: PROVIDER_PRESETS })
+    const expected = PROVIDER_PRESETS.filter((p) => p.id !== 'official' && p.id !== 'custom')
+    expect(await response.json()).toEqual({ presets: expected })
   })
 
-  test('configured presets include built-in official and custom entries', () => {
+  test('configured presets include the built-in official entry', () => {
     expect(PROVIDER_PRESETS.some((preset) => preset.id === 'official')).toBe(true)
-    expect(PROVIDER_PRESETS.some((preset) => preset.id === 'custom')).toBe(true)
   })
 
-  test('local Anthropic-compatible presets appear immediately before custom', () => {
+  test('local Anthropic-compatible presets appear immediately before crewcentral', () => {
     expect(PROVIDER_PRESETS.at(-3)?.id).toBe('lmstudio')
     expect(PROVIDER_PRESETS.at(-2)?.id).toBe('ollama')
-    expect(PROVIDER_PRESETS.at(-1)?.id).toBe('custom')
+    expect(PROVIDER_PRESETS.at(-1)?.id).toBe('crewcentral')
   })
 
   test('configured presets keep current default model ids aligned with official provider docs', () => {
@@ -94,8 +94,8 @@ describe('provider presets API', () => {
     expect(kimi?.defaultModels.main).toBe('kimi-k2.6')
     expect(kimi?.defaultEnv?.CC_HAHA_SEND_DISABLED_THINKING).toBe('1')
     expect(minimax?.authStrategy).toBe('auth_token')
-    expect(minimax?.defaultModels.main).toBe('MiniMax-M2.7')
-    expect(minimax?.modelContextWindows?.['MiniMax-M2.7']).toBe(204800)
+    expect(minimax?.defaultModels.main).toBe('MiniMax-M3')
+    expect(minimax?.modelContextWindows?.['MiniMax-M3']).toBe(1048576)
     expect(jiekouai?.baseUrl).toBe('https://api.jiekou.ai/anthropic')
     expect(jiekouai?.authStrategy).toBe('auth_token')
     expect(jiekouai?.defaultModels.main).toBe('claude-sonnet-4-6')
@@ -118,7 +118,6 @@ describe('provider presets API', () => {
     const minimax = PROVIDER_PRESETS.find((preset) => preset.id === 'minimax')
     const jiekouai = PROVIDER_PRESETS.find((preset) => preset.id === 'jiekouai')
     const shengsuanyun = PROVIDER_PRESETS.find((preset) => preset.id === 'shengsuanyun')
-    const custom = PROVIDER_PRESETS.find((preset) => preset.id === 'custom')
 
     expect(lmstudio?.needsApiKey).toBe(false)
     expect(lmstudio?.promoText).toContain('http://localhost:1234')
@@ -155,9 +154,6 @@ describe('provider presets API', () => {
       ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'none',
     })
     expect(shengsuanyun?.modelContextWindows?.['anthropic/claude-opus-4.7']).toBe(1000000)
-    expect(custom?.promoText).toBeUndefined()
-    expect(custom?.authStrategy).toBe('auth_token')
-    expect(custom?.defaultEnv).toBeUndefined()
   })
 
   test('GET and PUT /api/providers/settings read and write AmbiCrew settings.json', async () => {

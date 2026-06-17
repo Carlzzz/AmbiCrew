@@ -41,6 +41,10 @@ let originalDirectModels: string | undefined
 let originalProxyBaseUrl: string | undefined
 let originalDirectApiKey: string | undefined
 let originalAnthropicAuthToken: string | undefined
+let originalAuthMode: string | undefined
+let originalAnthropicDefaultHaikuModelName: string | undefined
+let originalAnthropicDefaultSonnetModelName: string | undefined
+let originalAnthropicDefaultOpusModelName: string | undefined
 
 async function setup() {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-test-'))
@@ -60,6 +64,10 @@ async function setup() {
   originalProxyBaseUrl = process.env.LLM_PROXY_BASE_URL
   originalDirectApiKey = process.env.LLM_DIRECT_API_KEY
   originalAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN
+  originalAuthMode = process.env.AUTH_MODE
+  originalAnthropicDefaultHaikuModelName = process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
+  originalAnthropicDefaultSonnetModelName = process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
+  originalAnthropicDefaultOpusModelName = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
   process.env.CLAUDE_CONFIG_DIR = tmpDir
   process.env.HOME = tmpDir
   process.env.USERPROFILE = tmpDir
@@ -75,6 +83,10 @@ async function setup() {
   delete process.env.LLM_PROXY_BASE_URL
   delete process.env.LLM_DIRECT_API_KEY
   delete process.env.ANTHROPIC_AUTH_TOKEN
+  delete process.env.AUTH_MODE
+  delete process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
+  delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
+  delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
   clearKeychainCache()
   primeKeychainCacheFromPrefetch(null)
   clearOpenAIOAuthTokenCache()
@@ -179,6 +191,30 @@ async function teardown() {
     process.env.ANTHROPIC_AUTH_TOKEN = originalAnthropicAuthToken
   } else {
     delete process.env.ANTHROPIC_AUTH_TOKEN
+  }
+
+  if (originalAuthMode !== undefined) {
+    process.env.AUTH_MODE = originalAuthMode
+  } else {
+    delete process.env.AUTH_MODE
+  }
+
+  if (originalAnthropicDefaultHaikuModelName !== undefined) {
+    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME = originalAnthropicDefaultHaikuModelName
+  } else {
+    delete process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
+  }
+
+  if (originalAnthropicDefaultSonnetModelName !== undefined) {
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME = originalAnthropicDefaultSonnetModelName
+  } else {
+    delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
+  }
+
+  if (originalAnthropicDefaultOpusModelName !== undefined) {
+    process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME = originalAnthropicDefaultOpusModelName
+  } else {
+    delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
   }
 
   await fs.rm(tmpDir, { recursive: true, force: true })
