@@ -32,7 +32,7 @@ describe('model context window resolution', () => {
     expect(getContextWindowForModel('deepseek-v4-pro')).toBe(1_000_000)
     expect(getContextWindowForModel('MiniMax-M2.7')).toBe(204_800)
     expect(getContextWindowForModel('kimi-k2.6')).toBe(262_144)
-    expect(getContextWindowForModel('glm-5.1')).toBe(200_000)
+    expect(getContextWindowForModel('glm-5.2')).toBe(1_000_000)
     expect(getContextWindowForModel('glm-4.5-air')).toBe(128_000)
   })
 

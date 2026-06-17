@@ -85,10 +85,10 @@ describe('provider presets API', () => {
     expect(deepseek?.defaultModels.opus).toBe('deepseek-v4-pro')
     expect(deepseek?.defaultEnv?.CC_HAHA_SEND_DISABLED_THINKING).toBe('1')
     expect(zhipu?.authStrategy).toBe('auth_token')
-    expect(zhipu?.defaultModels.main).toBe('glm-5.1')
+    expect(zhipu?.defaultModels.main).toBe('glm-5.2')
     expect(zhipu?.defaultModels.haiku).toBe('glm-4.5-air')
-    expect(zhipu?.defaultModels.sonnet).toBe('glm-5-turbo')
-    expect(zhipu?.defaultModels.opus).toBe('glm-5.1')
+    expect(zhipu?.defaultModels.sonnet).toBe('glm-5.2')
+    expect(zhipu?.defaultModels.opus).toBe('glm-5.2')
     expect(kimi?.baseUrl).toBe('https://api.kimi.com/coding')
     expect(kimi?.authStrategy).toBe('auth_token')
     expect(kimi?.defaultModels.main).toBe('kimi-k2.6')
@@ -138,7 +138,7 @@ describe('provider presets API', () => {
     expect(zhipu?.apiKeyUrl).toBe('https://www.bigmodel.cn/invite?icode=d41B2qi8Z5xNwTGLNPPF3OZLO2QH3C0EBTSr%2BArzMw4%3D')
     expect(zhipu?.promoText).toContain('AmbiCrew')
     expect(zhipu?.defaultEnv?.CC_HAHA_SEND_DISABLED_THINKING).toBe('1')
-    expect(zhipu?.modelContextWindows?.['glm-5.1']).toBe(200000)
+    expect(zhipu?.modelContextWindows?.['glm-5.2']).toBe(1000000)
     expect(zhipu?.modelContextWindows?.['glm-4.5-air']).toBe(128000)
     expect(kimi?.apiKeyUrl).toBe('https://platform.kimi.com/console/api-keys')
     expect(kimi?.modelContextWindows?.['kimi-k2.6']).toBe(262144)
@@ -163,9 +163,9 @@ describe('provider presets API', () => {
   test('GET and PUT /api/providers/settings read and write AmbiCrew settings.json', async () => {
     const initial = {
       env: {
-        ANTHROPIC_MODEL: 'glm-5.1',
+        ANTHROPIC_MODEL: 'glm-5.2',
       },
-      model: 'glm-5.1',
+      model: 'glm-5.2',
     }
     await fs.mkdir(path.join(tmpDir, 'ambicrew'), { recursive: true })
     await fs.writeFile(

@@ -541,21 +541,21 @@ describe('Models API', () => {
       apiKey: 'test-key',
       apiFormat: 'anthropic',
       models: {
-        main: 'glm-5.1',
+        main: 'glm-5.2',
         haiku: 'glm-4.5-air',
-        sonnet: 'glm-5-turbo',
-        opus: 'glm-5.1',
+        sonnet: 'glm-5.2',
+        opus: 'glm-5.2',
       },
     })
     await providerSvc.activateProvider(provider.id)
-    await providerSvc.updateManagedSettings({ model: 'glm-5-turbo' })
+    await providerSvc.updateManagedSettings({ model: 'glm-4.5-air' })
 
     const { req, url, segments } = makeRequest('GET', '/api/models/current')
     const res = await handleModelsApi(req, url, segments)
 
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.model.id).toBe('glm-5-turbo')
+    expect(body.model.id).toBe('glm-4.5-air')
   })
 
   it('PUT /api/models/current should persist to AmbiCrew managed settings when provider is active', async () => {
@@ -568,22 +568,22 @@ describe('Models API', () => {
       apiKey: 'test-key',
       apiFormat: 'anthropic',
       models: {
-        main: 'glm-5.1',
+        main: 'glm-5.2',
         haiku: 'glm-4.5-air',
-        sonnet: 'glm-5-turbo',
-        opus: 'glm-5.1',
+        sonnet: 'glm-5.2',
+        opus: 'glm-5.2',
       },
     })
     await providerSvc.activateProvider(provider.id)
 
     const putReq = makeRequest('PUT', '/api/models/current', {
-      modelId: 'glm-5-turbo',
+      modelId: 'glm-4.5-air',
     })
     const putRes = await handleModelsApi(putReq.req, putReq.url, putReq.segments)
     expect(putRes.status).toBe(200)
 
     const managedSettings = await providerSvc.getManagedSettings()
-    expect(managedSettings.model).toBe('glm-5-turbo')
+    expect(managedSettings.model).toBe('glm-4.5-air')
 
     const globalSettings = await settingsSvc.getUserSettings()
     expect(globalSettings.model).toBeUndefined()
