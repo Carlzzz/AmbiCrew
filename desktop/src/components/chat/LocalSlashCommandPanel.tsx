@@ -18,6 +18,9 @@ import type { McpServerRecord } from '../../types/mcp'
 import type { SkillMeta } from '../../types/skill'
 import type { SlashCommandOption } from './composerUtils'
 import { getCompletedTurnTargets, normalizeTurnCheckpoints, type RewindTurnTarget } from './MessageList'
+import type { UIMessage } from '../../stores/chatStore'
+
+const EMPTY_MESSAGES: UIMessage[] = []
 
 export type LocalSlashCommandName = 'mcp' | 'skills' | 'help' | 'status' | 'cost' | 'context' | 'rewind'
 
@@ -1053,7 +1056,12 @@ function formatTimeAgo(timestamp: number, t: Translate) {
 
 function RewindPanel({ sessionId, onClose }: { sessionId?: string; onClose: () => void }) {
   const t = useTranslation()
-  const messages = useChatStore((s) => sessionId ? s.sessions[sessionId]?.messages ?? [] : [])
+  // Use a module-scope sentinel so the selector returns a stable reference when
+  // the session has no messages yet. Returning a fresh `[]` here would make
+  // zustand's useSyncExternalStore see a "new" value on every external store
+  // update and re-schedule a render — that loop crashed the panel with
+  // "Maximum update depth exceeded".
+  const messages = useChatStore((s) => (sessionId ? s.sessions[sessionId]?.messages : undefined) ?? EMPTY_MESSAGES)
   const chatState = useChatStore((s) => sessionId ? s.sessions[sessionId]?.chatState ?? 'idle' : 'idle')
   const stopGeneration = useChatStore((s) => s.stopGeneration)
   const reloadHistory = useChatStore((s) => s.reloadHistory)

@@ -11,11 +11,15 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import * as os from 'os'
+import { execFile } from 'child_process'
+import { promisify } from 'node:util'
 import { execSync } from 'child_process'
 import { parseFrontmatter } from '../../utils/frontmatterParser.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getProjectDirsUpToHome } from '../../utils/markdownConfigLoader.js'
 import { getCwd } from '../../utils/cwd.js'
+
+const execFileAsync = promisify(execFile)
 import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
 import type { LoadedPlugin } from '../../types/plugin.js'
 import { ApiError, errorResponse } from '../middleware/errorHandler.js'
@@ -654,12 +658,38 @@ async function installHubSkill(req: Request): Promise<Response> {
     await fs.writeFile(tmpZip, Buffer.from(zipBuffer))
 
     if (process.platform === 'win32') {
-      execSync(
-        `powershell -NoProfile -Command "Expand-Archive -Path '${tmpZip}' -DestinationPath '${targetDir}' -Force"`,
-        { timeout: 30_000 },
-      )
+      // execSync blocks the Bun event loop, and PowerShell cold-start under
+      // Windows Defender real-time scanning sometimes exceeds the previous
+      // 30 s ceiling — that surfaced as `spawnSync cmd.exe ETIMEDOUT` and a
+      // generic 500. Use execFile (non-blocking) with a longer ceiling, and
+      // surface timeouts as a proper 504 instead of an unhandled error.
+      try {
+        await execFileAsync(
+          'powershell',
+          [
+            '-NoProfile',
+            '-Command',
+            `Expand-Archive -Path '${tmpZip}' -DestinationPath '${targetDir}' -Force`,
+          ],
+          { timeout: 90_000, windowsHide: true },
+        )
+      } catch (err) {
+        const errno = (err as NodeJS.ErrnoException).code
+        if (errno === 'ETIMEDOUT') {
+          throw new ApiError(504, 'Extracting the skill archive timed out (90s). Retry in a moment.', 'EXTRACT_TIMEOUT')
+        }
+        throw new ApiError(500, `Failed to extract skill: ${err instanceof Error ? err.message : String(err)}`, 'EXTRACT_FAILED')
+      }
     } else {
-      execSync(`unzip -o "${tmpZip}" -d "${targetDir}"`, { timeout: 30_000 })
+      try {
+        await execFileAsync('unzip', ['-o', tmpZip, '-d', targetDir], { timeout: 90_000 })
+      } catch (err) {
+        const errno = (err as NodeJS.ErrnoException).code
+        if (errno === 'ETIMEDOUT') {
+          throw new ApiError(504, 'Extracting the skill archive timed out (90s). Retry in a moment.', 'EXTRACT_TIMEOUT')
+        }
+        throw new ApiError(500, `Failed to extract skill: ${err instanceof Error ? err.message : String(err)}`, 'EXTRACT_FAILED')
+      }
     }
   } finally {
     try { await fs.unlink(tmpZip) } catch { /* cleanup best-effort */ }

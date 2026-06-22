@@ -94,7 +94,10 @@ export class DiagnosticsService {
     try {
       await this.ensureLogDir()
       await fs.appendFile(this.getDiagnosticsPath(), JSON.stringify(event) + '\n', 'utf-8')
-      if (event.severity === 'warn' || event.severity === 'error') {
+      // runtime-errors.log is meant for the "things actually broke" view in the
+      // Diagnostics settings page. Warnings go to diagnostics.jsonl only so that
+      // the error log stays readable.
+      if (event.severity === 'error') {
         await fs.appendFile(this.getRuntimeErrorsPath(), this.formatRuntimeLogEntry(event), 'utf-8')
       }
       await this.enforceRetention().catch(() => {})

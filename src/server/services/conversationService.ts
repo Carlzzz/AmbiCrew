@@ -22,6 +22,23 @@ const MAX_CAPTURED_SDK_MESSAGES = 40
 const MAX_CAPTURED_SDK_SUMMARY = 20
 const CONTROL_READY_POLL_MS = 50
 
+// Known CLI debug prefixes that show up on stderr but are not errors.
+// Adding a new prefix here keeps it from being escalated to console.error
+// (which the diagnostics service records as runtime-errors.log entries).
+const CLI_STDERR_DEBUG_PREFIXES = [
+  '[tools:',
+  '[claude:',
+  '[print:',
+]
+
+function isCliStderrDebugOnly(text: string): boolean {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (lines.length === 0) return true
+  return lines.every((line) =>
+    CLI_STDERR_DEBUG_PREFIXES.some((prefix) => line.startsWith(prefix)),
+  )
+}
+
 type AttachmentRef = {
   type: 'file' | 'image'
   name?: string
@@ -696,7 +713,15 @@ export class ConversationService {
 
         const logLine = this.redactProcessOutput(text.trim())
         if (streamName === 'stderr') {
-          console.error(`[CLI:${sessionId}:stderr] ${logLine}`)
+          // Claude Code CLI emits internal debug traces (e.g. [tools:getTools],
+          // [claude:deferredTools], [print:AskUserQuestion]) on stderr. They are
+          // not errors — escalate to console.error only when the chunk contains
+          // a line outside the known debug prefixes.
+          if (isCliStderrDebugOnly(logLine)) {
+            console.log(`[CLI:${sessionId}:stderr] ${logLine}`)
+          } else {
+            console.error(`[CLI:${sessionId}:stderr] ${logLine}`)
+          }
         } else {
           console.log(`[CLI:${sessionId}:stdout] ${logLine}`)
         }
