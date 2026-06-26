@@ -18,7 +18,7 @@ import type { McpServerRecord } from '../../types/mcp'
 import type { SkillMeta } from '../../types/skill'
 import type { SlashCommandOption } from './composerUtils'
 import { getCompletedTurnTargets, normalizeTurnCheckpoints, type RewindTurnTarget } from './MessageList'
-import type { UIMessage } from '../../stores/chatStore'
+import type { UIMessage } from '../../types/chat'
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
