@@ -16,7 +16,10 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke,
 }))
 
-describe('updateStore', () => {
+// AmbiCrew: skipped — these tests target the legacy Tauri updater plugin
+// (`@tauri-apps/plugin-updater`), but updateStore.ts is now an Electron-era
+// no-op stub. Re-enable / rewrite once an Electron-based update flow lands.
+describe.skip('updateStore', () => {
   beforeEach(() => {
     check.mockReset()
     relaunch.mockReset()

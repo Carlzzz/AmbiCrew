@@ -23,7 +23,6 @@ import { ChatInput } from '../components/chat/ChatInput'
 import { AuthRestartBanner } from '../components/chat/AuthRestartBanner'
 import { ComputerUsePermissionModal } from '../components/chat/ComputerUsePermissionModal'
 import { AskUserQuestionModal } from '../components/chat/AskUserQuestionModal'
-import { TextQuestionModal } from '../components/chat/TextQuestionModal'
 import { SessionTaskBar } from '../components/chat/SessionTaskBar'
 import { WorkspacePanel } from '../components/workspace/WorkspacePanel'
 import { TeamStatusBar } from '../components/teams/TeamStatusBar'
@@ -488,7 +487,6 @@ export function ActiveSession() {
             request={pendingComputerUsePermission?.request ?? null}
           />
           <AskUserQuestionModal />
-          <TextQuestionModal />
         </>
       ) : null}
     </div>

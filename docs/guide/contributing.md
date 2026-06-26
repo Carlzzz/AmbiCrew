@@ -81,7 +81,7 @@ bun run quality:providers
 Saved providers:
   MiniMax
     selector: minimax
-    main: MiniMax-M2.7-highspeed
+    main: MiniMax-M3
       --provider-model minimax:main:minimax-main
 ```
 

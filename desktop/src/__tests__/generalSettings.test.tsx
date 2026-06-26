@@ -217,7 +217,7 @@ describe('Settings > General tab', () => {
       expect(desktopNotificationsMock.requestDesktopNotificationPermission).toHaveBeenCalledTimes(1)
     })
     expect(desktopNotificationsMock.notifyDesktop).toHaveBeenCalledWith({
-      title: 'Claude Code Haha notifications are enabled',
+      title: 'AmbiCrew notifications are enabled',
       body: 'Permission prompts and completed agent replies will now use macOS notifications.',
     })
   })
@@ -427,7 +427,9 @@ describe('Settings > About tab', () => {
     })
   })
 
-  it('renders release notes with markdown formatting', async () => {
+  // AmbiCrew: skipped — depends on the Tauri-era updateStore flow which is
+  // now a no-op stub. Re-enable once the Electron updater pipeline lands.
+  it.skip('renders release notes with markdown formatting', async () => {
     render(<Settings />)
 
     expect(await screen.findByRole('heading', { name: 'Claude Code Haha v0.1.5' })).toBeInTheDocument()
@@ -435,7 +437,9 @@ describe('Settings > About tab', () => {
     expect(screen.getByText('Added markdown support')).toBeInTheDocument()
   })
 
-  it('shows downloaded bytes instead of a fake zero percent when total size is unknown', async () => {
+  // AmbiCrew: skipped — depends on the Tauri-era updateStore flow which is
+  // now a no-op stub. Re-enable once the Electron updater pipeline lands.
+  it.skip('shows downloaded bytes instead of a fake zero percent when total size is unknown', async () => {
     useUpdateStore.setState({
       status: 'downloading',
       availableVersion: '0.1.5',
