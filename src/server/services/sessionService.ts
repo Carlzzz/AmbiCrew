@@ -1412,6 +1412,22 @@ export class SessionService {
     const workDir = this.resolveWorkDirFromEntries(entries, found.projectDir) || fallbackWorkDir || process.cwd()
     const now = new Date().toISOString()
 
+    // Preserve the user's custom title across the wipe. Without this, the
+    // "new session → rename → first message" flow loses the rename because
+    // placeholder replacement (conversationService.startSession) overwrites
+    // the file before triggerTitleGeneration reads hasCustomTitle, and the
+    // generated ai-title then becomes visible.
+    let preservedCustomTitle: string | null = null
+    for (const entry of entries) {
+      if (
+        entry.type === 'custom-title' &&
+        typeof entry.customTitle === 'string' &&
+        entry.customTitle.trim()
+      ) {
+        preservedCustomTitle = entry.customTitle
+      }
+    }
+
     const initialEntry = {
       type: 'file-history-snapshot',
       messageId: crypto.randomUUID(),
@@ -1430,11 +1446,18 @@ export class SessionService {
       timestamp: now,
     }
 
-    await fs.writeFile(
-      found.filePath,
-      `${JSON.stringify(initialEntry)}\n${JSON.stringify(metaEntry)}\n`,
-      'utf-8',
-    )
+    const lines = [JSON.stringify(initialEntry), JSON.stringify(metaEntry)]
+    if (preservedCustomTitle) {
+      lines.push(
+        JSON.stringify({
+          type: 'custom-title',
+          customTitle: preservedCustomTitle,
+          timestamp: now,
+        }),
+      )
+    }
+
+    await fs.writeFile(found.filePath, lines.join('\n') + '\n', 'utf-8')
   }
 
   async appendSessionMetadata(

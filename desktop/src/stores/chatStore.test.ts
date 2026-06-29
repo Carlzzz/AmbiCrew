@@ -558,6 +558,48 @@ describe('chatStore history mapping', () => {
     ])
   })
 
+  it('drops duplicate tool_use_complete events for the same toolUseId', () => {
+    // CLI subprocess can replay an assistant message (same toolUseId) after
+    // an internal timeout or SDK socket reconnect. The server already dedups
+    // the paired control_request — chatStore must drop the duplicate tool_use
+    // here so the UI doesn't show two identical tool cards.
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: {
+          messages: [],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    const event = {
+      type: 'tool_use_complete' as const,
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-dup-1',
+      input: { questions: [{ question: 'Pick one' }] },
+    }
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, event)
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, event)
+
+    const messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    const toolUses = messages.filter((m) => m.type === 'tool_use' && m.toolUseId === 'tool-dup-1')
+    expect(toolUses).toHaveLength(1)
+  })
+
   it('replays saved runtime selection when reconnecting a session', () => {
     useSessionRuntimeStore.getState().setSelection(TEST_SESSION_ID, {
       providerId: 'provider-1',

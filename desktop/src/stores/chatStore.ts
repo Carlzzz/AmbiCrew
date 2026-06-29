@@ -679,6 +679,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       case 'tool_use_complete': {
         const session = get().sessions[sessionId]
         const toolName = msg.toolName || session?.activeToolName || 'unknown'
+        const toolUseId = msg.toolUseId || session?.activeToolUseId || ''
+        // Dedup: CLI subprocess may replay the same assistant message after an
+        // internal timeout or SDK socket reconnect — server side dedups the
+        // paired control_request (see conversationService.ts ~L587), but the
+        // tool_use_complete itself has no server guard, so we drop replays
+        // here by toolUseId to avoid duplicate cards in the UI.
+        if (toolUseId && session) {
+          let isReplay = false
+          const msgs = session.messages
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const m = msgs[i]
+            if (m.type === 'tool_use' && m.toolUseId === toolUseId) {
+              isReplay = true
+              break
+            }
+          }
+          if (isReplay) {
+            if (isAskUserQuestion(toolName)) {
+              console.warn(
+                `[chatStore:AskUserQuestion] dropping duplicate tool_use_complete toolUseId=${toolUseId}`,
+              )
+            }
+            update(() => ({
+              activeToolUseId: null,
+              activeToolName: null,
+              activeThinkingId: null,
+              streamingToolInput: '',
+            }))
+            break
+          }
+        }
         if (isAskUserQuestion(toolName)) {
           console.log(
             `[chatStore:AskUserQuestion] tool_use_complete received toolUseId=${msg.toolUseId} hasInput=${!!msg.input} inputKeys=${msg.input ? Object.keys(msg.input as object).join(',') : 'none'}`,
@@ -687,7 +718,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         update((s) => ({
           messages: [...s.messages, {
             id: nextId(), type: 'tool_use', toolName,
-            toolUseId: msg.toolUseId || s.activeToolUseId || '',
+            toolUseId,
             input: msg.input, timestamp: Date.now(), parentToolUseId: msg.parentToolUseId,
           }],
           activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
