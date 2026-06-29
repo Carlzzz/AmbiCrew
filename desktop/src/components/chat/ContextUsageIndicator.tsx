@@ -14,7 +14,11 @@ type Props = {
 }
 
 const ACTIVE_REFRESH_MS = 30_000
-const CONTEXT_REQUEST_TIMEOUT_MS = 20_000
+// Server-side `get_context_usage` waits up to 20 s for the CLI to tokenize the
+// transcript (src/server/api/sessions.ts). The fetch timeout must stay above
+// that or the client always aborts first and the request is recorded as
+// `client_api_request_failed` even when the server would have succeeded.
+const CONTEXT_REQUEST_TIMEOUT_MS = 24_000
 
 function formatNumber(value: number | undefined) {
   return new Intl.NumberFormat().format(value ?? 0)
