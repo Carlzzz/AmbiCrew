@@ -136,6 +136,15 @@ export class ConversationService {
     sdkUrl: string,
     options?: SessionStartOptions,
   ): Promise<void> {
+    // Expand a leading `~` to the user's home directory. On Windows the OS
+    // does NOT expand tilde paths automatically — spawning a child with
+    // cwd: "~\Documents\..." either lands on a non-existent directory or, in
+    // permissive shells, on something arbitrary. Either way CLI cannot find the
+    // session transcript and immediately exits with "No conversation found".
+    if (workDir.startsWith('~')) {
+      const rest = workDir.slice(1).replace(/^[\\/]+/, '')
+      workDir = rest ? path.join(os.homedir(), rest) : os.homedir()
+    }
     if (this.deletedSessions.has(sessionId)) {
       throw new ConversationStartupError(
         `Session was deleted before startup completed: ${sessionId}`,
