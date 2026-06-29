@@ -690,7 +690,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const msgs = session.messages
           for (let i = msgs.length - 1; i >= 0; i--) {
             const m = msgs[i]
-            if (m.type === 'tool_use' && m.toolUseId === toolUseId) {
+            if (m && m.type === 'tool_use' && m.toolUseId === toolUseId) {
               isReplay = true
               break
             }
