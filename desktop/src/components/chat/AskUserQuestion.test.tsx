@@ -108,4 +108,55 @@ describe('AskUserQuestion', () => {
       },
     })
   })
+
+  it('keeps custom answers independent per tab', () => {
+    const questions = [
+      { question: 'Q1?', header: 'Q1', options: [{ label: 'A1' }, { label: 'B1' }] },
+      { question: 'Q2?', header: 'Q2', options: [{ label: 'A2' }, { label: 'B2' }] },
+    ]
+    useChatStore.setState((state) => ({
+      sessions: {
+        ...state.sessions,
+        [ACTIVE_TAB]: {
+          ...state.sessions[ACTIVE_TAB],
+          pendingPermission: {
+            requestId: 'perm-1',
+            toolName: 'AskUserQuestion',
+            toolUseId: 'tool-1',
+            input: { questions },
+          },
+        },
+      },
+    }))
+
+    render(<AskUserQuestion toolUseId="tool-1" input={{ questions }} />)
+
+    // Type a custom answer on the first tab
+    fireEvent.change(screen.getByPlaceholderText(/type/i), {
+      target: { value: 'custom for Q1' },
+    })
+
+    // Switch to the second tab — its custom field must be empty, not carry Q1's text
+    fireEvent.click(screen.getByRole('button', { name: /Q2/ }))
+    expect((screen.getByPlaceholderText(/type/i) as HTMLTextAreaElement).value).toBe('')
+
+    // Answer the second tab differently
+    fireEvent.change(screen.getByPlaceholderText(/type/i), {
+      target: { value: 'custom for Q2' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
+      type: 'permission_response',
+      requestId: 'perm-1',
+      allowed: true,
+      updatedInput: {
+        questions,
+        answers: {
+          'Q1?': 'custom for Q1',
+          'Q2?': 'custom for Q2',
+        },
+      },
+    })
+  })
 })

@@ -56,7 +56,7 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
   const inputObject = (input && typeof input === 'object') ? input as Record<string, unknown> : {}
   const [activeTab, setActiveTab] = useState(0)
   const [selections, setSelections] = useState<Record<number, string>>({})
-  const [freeText, setFreeText] = useState('')
+  const [freeTexts, setFreeTexts] = useState<Record<number, string>>({})
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const composingRef = useRef(false)
 
@@ -81,14 +81,11 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
 
   const pendingRequest = pendingPermission?.toolUseId === toolUseId ? pendingPermission : null
   const answeredText = useMemo(() => {
-    if (Object.keys(resultAnswers).length > 0) {
-      return questions
-        .map((question) => resultAnswers[question.question])
-        .filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0)
-        .join(', ')
-    }
-    return freeText.trim() || Object.values(selections).join(', ')
-  }, [freeText, questions, resultAnswers, selections])
+    return questions
+      .map((question) => resultAnswers[question.question])
+      .filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0)
+      .join(', ')
+  }, [questions, resultAnswers])
   const submitted = Object.keys(resultAnswers).length > 0 || hasSubmitted
 
   const handleSelect = (qIndex: number, label: string) => {
@@ -102,30 +99,30 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
       }
       return { ...prev, [qIndex]: label }
     })
-    setFreeText('')
+    setFreeTexts((prev) => {
+      if (!prev[qIndex]) return prev
+      const next = { ...prev }
+      delete next[qIndex]
+      return next
+    })
   }
 
   const handleSubmit = () => {
     if (submitted) return
 
-    const parts: string[] = []
-    for (let i = 0; i < questions.length; i++) {
-      const selected = selections[i]
-      if (selected) parts.push(selected)
-    }
-    const response = freeText.trim() || parts.join('; ') || ''
-    if (!response) return
-
     if (!activeTabId || !pendingRequest) return
 
     const answers = questions.reduce<Record<string, string>>((acc, question, index) => {
-      if (freeText.trim()) {
-        acc[question.question] = freeText.trim()
+      const ft = freeTexts[index]?.trim()
+      if (ft) {
+        acc[question.question] = ft
       } else if (selections[index]) {
         acc[question.question] = selections[index]!
       }
       return acc
     }, {})
+
+    if (Object.keys(answers).length === 0) return
 
     setHasSubmitted(true)
     respondToPermission(activeTabId, pendingRequest.requestId, true, {
@@ -137,7 +134,9 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
   }
 
   // All questions must be answered (via selection or free text) to enable submit
-  const allAnswered = freeText.trim().length > 0 || questions.every((_, i) => selections[i] !== undefined)
+  const allAnswered = questions.every(
+    (_, i) => selections[i] !== undefined || (freeTexts[i]?.trim().length ?? 0) > 0,
+  )
   const safeActiveTab = Math.min(activeTab, questions.length - 1)
   const activeQuestion = questions[safeActiveTab]
 
@@ -212,7 +211,7 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
         {activeQuestion.options && activeQuestion.options.length > 0 && (
           <div className="space-y-2 mb-3">
             {activeQuestion.options.map((opt, optIndex) => {
-              const isSelected = selections[activeTab] === opt.label
+              const isSelected = selections[safeActiveTab] === opt.label
               return (
                 <button
                   key={optIndex}
@@ -265,10 +264,19 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
               {t('question.customResponse')}
             </label>
             <textarea
-              value={freeText}
+              value={freeTexts[safeActiveTab] || ''}
               onChange={(e) => {
-                setFreeText(e.target.value)
-                if (e.target.value.trim()) setSelections({})
+                const idx = safeActiveTab
+                const value = e.target.value
+                setFreeTexts((prev) => ({ ...prev, [idx]: value }))
+                if (value.trim()) {
+                  setSelections((prev) => {
+                    if (prev[idx] === undefined) return prev
+                    const next = { ...prev }
+                    delete next[idx]
+                    return next
+                  })
+                }
               }}
               onCompositionStart={() => { composingRef.current = true }}
               onCompositionEnd={() => { composingRef.current = false }}
