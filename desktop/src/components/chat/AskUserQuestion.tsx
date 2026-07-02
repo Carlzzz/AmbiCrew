@@ -13,6 +13,7 @@ type Question = {
   question: string
   header?: string
   options?: QuestionOption[]
+  multiSelect?: boolean
 }
 
 type AskUserInput = {
@@ -55,7 +56,7 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
   const questions = parseInput(input)
   const inputObject = (input && typeof input === 'object') ? input as Record<string, unknown> : {}
   const [activeTab, setActiveTab] = useState(0)
-  const [selections, setSelections] = useState<Record<number, string>>({})
+  const [selections, setSelections] = useState<Record<number, string[]>>({})
   const [freeTexts, setFreeTexts] = useState<Record<number, string>>({})
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const composingRef = useRef(false)
@@ -90,14 +91,22 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
 
   const handleSelect = (qIndex: number, label: string) => {
     if (submitted) return
+    const isMulti = questions[qIndex]?.multiSelect
     setSelections((prev) => {
-      // Toggle: deselect if already selected
-      if (prev[qIndex] === label) {
+      const current = prev[qIndex] ?? []
+      if (isMulti) {
+        const next = current.includes(label)
+          ? current.filter((l) => l !== label)
+          : [...current, label]
+        return next.length > 0 ? { ...prev, [qIndex]: next } : (() => { const n = { ...prev }; delete n[qIndex]; return n })()
+      }
+      // Single-select: toggle
+      if (current[0] === label) {
         const next = { ...prev }
         delete next[qIndex]
         return next
       }
-      return { ...prev, [qIndex]: label }
+      return { ...prev, [qIndex]: [label] }
     })
     setFreeTexts((prev) => {
       if (!prev[qIndex]) return prev
@@ -116,8 +125,8 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
       const ft = freeTexts[index]?.trim()
       if (ft) {
         acc[question.question] = ft
-      } else if (selections[index]) {
-        acc[question.question] = selections[index]!
+      } else if (selections[index] && selections[index]!.length > 0) {
+        acc[question.question] = selections[index]!.join('; ')
       }
       return acc
     }, {})
@@ -135,7 +144,7 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
 
   // All questions must be answered (via selection or free text) to enable submit
   const allAnswered = questions.every(
-    (_, i) => selections[i] !== undefined || (freeTexts[i]?.trim().length ?? 0) > 0,
+    (_, i) => (selections[i]?.length ?? 0) > 0 || (freeTexts[i]?.trim().length ?? 0) > 0,
   )
   const safeActiveTab = Math.min(activeTab, questions.length - 1)
   const activeQuestion = questions[safeActiveTab]
@@ -176,7 +185,7 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
         <div className="flex px-4 border-b border-[var(--color-outline-variant)]/20 bg-[var(--color-surface-container-low)] overflow-x-auto">
           {questions.map((q, i) => {
             const isActive = safeActiveTab === i
-            const isAnswered = selections[i] !== undefined
+            const isAnswered = (selections[i]?.length ?? 0) > 0
             const tabLabel = q.header || `Q${i + 1}`
             return (
               <button
@@ -211,7 +220,8 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
         {activeQuestion.options && activeQuestion.options.length > 0 && (
           <div className="space-y-2 mb-3">
             {activeQuestion.options.map((opt, optIndex) => {
-              const isSelected = selections[safeActiveTab] === opt.label
+              const currentSelections = selections[safeActiveTab] ?? []
+              const isSelected = currentSelections.includes(opt.label)
               return (
                 <button
                   key={optIndex}
@@ -225,7 +235,9 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
                 >
                   <div className="flex items-start gap-3">
                     {/* Check indicator */}
-                    <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                    <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-${
+                      activeQuestion.multiSelect ? '[4px]' : 'full'
+                    } border-2 flex items-center justify-center transition-colors ${
                       isSelected
                         ? 'border-[var(--color-secondary)] bg-[var(--color-secondary)]'
                         : 'border-[var(--color-outline)]'
@@ -271,7 +283,7 @@ export function AskUserQuestion({ toolUseId, input, result }: Props) {
                 setFreeTexts((prev) => ({ ...prev, [idx]: value }))
                 if (value.trim()) {
                   setSelections((prev) => {
-                    if (prev[idx] === undefined) return prev
+                    if (!prev[idx] || prev[idx]!.length === 0) return prev
                     const next = { ...prev }
                     delete next[idx]
                     return next

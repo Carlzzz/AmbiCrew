@@ -86,6 +86,43 @@ function extractAssistantText(raw: string): string {
   return parts.join('\n\n')
 }
 
+/**
+ * Build the CLI argument list carrying task-specific options.
+ *
+ * The prompt itself is delivered via stdin (see executeTask); model and
+ * permission mode are passed as CLI flags. The mapping mirrors
+ * conversationService.getRuntimeArgs + getPermissionArgs so scheduled
+ * tasks behave the same as interactive sessions.
+ *
+ * - model → `--model <id>` (only when explicitly set)
+ * - permissionMode 'bypassPermissions' → `--dangerously-skip-permissions`
+ * - any other non-'default' permissionMode → `--permission-mode <mode>`
+ * - unset / 'default' → no flag (let the CLI use its own default)
+ */
+export function buildBaseArgs(task: CronTask, sessionId?: string): string[] {
+  const args: string[] = [
+    '--print',
+    '--verbose',
+    '--input-format',
+    'stream-json',
+    '--output-format',
+    'stream-json',
+  ]
+  if (sessionId) args.push('--session-id', sessionId)
+
+  if (task.model) {
+    args.push('--model', task.model)
+  }
+
+  if (task.permissionMode === 'bypassPermissions') {
+    args.push('--dangerously-skip-permissions')
+  } else if (task.permissionMode && task.permissionMode !== 'default') {
+    args.push('--permission-mode', task.permissionMode)
+  }
+
+  return args
+}
+
 // ─── Cron expression matching ──────────────────────────────────────────────────
 
 /**
@@ -419,15 +456,7 @@ export class CronScheduler {
       execPath: process.execPath,
     })
 
-    const baseArgs = [
-      '--print',
-      '--verbose',
-      '--input-format',
-      'stream-json',
-      '--output-format',
-      'stream-json',
-      ...(sessionId ? ['--session-id', sessionId] : []),
-    ]
+    const baseArgs = buildBaseArgs(task, sessionId)
 
     const spawnArgs = launcher
       ? buildClaudeCliArgs(launcher, baseArgs, process.env.CLAUDE_APP_ROOT)

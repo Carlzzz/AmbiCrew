@@ -9,6 +9,7 @@ import * as os from 'os'
 import {
   cronMatches,
   fieldMatches,
+  buildBaseArgs,
   CronScheduler,
   type TaskRun,
 } from '../services/cronScheduler.js'
@@ -150,6 +151,89 @@ describe('cronMatches', () => {
     const sunday = new Date(2026, 3, 5, 10, 0) // April 5, 2026 is Sunday
     expect(cronMatches('0 10 * * 0', sunday)).toBe(true)
     expect(cronMatches('0 10 * * 6', sunday)).toBe(false)
+  })
+})
+
+// ─── buildBaseArgs tests ──────────────────────────────────────────────────
+
+/** Minimal CronTask for arg-building tests. */
+function makeTask(overrides: Partial<CronTask> = {}): CronTask {
+  return {
+    id: 'test',
+    cron: '* * * * *',
+    prompt: 'test prompt',
+    createdAt: Date.now(),
+    ...overrides,
+  }
+}
+
+describe('buildBaseArgs', () => {
+  it('includes the base print/stream-json flags', () => {
+    const args = buildBaseArgs(makeTask())
+    expect(args).toContain('--print')
+    expect(args).toContain('--verbose')
+    expect(args.join(' ')).toContain('--input-format stream-json')
+    expect(args.join(' ')).toContain('--output-format stream-json')
+  })
+
+  it('does not pass model or permission-mode when unset', () => {
+    const args = buildBaseArgs(makeTask())
+    expect(args).not.toContain('--model')
+    expect(args).not.toContain('--permission-mode')
+    expect(args).not.toContain('--dangerously-skip-permissions')
+  })
+
+  it('passes --session-id when a sessionId is provided', () => {
+    const args = buildBaseArgs(makeTask(), 'sess-123')
+    const idx = args.indexOf('--session-id')
+    expect(idx).toBeGreaterThan(-1)
+    expect(args[idx + 1]).toBe('sess-123')
+  })
+
+  it('omits --session-id when no sessionId is provided', () => {
+    const args = buildBaseArgs(makeTask())
+    expect(args).not.toContain('--session-id')
+  })
+
+  it('passes --model with the configured model id', () => {
+    const args = buildBaseArgs(makeTask({ model: 'claude-sonnet-5' }))
+    const idx = args.indexOf('--model')
+    expect(idx).toBeGreaterThan(-1)
+    expect(args[idx + 1]).toBe('claude-sonnet-5')
+  })
+
+  it('passes --permission-mode for a non-default explicit mode', () => {
+    const args = buildBaseArgs(makeTask({ permissionMode: 'plan' }))
+    const idx = args.indexOf('--permission-mode')
+    expect(idx).toBeGreaterThan(-1)
+    expect(args[idx + 1]).toBe('plan')
+    expect(args).not.toContain('--dangerously-skip-permissions')
+  })
+
+  it('passes --permission-mode acceptEdits', () => {
+    const args = buildBaseArgs(makeTask({ permissionMode: 'acceptEdits' }))
+    expect(args).toContain('--permission-mode')
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits')
+  })
+
+  it('maps bypassPermissions to --dangerously-skip-permissions', () => {
+    const args = buildBaseArgs(makeTask({ permissionMode: 'bypassPermissions' }))
+    expect(args).toContain('--dangerously-skip-permissions')
+    expect(args).not.toContain('--permission-mode')
+  })
+
+  it('does not emit a permission flag for "default"', () => {
+    const args = buildBaseArgs(makeTask({ permissionMode: 'default' }))
+    expect(args).not.toContain('--permission-mode')
+    expect(args).not.toContain('--dangerously-skip-permissions')
+  })
+
+  it('emits both --model and --permission-mode when both are set', () => {
+    const args = buildBaseArgs(
+      makeTask({ model: 'claude-haiku-4-5', permissionMode: 'acceptEdits' }),
+    )
+    expect(args[args.indexOf('--model') + 1]).toBe('claude-haiku-4-5')
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits')
   })
 })
 

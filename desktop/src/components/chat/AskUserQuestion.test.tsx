@@ -118,7 +118,7 @@ describe('AskUserQuestion', () => {
       sessions: {
         ...state.sessions,
         [ACTIVE_TAB]: {
-          ...state.sessions[ACTIVE_TAB],
+          ...state.sessions[ACTIVE_TAB]!,
           pendingPermission: {
             requestId: 'perm-1',
             toolName: 'AskUserQuestion',
@@ -155,6 +155,54 @@ describe('AskUserQuestion', () => {
         answers: {
           'Q1?': 'custom for Q1',
           'Q2?': 'custom for Q2',
+        },
+      },
+    })
+  })
+
+  it('supports multiSelect with checkbox indicators and ;-joined answers', () => {
+    const questions = [
+      {
+        question: 'Pick tools?',
+        options: [{ label: 'Bash' }, { label: 'Read' }, { label: 'Write' }],
+        multiSelect: true,
+      },
+    ]
+    useChatStore.setState((state) => ({
+      sessions: {
+        ...state.sessions,
+        [ACTIVE_TAB]: {
+          ...state.sessions[ACTIVE_TAB],
+          pendingPermission: {
+            requestId: 'perm-1',
+            toolName: 'AskUserQuestion',
+            toolUseId: 'tool-1',
+            input: { questions },
+          },
+        },
+      },
+    }))
+
+    render(<AskUserQuestion toolUseId="tool-1" input={{ questions }} />)
+
+    // Multi-select: indicator should be square (checkbox), not round (radio)
+    const indicators = screen.getAllByRole('button', { name: /Bash|Read|Write/ })
+    expect(indicators).toHaveLength(3)
+    // The check indicator div should have rounded-[4px], not rounded-full
+    expect(indicators[0]!.innerHTML).toContain('rounded-[4px]')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Bash$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Write$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
+      type: 'permission_response',
+      requestId: 'perm-1',
+      allowed: true,
+      updatedInput: {
+        questions,
+        answers: {
+          'Pick tools?': 'Bash; Write',
         },
       },
     })
