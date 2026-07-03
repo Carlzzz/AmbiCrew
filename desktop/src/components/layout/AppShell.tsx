@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { ContentRouter } from './ContentRouter'
 import { ToastContainer } from '../shared/Toast'
+import { UpdateChecker } from '../shared/UpdateChecker'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
@@ -93,6 +94,7 @@ export function AppShell() {
         <ContentRouter />
       </main>
       <ToastContainer />
+      <UpdateChecker />
     </div>
   )
 }

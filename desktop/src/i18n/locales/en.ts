@@ -1199,7 +1199,7 @@ export const en = {
   'update.currentVersionUnknown': 'Unknown',
   'update.newVersion': 'New version v{version} available',
   'update.downloading': 'Downloading...',
-  'update.idle': 'Check for updates to compare your installed version with the latest GitHub Release.',
+  'update.idle': 'Check for updates to compare your installed version with the latest CrewCentral release.',
   'update.now': 'Update now',
   'update.later': 'Later',
   'update.progress': 'Downloading update... {progress}%',

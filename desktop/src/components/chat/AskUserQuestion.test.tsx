@@ -172,7 +172,7 @@ describe('AskUserQuestion', () => {
       sessions: {
         ...state.sessions,
         [ACTIVE_TAB]: {
-          ...state.sessions[ACTIVE_TAB],
+          ...state.sessions[ACTIVE_TAB]!,
           pendingPermission: {
             requestId: 'perm-1',
             toolName: 'AskUserQuestion',

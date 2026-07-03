@@ -38,7 +38,10 @@
       "Skill(diagnose)",
       "Skill(diagnose:*)",
       "Skill(tdd)",
-      "Skill(tdd:*)"
+      "Skill(tdd:*)",
+      "Bash(cargo check *)",
+      "Bash(npx tsc *)",
+      "Bash(Select-String \"updateStore\")"
     ]
   }
 }

@@ -12,6 +12,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useProviderStore } from '../../stores/providerStore'
 import { useSessionRuntimeStore } from '../../stores/sessionRuntimeStore'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
+import { useUpdateStore } from '../../stores/updateStore'
 
 type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'older'
 type GroupMode = 'time' | 'project'
@@ -188,6 +189,7 @@ export function Sidebar() {
   }, [])
 
   const t = useTranslation()
+  const updateAvailable = useUpdateStore((s) => s.status === 'available' || s.status === 'downloading' || s.status === 'restarting')
 
   const handleTogglePin = useCallback((id: string) => {
     setContextMenu(null)
@@ -518,6 +520,7 @@ export function Sidebar() {
           label={t('sidebar.settings')}
           onClick={() => useTabStore.getState().openTab(SETTINGS_TAB_ID, t('sidebar.settings'), 'settings')}
           icon={<span className="material-symbols-outlined text-[18px]">settings</span>}
+          badge={updateAvailable}
         >
           {t('sidebar.settings')}
         </NavItem>
@@ -634,6 +637,7 @@ function NavItem({
   onClick,
   icon,
   children,
+  badge,
 }: {
   active: boolean
   collapsed: boolean
@@ -641,6 +645,7 @@ function NavItem({
   onClick: () => void
   icon: React.ReactNode
   children: React.ReactNode
+  badge?: boolean
 }) {
   return (
     <button
@@ -648,7 +653,7 @@ function NavItem({
       aria-label={label}
       title={collapsed ? label : undefined}
       className={`
-        flex items-center transition-colors duration-200
+        relative flex items-center transition-colors duration-200
         ${collapsed ? 'h-10 w-10 justify-center rounded-[var(--radius-md)] px-0 py-0' : 'w-full gap-2.5 rounded-[12px] px-3 py-2.5 text-sm'}
         ${active
           ? 'bg-[var(--color-sidebar-item-active)] font-medium text-[var(--color-text-primary)]'
@@ -662,6 +667,12 @@ function NavItem({
       <span className={`sidebar-copy ${collapsed ? 'sidebar-copy--hidden' : 'sidebar-copy--visible'}`}>
         {children}
       </span>
+      {badge && (
+        <span
+          className={`absolute rounded-full bg-[var(--color-brand)] ${collapsed ? 'top-1.5 right-1.5 h-2 w-2' : 'top-2 right-2 h-1.5 w-1.5'}`}
+          aria-hidden="true"
+        />
+      )}
     </button>
   )
 }

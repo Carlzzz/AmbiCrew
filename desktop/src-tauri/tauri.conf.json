@@ -1,7 +1,7 @@
 {
   "productName": "AmbiCrew",
   "identifier": "com.ambilight.ambicrew",
-  "version": "3.1.6",
+  "version": "3.1.7",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -51,7 +51,7 @@
     },
     "windows": {
       "nsis": {
-        "installMode": "both"
+        "installMode": "currentUser"
       }
     }
   },

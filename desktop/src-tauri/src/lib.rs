@@ -57,6 +57,10 @@ pub fn run() {
             commands::auth::stop_heartbeat,
             // Permissions (macOS)
             commands::permissions::check_mac_permissions,
+            // Updates
+            commands::update::check_for_updates,
+            commands::update::download_update,
+            commands::update::install_update,
         ])
         .setup(|app| {
             log::info!("[tauri] AmbiCrew starting...");

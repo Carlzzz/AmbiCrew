@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useUpdateStore } from '../stores/updateStore'
 import { useTranslation } from '../i18n'
 import { Input } from '../components/shared/Input'
 import { Button } from '../components/shared/Button'
@@ -1216,6 +1217,10 @@ function PluginSettings() {
 function AboutSettings() {
   const t = useTranslation()
   const [version, setVersion] = useState('')
+  const updateStatus = useUpdateStore((s) => s.status)
+  const updateError = useUpdateStore((s) => s.error)
+  const updateCheckedAt = useUpdateStore((s) => s.checkedAt)
+  const checkForUpdates = useUpdateStore((s) => s.checkForUpdates)
 
   useEffect(() => {
     let cancelled = false
@@ -1278,6 +1283,45 @@ function AboutSettings() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Update Check */}
+      <div className="mt-4 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">
+              {t('settings.about.version')}
+            </div>
+            <div className="text-sm text-[var(--color-text-secondary)] mt-1">
+              {updateStatus === 'checking'
+                ? t('update.checking')
+                : updateStatus === 'up-to-date' && updateCheckedAt
+                  ? t('update.upToDate', { version })
+                  : updateStatus === 'error' && updateError
+                    ? updateError
+                    : updateStatus === 'available'
+                      ? t('update.availableLabel')
+                      : t('update.idle')}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+            onClick={() => void checkForUpdates()}
+          >
+            {updateStatus === 'checking'
+              ? t('update.checking')
+              : t('update.checkNow')}
+          </Button>
+        </div>
+        {updateCheckedAt && updateStatus === 'up-to-date' && (
+          <p className="text-xs text-[var(--color-text-tertiary)] mt-2">
+            {t('update.checkedAt', {
+              time: new Date(updateCheckedAt).toLocaleTimeString(),
+            })}
+          </p>
+        )}
       </div>
 
       {/* Copyright */}

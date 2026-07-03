@@ -1201,7 +1201,7 @@ export const zh: Record<TranslationKey, string> = {
   'update.currentVersionUnknown': '未知版本',
   'update.newVersion': '新版本 v{version} 可用',
   'update.downloading': '下载中...',
-  'update.idle': '点击检查更新，对比当前安装版本和 GitHub Releases 的最新版本。',
+  'update.idle': '点击检查更新，对比当前安装版本和 CrewCentral 的最新版本。',
   'update.now': '立即更新',
   'update.later': '稍后',
   'update.progress': '正在下载更新... {progress}%',
