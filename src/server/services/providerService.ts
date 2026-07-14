@@ -361,6 +361,11 @@ export class ProviderService {
       ? `http://127.0.0.1:${ProviderService.serverPort}${proxyPath}`
       : provider.baseUrl
 
+    const modelContextWindows = {
+      ...getPresetModelContextWindows(provider.presetId),
+      ...(provider.modelContextWindows ?? {}),
+    }
+
     // CrewCentral: baseUrl comes from LLM_PROXY_BASE_URL env var, auth via JWT
     if (provider.presetId === 'crewcentral') {
       const proxyBaseUrl =
@@ -376,12 +381,10 @@ export class ProviderService {
         ANTHROPIC_DEFAULT_HAIKU_MODEL: provider.models.haiku,
         ANTHROPIC_DEFAULT_SONNET_MODEL: provider.models.sonnet,
         ANTHROPIC_DEFAULT_OPUS_MODEL: provider.models.opus,
+        ...(Object.keys(modelContextWindows).length > 0 && {
+          [MODEL_CONTEXT_WINDOWS_ENV_KEY]: JSON.stringify(modelContextWindows),
+        }),
       }
-    }
-
-    const modelContextWindows = {
-      ...getPresetModelContextWindows(provider.presetId),
-      ...(provider.modelContextWindows ?? {}),
     }
 
     const presetDefaultEnv = getPresetDefaultEnv(provider.presetId)

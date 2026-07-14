@@ -98,10 +98,10 @@ describe('ProviderService', () => {
         presetId: 'crewcentral',
         name: 'CrewCentral',
         models: {
-          main: 'MiniMax-M2.7-highspeed',
-          haiku: 'MiniMax-M2.7-highspeed',
-          sonnet: 'MiniMax-M2.7-highspeed',
-          opus: 'MiniMax-M2.7-highspeed',
+          main: 'MiniMax-M3',
+          haiku: 'MiniMax-M3',
+          sonnet: 'MiniMax-M3',
+          opus: 'MiniMax-M3',
         },
       })
     })
@@ -408,6 +408,24 @@ describe('ProviderService', () => {
       expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
     })
 
+    test('CrewCentral runtime env should include preset model context windows', async () => {
+      const svc = new ProviderService()
+
+      const runtimeEnv = await svc.getProviderRuntimeEnv('crewcentral-default')
+      const modelContextWindows = JSON.parse(
+        runtimeEnv.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS,
+      ) as Record<string, number>
+
+      expect(modelContextWindows).toMatchObject({
+        'MiniMax-M3': 1048576,
+        'MiniMax-M2.7-highspeed': 204800,
+        'MiniMax-M2.7': 204800,
+        'openai/gpt-5.6-luna': 1000000,
+        'openai/gpt-5.6-sol': 1000000,
+        'openai/gpt-5.6-terra': 1000000,
+      })
+    })
+
     test('should honor provider auth env strategies on activation and runtime env', async () => {
       const svc = new ProviderService()
 
@@ -609,7 +627,7 @@ describe('ProviderService', () => {
       const svc = new ProviderService()
       const active = await svc.getProviderForProxy()
       expect(active).toEqual({
-        baseUrl: '',
+        baseUrl: process.env.LLM_PROXY_BASE_URL?.trim() || '',
         apiKey: '',
         apiFormat: 'anthropic',
       })
