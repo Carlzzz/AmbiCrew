@@ -157,9 +157,10 @@ describe('provider presets API', () => {
       ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'none',
     })
     expect(shengsuanyun?.modelContextWindows?.['anthropic/claude-opus-4.7']).toBe(1000000)
-    expect(crewcentral?.modelContextWindows?.['openai/gpt-5.6-luna']).toBe(1000000)
-    expect(crewcentral?.modelContextWindows?.['openai/gpt-5.6-sol']).toBe(1000000)
-    expect(crewcentral?.modelContextWindows?.['openai/gpt-5.6-terra']).toBe(1000000)
+    expect(crewcentral?.modelContextWindows?.['gpt-5.6-luna']).toBe(272000)
+    expect(crewcentral?.modelContextWindows?.['gpt-5.6-sol']).toBe(272000)
+    expect(crewcentral?.modelContextWindows?.['gpt-5.6-terra']).toBe(272000)
+    expect(crewcentral?.modelContextWindows?.['claude-opus-4-8']).toBe(1000000)
   })
 
   test('GET and PUT /api/providers/settings read and write AmbiCrew settings.json', async () => {
