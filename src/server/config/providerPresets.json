@@ -227,7 +227,10 @@
     "modelContextWindows": {
       "MiniMax-M3": 1048576,
       "MiniMax-M2.7-highspeed": 204800,
-      "MiniMax-M2.7": 204800
+      "MiniMax-M2.7": 204800,
+      "openai/gpt-5.6-luna": 1000000,
+      "openai/gpt-5.6-sol": 1000000,
+      "openai/gpt-5.6-terra": 1000000
     }
   }
 ]
