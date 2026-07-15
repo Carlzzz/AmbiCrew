@@ -25,6 +25,22 @@ async function tick(): Promise<void> {
     const token = await centralOAuthService.ensureFreshAccessToken()
     if (!token) {
       console.warn('[CentralTokenRefresh] No token available — user may need to /login')
+      return
+    }
+    // Self-heal the device heartbeat: if we hold a valid token but the
+    // heartbeat loop isn't running, (re)start it. Keeps the heartbeat bound
+    // to the same lifecycle as token refresh so the device can't get stuck
+    // "logged in but never sending heartbeats" (shows offline in CrewCentral).
+    try {
+      const { ensureHeartbeatRunning } = await import(
+        '../../services/central/auth-controller.js'
+      )
+      ensureHeartbeatRunning()
+    } catch (hbErr) {
+      console.error(
+        '[CentralTokenRefresh] ensureHeartbeatRunning failed:',
+        hbErr instanceof Error ? hbErr.message : hbErr,
+      )
     }
   } catch (err) {
     console.error(

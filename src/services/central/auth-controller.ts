@@ -74,6 +74,23 @@ function startHeartbeatIfNeeded(): void {
   })
 }
 
+/**
+ * Self-healing hook for the heartbeat. The token-refresh timer calls this on
+ * every tick: if we still hold a valid token but the heartbeat is not running
+ * (e.g. it was stopped by a transient onExpire, or never started because the
+ * process didn't restore a session), restart it. Without this the process can
+ * get stuck "logged in, token refreshing, but never sending heartbeats" — which
+ * makes the device show offline in CrewCentral indefinitely.
+ */
+export function ensureHeartbeatRunning(): void {
+  if (stopHeartbeat) return
+  if (!getAccessToken()) return
+  if (state.status !== 'logged_in') {
+    state = { status: 'logged_in', displayName: getDisplayName() || '已登录' }
+  }
+  startHeartbeatIfNeeded()
+}
+
 function stopHeartbeatIfRunning(): void {
   if (stopHeartbeat) {
     stopHeartbeat()

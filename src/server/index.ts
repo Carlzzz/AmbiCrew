@@ -285,9 +285,31 @@ export function startServer(port = PORT, host = HOST) {
   cronScheduler.start()
 
   // Proactively refresh CrewCentral tokens so they don't silently expire
-  // while CLI subprocesses are idle (the Tauri frontend heartbeat doesn't
-  // run in this process).
+  // while CLI subprocesses are idle.
   startCentralTokenRefreshTimer()
+
+  // Start the CrewCentral device heartbeat in this (server) process. The
+  // heartbeat used to rely on the CLI entrypoint (init.ts) calling
+  // tryRestoreSession(), but the desktop app runs the sidecar in `server`
+  // mode and never goes through init.ts — so when the user only had the
+  // desktop app open (no CLI), no heartbeat was ever sent and the device
+  // showed offline in CrewCentral even though the token kept refreshing.
+  // Restoring the session here starts the heartbeat wherever this server
+  // runs (desktop sidecar or standalone), matching the token-refresh timer's
+  // lifecycle.
+  if (
+    (process.env.AUTH_MODE || '').toLowerCase() === 'central' &&
+    process.env.CREWCENTRAL_AUTH_LOGIN_URL
+  ) {
+    void import('../services/central/auth-controller.js')
+      .then(({ tryRestoreSession }) => tryRestoreSession())
+      .catch((error) => {
+        console.error(
+          '[Server] CrewCentral session restore failed:',
+          error instanceof Error ? error.message : error,
+        )
+      })
+  }
 
   // Install the bundled CLI launcher (ambi) into ~/.local/bin BEFORE
   // signaling readiness. Otherwise the Electron main process opens the
