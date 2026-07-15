@@ -5,7 +5,8 @@
  * Key differences from the Electron version:
  * - Device UUID persisted to ~/.claude/device.json (instead of SQLite)
  * - No GUI dialogs; uses console + process.exit for reboot
- * - No app.getVersion(); reads from process.env.npm_package_version
+ * - No app.getVersion(); reads the version from the MACRO global (same source
+ *   as `/version` and the auto-updater), injected by preload.ts.
  */
 
 import os from 'node:os'
@@ -13,6 +14,8 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+
+declare const MACRO: { VERSION: string }
 
 export interface DeviceInfo {
   device_uuid: string
@@ -81,7 +84,7 @@ export async function getDeviceInfo(): Promise<DeviceInfo> {
     device_uuid: deviceUuid,
     mac_address: mac,
     os_version: `${os.type()} ${os.release()}`,
-    client_version: process.env.npm_package_version || '0.0.0',
+    client_version: (typeof MACRO !== 'undefined' && MACRO?.VERSION) || '0.0.0',
     platform: process.platform,
   }
   return cachedDeviceInfo
@@ -133,25 +136,6 @@ function isKickOrBanRc(rc: unknown): boolean {
   return n === RC_DEVICE_BANNED || n === RC_DEVICE_KICKED
 }
 
-function hasRebootCommand(body: Record<string, unknown> | null): boolean {
-  if (!body) return false
-  const data = body.data
-  const commands: unknown[] = (() => {
-    if (data && typeof data === 'object' && !Array.isArray(data) && 'commands' in data) {
-      return Array.isArray((data as { commands?: unknown }).commands)
-        ? ((data as { commands?: unknown }).commands as unknown[])
-        : []
-    }
-    return Array.isArray(body.commands) ? (body.commands as unknown[]) : []
-  })()
-  return commands.some(
-    (c) =>
-      c &&
-      typeof c === 'object' &&
-      String((c as { command?: unknown }).command ?? '').trim().toLowerCase() === 'reboot',
-  )
-}
-
 // ── Heartbeat management ────────────────────────────────────────────────────
 
 export interface DeviceManagerDeps {
@@ -171,7 +155,6 @@ const MAX_CONSECUTIVE_401 = 3
 
 export function startDeviceHeartbeat(deps: DeviceManagerDeps): () => void {
   let lastLoggedInAt = 0
-  let firstHeartbeatDone = false
   let consecutive401 = 0
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   let stopped = false
@@ -229,19 +212,6 @@ export function startDeviceHeartbeat(deps: DeviceManagerDeps): () => void {
       if (!res.ok) return
 
       consecutive401 = 0
-
-      const rc = body?.rc
-      if (rc !== undefined && rc !== 0 && rc !== '0') return
-
-      if (hasRebootCommand(body)) {
-        if (firstHeartbeatDone) {
-          console.log('[device] Received reboot command from central. Restarting...')
-          process.exit(0)
-        } else {
-          // Ignore reboot on first heartbeat (may be stale from previous session)
-        }
-      }
-      firstHeartbeatDone = true
     } catch {
       // Network unreachable — silently retry on next interval
     }
