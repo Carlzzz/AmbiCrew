@@ -1,7 +1,7 @@
 {
   "productName": "AmbiCrew",
   "identifier": "com.ambilight.ambicrew",
-  "version": "3.1.8",
+  "version": "3.1.9",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
