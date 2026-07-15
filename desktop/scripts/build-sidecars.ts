@@ -1,9 +1,31 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const desktopRoot = path.resolve(import.meta.dir, '..')
 const repoRoot = path.resolve(desktopRoot, '..')
 const sidecarsDir = path.join(desktopRoot, 'src-tauri', 'sidecars')
+
+// Version baked into the compiled sidecar. preload.ts reads
+// CLAUDE_CODE_LOCAL_VERSION to populate MACRO.VERSION (used by `/version`, the
+// auto-updater, and the CrewCentral device heartbeat). A compiled binary runs
+// where this env var is absent, so we inline it at build time via Bun's
+// `define`. Source of truth: desktop/package.json (synced with tauri.conf.json).
+async function resolveAppVersion(): Promise<string> {
+  if (process.env.CLAUDE_CODE_LOCAL_VERSION) return process.env.CLAUDE_CODE_LOCAL_VERSION
+  try {
+    const pkg = JSON.parse(await readFile(path.join(desktopRoot, 'package.json'), 'utf-8')) as {
+      version?: string
+    }
+    if (pkg.version) return pkg.version
+  } catch {
+    // fall through to default
+  }
+  return '0.0.0'
+}
+
+const appVersion = await resolveAppVersion()
+const appBuildTime = new Date().toISOString()
+console.log(`[build-sidecars] Baking version ${appVersion} into sidecars`)
 
 const targetTriple =
   process.env.TAURI_ENV_TARGET_TRIPLE ||
@@ -191,6 +213,12 @@ async function compileExecutable({
     minify: { whitespace: true, identifiers: true, syntax: true },
     sourcemap: 'none',
     target: 'bun',
+    // Inline version/build-time so MACRO.VERSION is correct in the compiled
+    // binary (env vars don't survive into the shipped executable).
+    define: {
+      'process.env.CLAUDE_CODE_LOCAL_VERSION': JSON.stringify(appVersion),
+      'process.env.CLAUDE_CODE_LOCAL_BUILD_TIME': JSON.stringify(appBuildTime),
+    },
     // 可选 npm 包：开 telemetry / 用 sharp 图像 / 用 Bedrock/Vertex 等
     // 替代 provider 时才需要，全部不在顶层 package.json 里。标 external
     // 让 bun build 跳过解析；运行时 import 在没装时自然失败，由 try/catch

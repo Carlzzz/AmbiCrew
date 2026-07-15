@@ -18,7 +18,7 @@
  */
 
 import { execSync } from 'node:child_process'
-import { mkdirSync, existsSync, rmSync, writeFileSync, readdirSync, symlinkSync } from 'node:fs'
+import { mkdirSync, existsSync, rmSync, writeFileSync, readdirSync, readFileSync, symlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -26,6 +26,34 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopDir = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(desktopDir, '..')
 const resourcesDir = path.join(desktopDir, 'resources')
+
+// Resolve the app version to bake into the compiled sidecar. preload.ts reads
+// CLAUDE_CODE_LOCAL_VERSION at startup to populate MACRO.VERSION (used by
+// `/version`, the auto-updater, and the CrewCentral device heartbeat). Without
+// this, the compiled binary falls back to '999.0.0-local'. Source of truth is
+// desktop/package.json, kept in sync with tauri.conf.json.
+function resolveAppVersion(): string {
+  if (process.env.CLAUDE_CODE_LOCAL_VERSION) {
+    return process.env.CLAUDE_CODE_LOCAL_VERSION
+  }
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(desktopDir, 'package.json'), 'utf-8')) as {
+      version?: string
+    }
+    if (pkg.version) return pkg.version
+  } catch {
+    // fall through to default
+  }
+  return '0.0.0'
+}
+
+const appVersion = resolveAppVersion()
+const buildEnv = {
+  ...process.env,
+  CLAUDE_CODE_LOCAL_VERSION: appVersion,
+  CLAUDE_CODE_LOCAL_BUILD_TIME: new Date().toISOString(),
+}
+console.log(`[build-server] Baking version ${appVersion} into sidecar`)
 
 const targetPlatform = process.argv[2] || process.platform
 const targetArch = process.argv[3] || process.arch
@@ -158,9 +186,17 @@ for (const pkg of EXTERNAL_PACKAGES) {
 // Phase 2: Build
 const externalFlags = EXTERNAL_PACKAGES.map((p) => `--external:${p}`).join(' ')
 
+// Inline the version/build-time at compile time. A compiled binary runs in the
+// user's environment where these env vars don't exist, so build-time env alone
+// is not enough — --define replaces the process.env reads with string literals.
+const defineFlags = [
+  `--define process.env.CLAUDE_CODE_LOCAL_VERSION=${JSON.stringify(appVersion)}`,
+  `--define process.env.CLAUDE_CODE_LOCAL_BUILD_TIME=${JSON.stringify(buildEnv.CLAUDE_CODE_LOCAL_BUILD_TIME)}`,
+].join(' ')
+
 try {
   execSync(
-    `bun build --compile --target=${target} ${externalFlags} desktop/sidecars/desktop-sidecar.ts --outfile="${outfile}"`,
+    `bun build --compile --target=${target} ${externalFlags} ${defineFlags} desktop/sidecars/desktop-sidecar.ts --outfile="${outfile}"`,
     {
       cwd: repoRoot,
       stdio: 'inherit',
@@ -230,7 +266,7 @@ try {
   const adapterExternalFlags = ADAPTER_EXTERNAL_PACKAGES.map((p) => `--external:${p}`).join(' ')
 
   execSync(
-    `bun build --compile --target=${target} ${adapterExternalFlags} desktop/sidecars/adapter-sidecar.ts --outfile="${adapterOutfile}"`,
+    `bun build --compile --target=${target} ${adapterExternalFlags} ${defineFlags} desktop/sidecars/adapter-sidecar.ts --outfile="${adapterOutfile}"`,
     {
       cwd: repoRoot,
       stdio: 'inherit',
