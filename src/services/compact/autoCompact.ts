@@ -249,6 +249,7 @@ export async function autoCompactIfNeeded(
   wasCompacted: boolean
   compactionResult?: CompactionResult
   consecutiveFailures?: number
+  circuitBreakerTripped?: boolean
 }> {
   if (isEnvTruthy(process.env.DISABLE_COMPACT)) {
     return { wasCompacted: false }
@@ -346,6 +347,6 @@ export async function autoCompactIfNeeded(
         { level: 'warn' },
       )
     }
-    return { wasCompacted: false, consecutiveFailures: nextFailures }
+    return { wasCompacted: false, consecutiveFailures: nextFailures, circuitBreakerTripped: nextFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES }
   }
 }

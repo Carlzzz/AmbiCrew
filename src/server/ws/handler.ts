@@ -552,7 +552,15 @@ async function restartSessionWithPermissionMode(
     await settingsService.setPermissionMode(mode)
 
     const workDir = conversationService.getSessionWorkDir(sessionId)
-    conversationService.stopSession(sessionId)
+    // If a startup is in flight (CLI still within its 3s grace window), wait
+    // for it to settle before stopping - same race as runtime-config restart.
+    const pendingStartup = sessionStartupPromises.get(sessionId)
+    if (pendingStartup) {
+      await pendingStartup.catch(() => undefined)
+    }
+    // Wait for the old CLI to fully exit before spawning a new one (a
+    // lingering old process can trip the 3s startup grace -> code 143).
+    await conversationService.stopSessionAndWait(sessionId)
 
     // Rebuild runtime settings (will pick up the persisted mode)
     const runtimeSettings = await getRuntimeSettings(sessionId)
@@ -602,7 +610,20 @@ async function restartSessionWithRuntimeConfig(
     })
 
     const workDir = conversationService.getSessionWorkDir(sessionId)
-    conversationService.stopSession(sessionId)
+    // If a startup is in flight (CLI still within its 3s grace window,
+    // sessions.set already done but startupPending=true), wait for it to
+    // settle before stopping. Otherwise stopSessionAndWait kills the
+    // not-yet-started CLI and startSession's grace reports
+    // "CLI exited during startup with code 143".
+    const pendingStartup = sessionStartupPromises.get(sessionId)
+    if (pendingStartup) {
+      await pendingStartup.catch(() => undefined)
+    }
+    // Then wait for the old CLI to fully exit before spawning a new one.
+    // A bare stopSession() fires SIGTERM and returns immediately; if the
+    // old process lingers (held by a hung upstream prefill) it can race
+    // the new spawn and trip the 3s startup grace -> code 143.
+    await conversationService.stopSessionAndWait(sessionId)
 
     const runtimeSettings = await getRuntimeSettings(sessionId)
     const sdkUrl =

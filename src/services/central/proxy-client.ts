@@ -144,6 +144,11 @@ export async function fetchProxyModelList(
     return fetch(url, {
       method: 'GET',
       headers: buildHeaders({ token, username: ctx.username, sessionId: ctx.sessionId }),
+      // Bound the model-list fetch so a hung gateway cannot pin the
+      // /api/models handler (and thus the desktop fetchAll) indefinitely.
+      // 8s is generous for a list endpoint; on timeout the caller falls
+      // back to direct models / null.
+      signal: AbortSignal.timeout(8_000),
     })
   }
 

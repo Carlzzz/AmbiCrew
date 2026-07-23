@@ -31,9 +31,16 @@ export function anthropicToOpenaiChat(body: AnthropicRequest): OpenAIChatRequest
     }
   }
 
+  // Collect all tool_use ids up front so we can drop orphan tool_result
+  // blocks whose matching tool_use was removed by truncation/compaction/
+  // cross-format resume. Forwarding an orphan tool_result (a tool_call_id
+  // with no matching tool_call) makes upstream reject the whole request
+  // with "tool id not found" (400).
+  const toolUseIds = collectToolUseIds(body.messages)
+
   // Convert messages
   for (const msg of body.messages) {
-    convertMessage(msg, messages)
+    convertMessage(msg, messages, toolUseIds)
   }
 
   // Build request
@@ -90,7 +97,18 @@ export function anthropicToOpenaiChat(body: AnthropicRequest): OpenAIChatRequest
   return result
 }
 
-function convertMessage(msg: AnthropicMessage, output: OpenAIChatMessage[]): void {
+function collectToolUseIds(messages: AnthropicMessage[]): Set<string> {
+  const ids = new Set<string>()
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue
+    for (const block of msg.content) {
+      if (block.type === 'tool_use') ids.add(block.id)
+    }
+  }
+  return ids
+}
+
+function convertMessage(msg: AnthropicMessage, output: OpenAIChatMessage[], toolUseIds: Set<string>): void {
   const content = msg.content
 
   // Simple string content
@@ -106,13 +124,13 @@ function convertMessage(msg: AnthropicMessage, output: OpenAIChatMessage[]): voi
   }
 
   if (msg.role === 'user') {
-    convertUserMessage(content, output)
+    convertUserMessage(content, output, toolUseIds)
   } else {
     convertAssistantMessage(content, output)
   }
 }
 
-function convertUserMessage(blocks: AnthropicContentBlock[], output: OpenAIChatMessage[]): void {
+function convertUserMessage(blocks: AnthropicContentBlock[], output: OpenAIChatMessage[], toolUseIds: Set<string>): void {
   // Separate tool_result blocks from other content
   const contentParts: OpenAIChatContentPart[] = []
 
@@ -123,6 +141,13 @@ function convertUserMessage(blocks: AnthropicContentBlock[], output: OpenAIChatM
       const url = `data:${block.source.media_type};base64,${block.source.data}`
       contentParts.push({ type: 'image_url', image_url: { url } })
     } else if (block.type === 'tool_result') {
+      // Drop orphan tool_result: its matching tool_use was removed by
+      // truncation/compaction/cross-format resume. Forwarding it would
+      // send a tool_call_id with no matching tool_call, which upstream
+      // rejects as 'tool id not found' (400).
+      if (!toolUseIds.has(block.tool_use_id)) {
+        continue
+      }
       // tool_result → separate tool message
       const resultContent = typeof block.content === 'string'
         ? block.content

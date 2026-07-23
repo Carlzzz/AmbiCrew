@@ -165,17 +165,41 @@ describe('anthropicToOpenaiChat', () => {
     const req: AnthropicRequest = {
       model: 'gpt-4',
       max_tokens: 100,
+      messages: [
+        {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'tc_1', name: 'get_weather', input: { city: 'NYC' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'tc_1', content: 'Sunny, 72°F' },
+          ],
+        },
+      ],
+    }
+    const result = anthropicToOpenaiChat(req)
+    const toolMsg = result.messages.find((m) => m.role === 'tool')
+    expect(toolMsg).toBeDefined()
+    expect(toolMsg!.tool_call_id).toBe('tc_1')
+    expect(toolMsg!.content).toBe('Sunny, 72°F')
+  })
+
+  test('orphan tool_result (no matching tool_use) is dropped', () => {
+    const req: AnthropicRequest = {
+      model: 'gpt-4',
+      max_tokens: 100,
       messages: [{
         role: 'user',
         content: [
-          { type: 'tool_result', tool_use_id: 'tc_1', content: 'Sunny, 72°F' },
+          { type: 'tool_result', tool_use_id: 'call_orphan', content: 'stale result' },
         ],
       }],
     }
     const result = anthropicToOpenaiChat(req)
-    expect(result.messages[0].role).toBe('tool')
-    expect(result.messages[0].tool_call_id).toBe('tc_1')
-    expect(result.messages[0].content).toBe('Sunny, 72°F')
+    expect(result.messages.find((m) => m.role === 'tool')).toBeUndefined()
   })
 
   test('image content conversion', () => {
@@ -355,12 +379,20 @@ describe('anthropicToOpenaiResponses', () => {
     const req: AnthropicRequest = {
       model: 'gpt-4o',
       max_tokens: 100,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'tool_result', tool_use_id: 'tc_1', content: 'found it' },
-        ],
-      }],
+      messages: [
+        {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'tc_1', name: 'search', input: { q: 'test' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'tc_1', content: 'found it' },
+          ],
+        },
+      ],
     }
     const result = anthropicToOpenaiResponses(req)
     const fco = result.input.find((i) => i.type === 'function_call_output')
@@ -369,6 +401,21 @@ describe('anthropicToOpenaiResponses', () => {
       expect(fco.call_id).toBe('tc_1')
       expect(fco.output).toBe('found it')
     }
+  })
+
+  test('orphan tool_result (no matching tool_use) is dropped', () => {
+    const req: AnthropicRequest = {
+      model: 'gpt-4o',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'call_orphan', content: 'stale result' },
+        ],
+      }],
+    }
+    const result = anthropicToOpenaiResponses(req)
+    expect(result.input.find((i) => i.type === 'function_call_output')).toBeUndefined()
   })
 
   test('thinking → reasoning', () => {

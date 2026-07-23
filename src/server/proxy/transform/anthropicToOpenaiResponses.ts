@@ -19,9 +19,16 @@ import type {
 export function anthropicToOpenaiResponses(body: AnthropicRequest): OpenAIResponsesRequest {
   const input: OpenAIResponsesInputItem[] = []
 
+  // Collect all tool_use ids up front so we can drop orphan tool_result
+  // blocks whose matching tool_use was removed by truncation/compaction/
+  // cross-format resume. Forwarding an orphan function_call_output (a
+  // call_id with no matching function_call) makes upstream reject the
+  // whole request with "tool id not found" (400).
+  const toolUseIds = collectToolUseIds(body.messages)
+
   // Convert messages to input items
   for (const msg of body.messages) {
-    convertMessageToInputItems(msg, input)
+    convertMessageToInputItems(msg, input, toolUseIds)
   }
 
   const result: OpenAIResponsesRequest = {
@@ -81,7 +88,18 @@ export function anthropicToOpenaiResponses(body: AnthropicRequest): OpenAIRespon
   return result
 }
 
-function convertMessageToInputItems(msg: AnthropicMessage, output: OpenAIResponsesInputItem[]): void {
+function collectToolUseIds(messages: AnthropicMessage[]): Set<string> {
+  const ids = new Set<string>()
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue
+    for (const block of msg.content) {
+      if (block.type === 'tool_use') ids.add(block.id)
+    }
+  }
+  return ids
+}
+
+function convertMessageToInputItems(msg: AnthropicMessage, output: OpenAIResponsesInputItem[], toolUseIds: Set<string>): void {
   const content = msg.content
 
   // Simple string content
@@ -125,6 +143,13 @@ function convertMessageToInputItems(msg: AnthropicMessage, output: OpenAIRespons
         arguments: typeof block.input === 'string' ? block.input : JSON.stringify(block.input),
       })
     } else if (block.type === 'tool_result') {
+      // Drop orphan tool_result: its matching tool_use was removed by
+      // truncation/compaction/cross-format resume. Forwarding it would
+      // send a call_id with no matching function_call, which upstream
+      // rejects as "tool id not found" (400).
+      if (!toolUseIds.has(block.tool_use_id)) {
+        continue
+      }
       // Lift to function_call_output item
       const resultContent = typeof block.content === 'string'
         ? block.content

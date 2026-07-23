@@ -451,7 +451,7 @@ async function* queryLoop(
     )
 
     queryCheckpoint('query_autocompact_start')
-    const { compactionResult, consecutiveFailures } = await deps.autocompact(
+    const { compactionResult, consecutiveFailures, circuitBreakerTripped } = await deps.autocompact(
       messagesForQuery,
       toolUseContext,
       {
@@ -540,6 +540,17 @@ async function* queryLoop(
         ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
         consecutiveFailures,
       }
+    }
+
+    if (circuitBreakerTripped) {
+      // The autocompact circuit breaker has tripped: the context is
+      // irrecoverably over the model's effective limit and further compaction
+      // attempts will be skipped. Tell the user explicitly so they stop
+      // retrying into doomed 502/prefill-timeout loops and start fresh.
+      yield createSystemMessage(
+        'This conversation has grown too long for the model to process reliably. Automatic compaction has failed multiple times and is now disabled for this session. Please start a new conversation to continue.',
+        'warning',
+      )
     }
 
     //TODO: no need to set toolUseContext.messages during set-up since it is updated here
