@@ -20,7 +20,7 @@ release/
 
 # Claude Code worktrees
 .claude
-
+.playwright-mcp
 # IDE & OS
 .vscode/
 .idea/

@@ -6,6 +6,7 @@ import { useSessionStore } from './sessionStore'
 import { useCLITaskStore } from './cliTaskStore'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
 import { useTabStore } from './tabStore'
+import { useWorkspacePanelStore } from './workspacePanelStore'
 import { randomSpinnerVerb } from '../config/spinnerVerbs'
 import { notifyDesktop } from '../lib/desktopNotifications'
 import { AGENT_LIFECYCLE_TYPES } from '../types/team'
@@ -63,6 +64,12 @@ export type PerSessionState = {
   } | null
   authRestartState?: 'restarting' | 'failed'
   authRetryTimer?: ReturnType<typeof setTimeout> | null
+  /** User toggled "live preview" for this session's development. */
+  livePreview?: boolean
+  /** preview-edit setup has run (plugin + dev server + OpenPreview); don't re-run. */
+  livePreviewSetupDone?: boolean
+  /** Framework for the preview-edit scaffold (react/vue/svelte). */
+  livePreviewFramework?: 'react' | 'vue' | 'svelte'
 }
 
 const DEFAULT_SESSION_STATE: PerSessionState = {
@@ -118,6 +125,9 @@ type ChatStore = {
   setSessionRuntime: (sessionId: string, selection: RuntimeSelection) => void
   setSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void
   stopGeneration: (sessionId: string) => void
+  setLivePreview: (sessionId: string, on: boolean) => void
+  setLivePreviewFramework: (sessionId: string, framework: 'react' | 'vue' | 'svelte') => void
+  detectLivePreview: (sessionId: string) => Promise<void>
   loadHistory: (sessionId: string) => Promise<void>
   reloadHistory: (sessionId: string) => Promise<void>
   queueComposerPrefill: (
@@ -302,9 +312,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   sendMessage: (sessionId, content, attachments, options) => {
+    const existingSession = get().sessions[sessionId]
+    // Live-preview toggle: the first send while the toggle is on invokes the
+    // preview-edit skill (sets up plugin + dev server + opens preview) and
+    // implements the user's request. Subsequent sends are normal - HMR keeps
+    // the preview in sync, so we don't re-run the skill each turn.
+    const livePreviewSetup = !!existingSession?.livePreview && !existingSession?.livePreviewSetupDone
+    const livePreviewFramework = existingSession?.livePreviewFramework || 'react'
+    const finalContent = livePreviewSetup ? `/preview-edit ${livePreviewFramework} ${content}` : content
     const userFacingContent =
       options?.displayContent?.trim() || content.trim()
-    const modelFacingContent = buildModelContent(content, attachments)
+    const modelFacingContent = buildModelContent(finalContent, attachments)
     const isMemberSession = !!useTeamStore.getState().getMemberBySessionId(sessionId)
     const visibleAttachments = options?.displayAttachments ?? attachments
     const uiAttachments: UIAttachment[] | undefined =
@@ -383,6 +401,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             elapsedTimer: timer,
             connectionState: isMemberSession ? 'connected' : session.connectionState,
             authRestartState: undefined,
+            livePreviewSetupDone: livePreviewSetup ? true : (session.livePreviewSetupDone ?? false),
           },
         },
       }
@@ -410,7 +429,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return
     }
 
-    wsManager.send(sessionId, { type: 'user_message', content, attachments })
+    wsManager.send(sessionId, { type: 'user_message', content: finalContent, attachments })
   },
 
   respondToPermission: (sessionId, requestId, allowed, options) => {
@@ -474,6 +493,58 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         },
       }
     })
+  },
+
+  setLivePreview: (sessionId, on) => {
+    set((s) => {
+      const session = s.sessions[sessionId]
+      if (!session) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: {
+            ...session,
+            livePreview: on,
+            // Turning off resets setup so re-enabling re-runs it (e.g. after the
+            // dev server died). Turning on keeps prior setup state.
+            livePreviewSetupDone: on ? session.livePreviewSetupDone : false,
+          },
+        },
+      }
+    })
+  },
+
+  setLivePreviewFramework: (sessionId, framework) => {
+    set((s) => {
+      const session = s.sessions[sessionId]
+      if (!session) return s
+      return {
+        sessions: { ...s.sessions, [sessionId]: { ...session, livePreviewFramework: framework } },
+      }
+    })
+  },
+
+  // Derive the live-preview toggle from the project itself: if the
+  // source-locator plugin file is present, live preview is "on". This keeps
+  // the toggle consistent across reloads / reopens (the scaffold persists on
+  // disk, so the state follows it). setupDone resets so the dev server
+  // re-starts on the next send (it died with the previous CLI subprocess).
+  detectLivePreview: async (sessionId) => {
+    try {
+      const result = await sessionsApi.getWorkspaceFile(sessionId, 'ambicrew-source-locator.js')
+      const hasPlugin = !!result && result.state === 'ok'
+      set((s) => {
+        const session = s.sessions[sessionId] ?? createDefaultSessionState()
+        return {
+          sessions: {
+            ...s.sessions,
+            [sessionId]: { ...session, livePreview: hasPlugin, livePreviewSetupDone: false },
+          },
+        }
+      })
+    } catch {
+      // Workspace not available yet - leave the toggle as-is.
+    }
   },
 
   loadHistory: async (sessionId) => {
@@ -708,6 +779,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               streamingToolInput: '',
             }))
             break
+          }
+        }
+        if (toolName === 'OpenPreview') {
+          const url = (msg.input as { url?: string } | null | undefined)?.url
+          if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+            // Auto-open the workspace preview pane with the agent-reported URL
+            // so the user doesn't have to paste it (preview-edit workflow).
+            useWorkspacePanelStore.getState().openPanel(sessionId)
+            useWorkspacePanelStore.getState().openWebPreview(sessionId, url)
           }
         }
         if (isAskUserQuestion(toolName)) {

@@ -203,6 +203,7 @@ export function ActiveSession() {
   const activeTabType = useTabStore((s) => s.tabs.find((tab) => tab.sessionId === s.activeTabId)?.type ?? null)
   const sessions = useSessionStore((s) => s.sessions)
   const connectToSession = useChatStore((s) => s.connectToSession)
+  const detectLivePreview = useChatStore((s) => s.detectLivePreview)
   const sessionState = useChatStore((s) => activeTabId ? s.sessions[activeTabId] : undefined)
   const pendingComputerUsePermission = sessionState?.pendingComputerUsePermission ?? null
   const fetchSessionTasks = useCLITaskStore((s) => s.fetchSessionTasks)
@@ -230,8 +231,11 @@ export function ActiveSession() {
   useEffect(() => {
     if (activeTabId && !isMemberSession) {
       connectToSession(activeTabId)
+      // Reflect whether this project already has the source-locator plugin, so
+      // the live-preview toggle stays consistent across reloads/reopens.
+      void detectLivePreview(activeTabId)
     }
-  }, [activeTabId, isMemberSession, connectToSession])
+  }, [activeTabId, isMemberSession, connectToSession, detectLivePreview])
 
   useEffect(() => {
     if (!activeTabId || isMemberSession) return

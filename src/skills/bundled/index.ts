@@ -1,5 +1,8 @@
 import { feature } from 'bun:bundle'
 import { shouldAutoEnableClaudeInChrome } from 'src/utils/claudeInChrome/setup.js'
+// ESM import (not require) so the plugin's `with { type: 'text' }` attribute is
+// honored - import attributes are not respected through Bun's require() interop.
+import { registerPreviewEditSkill } from './preview-edit.js'
 
 /**
  * Initialize all bundled skills.
@@ -22,6 +25,7 @@ export function initBundledSkills(): void {
   require('./simplify.js').registerSimplifySkill()
   require('./batch.js').registerBatchSkill()
   require('./stuck.js').registerStuckSkill()
+  registerPreviewEditSkill()
   if (feature('KAIROS') || feature('KAIROS_DREAM')) {
     const { registerDreamSkill } = require('./dream.js')
     registerDreamSkill()

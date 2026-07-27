@@ -16,6 +16,7 @@ import {
 import { sessionsApi } from '../../api/sessions'
 import { PermissionModeSelector } from '../controls/PermissionModeSelector'
 import { ModelSelector } from '../controls/ModelSelector'
+import { LivePreviewFrameworkSelector } from '../controls/LivePreviewFrameworkSelector'
 import type { AttachmentRef } from '../../types/chat'
 import { AttachmentGallery } from './AttachmentGallery'
 import { ProjectContextChip } from '../shared/ProjectContextChip'
@@ -801,8 +802,8 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
           )}
 
           <div className={isHeroComposer
-            ? 'flex items-center justify-between border-t border-[var(--color-border-separator)] pt-3'
-            : `absolute bottom-0 left-0 right-0 flex items-center justify-between border-t border-[var(--color-border-separator)] ${
+            ? 'flex flex-wrap items-center justify-between gap-y-2 border-t border-[var(--color-border-separator)] pt-3'
+            : `absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-between gap-y-2 border-t border-[var(--color-border-separator)] ${
               compact ? 'gap-2 px-2.5 py-2' : 'px-3 py-3'
             }`}>
             <div className="flex min-w-0 items-center gap-2">
@@ -841,11 +842,35 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
                   </div>
 
                   <PermissionModeSelector compact={compact} />
+                  {activeTabId && (
+                    <button
+                      type="button"
+                      onClick={() => useChatStore.getState().setLivePreview(activeTabId, !sessionState?.livePreview)}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full ${
+                        compact ? 'px-2 py-1.5' : 'px-2.5 py-1.5'
+                      } text-xs font-medium transition-colors ${
+                        sessionState?.livePreview
+                          ? 'bg-[var(--color-brand)]/15 text-[var(--color-brand)]'
+                          : 'bg-[var(--color-surface-container-low)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                      }`}
+                      title={t('chat.livePreviewHint')}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">preview</span>
+                      {!compact && <span>{t('chat.livePreview')}</span>}
+                    </button>
+                  )}
+                  {activeTabId && sessionState?.livePreview && (
+                    <LivePreviewFrameworkSelector
+                      framework={sessionState?.livePreviewFramework || 'react'}
+                      onChange={(fw) => useChatStore.getState().setLivePreviewFramework(activeTabId, fw)}
+                      compact={compact}
+                    />
+                  )}
                 </>
               )}
             </div>
 
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               {!isMemberSession && activeTabId && (
                 <ContextUsageIndicator
                   sessionId={activeTabId}

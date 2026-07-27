@@ -16,7 +16,7 @@ export const WORKSPACE_TREE_PANEL_MIN_WIDTH = 180
 export const WORKSPACE_TREE_PANEL_MAX_WIDTH = 480
 
 export type WorkspacePanelView = 'changed' | 'all'
-export type WorkspacePreviewKind = 'file' | 'diff'
+export type WorkspacePreviewKind = 'file' | 'diff' | 'web'
 export type WorkspacePreviewCloseScope = 'current' | 'others' | 'left' | 'right' | 'all'
 export type WorkspacePreviewState =
   | 'loading'
@@ -37,6 +37,7 @@ export type WorkspacePreviewTab = {
   state?: WorkspacePreviewState
   error?: string
   size?: number
+  url?: string
 }
 
 export type WorkspacePanelSessionState = {
@@ -81,6 +82,7 @@ type WorkspacePanelStore = {
   loadTree: (sessionId: string, path?: string) => Promise<void>
   toggleTreeNode: (sessionId: string, path: string) => Promise<void>
   openPreview: (sessionId: string, path: string, kind: WorkspacePreviewKind) => Promise<void>
+  openWebPreview: (sessionId: string, url: string) => void
   closePreview: (sessionId: string, tabId: string) => void
   closePreviewTabs: (sessionId: string, tabId: string, scope: WorkspacePreviewCloseScope) => void
   clearTreeCache: (sessionId: string) => void
@@ -607,6 +609,50 @@ export const useWorkspacePanelStore = create<WorkspacePanelStore>((set, get) => 
         }
       })
     }
+  },
+
+  openWebPreview: (sessionId, url) => {
+    const tabId = `web:${url}`
+    set((state) => {
+      const tabs = state.previewTabsBySession[sessionId] ?? []
+      const existing = tabs.find((tab) => tab.id === tabId)
+      if (existing) {
+        return {
+          activePreviewTabIdBySession: {
+            ...state.activePreviewTabIdBySession,
+            [sessionId]: tabId,
+          },
+        }
+      }
+
+      let title = url
+      try {
+        const parsed = new URL(url)
+        title = parsed.host + (parsed.pathname === '/' ? '' : parsed.pathname)
+      } catch {
+        // keep raw url as title
+      }
+
+      const tab: WorkspacePreviewTab = {
+        id: tabId,
+        path: url,
+        kind: 'web',
+        title,
+        url,
+        state: 'ok',
+      }
+
+      return {
+        previewTabsBySession: {
+          ...state.previewTabsBySession,
+          [sessionId]: [...tabs, tab],
+        },
+        activePreviewTabIdBySession: {
+          ...state.activePreviewTabIdBySession,
+          [sessionId]: tabId,
+        },
+      }
+    })
   },
 
   closePreview: (sessionId, tabId) => {

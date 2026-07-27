@@ -34,10 +34,10 @@
       "ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES": "thinking,effort,adaptive_thinking,max_effort"
     },
     "modelContextWindows": {
-      "deepseek-v4-pro": 512000,
-      "deepseek-v4-flash": 512000,
-      "deepseek-chat": 512000,
-      "deepseek-reasoner": 512000
+      "deepseek-v4-pro": 800000,
+      "deepseek-v4-flash": 800000,
+      "deepseek-chat": 800000,
+      "deepseek-reasoner": 800000
     }
   },
   {
@@ -60,7 +60,7 @@
       "CC_HAHA_SEND_DISABLED_THINKING": "1"
     },
     "modelContextWindows": {
-      "glm-5.2": 512000,
+      "glm-5.2": 800000,
       "glm-4.5-air": 128000
     }
   },
@@ -107,7 +107,7 @@
     "apiKeyUrl": "https://platform.minimaxi.com/subscribe/token-plan?code=1TG2Cseab2&source=link",
     "authStrategy": "auth_token",
     "modelContextWindows": {
-      "MiniMax-M3": 524288,
+      "MiniMax-M3": 800000,
       "MiniMax-M2.7": 204800,
       "MiniMax-M2.7-highspeed": 204800,
       "MiniMax-M2.5": 204800,
@@ -225,7 +225,7 @@
     "websiteUrl": "",
     "promoText": "通过 CrewCentral 中控统一认证，LLM 请求经由 CrewProxy 网关路由和用量统计。",
     "modelContextWindows": {
-      "MiniMax-M3": 524288,
+      "MiniMax-M3": 800000,
       "MiniMax-M2.7-highspeed": 204800,
       "MiniMax-M2.7": 204800,
       "gpt-5.6-luna": 272000,

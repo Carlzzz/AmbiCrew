@@ -29,6 +29,7 @@ type TabStore = {
   openTerminalTab: (cwd?: string) => string
   closeTab: (sessionId: string) => void
   setActiveTab: (sessionId: string) => void
+  clearActiveTab: () => void
   updateTabTitle: (sessionId: string, title: string) => void
   updateTabStatus: (sessionId: string, status: Tab['status']) => void
   replaceTabSession: (oldSessionId: string, newSessionId: string) => void
@@ -108,6 +109,12 @@ export const useTabStore = create<TabStore>((set, get) => ({
   setActiveTab: (sessionId) => {
     set({ activeTabId: sessionId })
     get().saveTabs()
+  },
+
+  // Show the EmptySession compose page (no active tab). Used by "new session"
+  // so the initial page and the new-session page are the same.
+  clearActiveTab: () => {
+    set({ activeTabId: null })
   },
 
   updateTabTitle: (sessionId, title) => {

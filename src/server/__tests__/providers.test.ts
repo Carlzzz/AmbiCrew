@@ -417,7 +417,7 @@ describe('ProviderService', () => {
       ) as Record<string, number>
 
       expect(modelContextWindows).toMatchObject({
-        'MiniMax-M3': 524288,
+        'MiniMax-M3': 800000,
         'MiniMax-M2.7-highspeed': 204800,
         'MiniMax-M2.7': 204800,
         'gpt-5.6-luna': 272000,

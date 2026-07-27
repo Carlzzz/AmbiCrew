@@ -12,6 +12,7 @@ import { requireAuth } from './middleware/auth.js'
 import { teamWatcher } from './services/teamWatcher.js'
 import { cronScheduler } from './services/cronScheduler.js'
 import { handleProxyRequest } from './proxy/handler.js'
+import { handlePreviewProxyRequest } from './services/previewProxy.js'
 import { ProviderService } from './services/providerService.js'
 import { handleHahaOAuthCallback } from './api/haha-oauth.js'
 import { handleHahaOpenAIOAuthCallback } from './api/haha-openai-oauth.js'
@@ -260,6 +261,38 @@ export function startServer(port = PORT, host = HOST) {
           return Response.json(
             { type: 'error', error: { type: 'api_error', message: 'Internal proxy error' } },
             { status: 500, headers: corsHeaders() },
+          )
+        }
+      }
+
+      // Preview reverse proxy - injects the picker into arbitrary localhost
+      // pages so the desktop preview pane can click-locate on any frontend.
+      if (url.pathname === '/preview-proxy') {
+        if (authRequired) {
+          const authError = requireAuth(req)
+          if (authError) {
+            const headers = new Headers(authError.headers)
+            for (const [key, value] of Object.entries(corsHeaders(origin))) {
+              headers.set(key, value)
+            }
+            return new Response(authError.body, { status: authError.status, headers })
+          }
+        }
+        try {
+          const response = await handlePreviewProxyRequest(req, url)
+          const headers = new Headers(response.headers)
+          for (const [key, value] of Object.entries(corsHeaders(origin))) {
+            headers.set(key, value)
+          }
+          return new Response(response.body, {
+            status: response.status,
+            headers,
+          })
+        } catch (error) {
+          console.error('[Server] Preview proxy error:', error)
+          return Response.json(
+            { error: 'Internal preview proxy error' },
+            { status: 500, headers: corsHeaders(origin) },
           )
         }
       }

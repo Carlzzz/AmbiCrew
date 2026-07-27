@@ -19,6 +19,7 @@ import {
 } from '../../stores/workspacePanelStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextStore'
+import { useUIStore } from '../../stores/uiStore'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import {
   getFileExtension,
@@ -27,6 +28,7 @@ import {
   WorkspaceDiffSurface,
   workspacePrismTheme,
 } from './WorkspaceCodeSurface'
+import { WorkspaceWebSurface } from './WorkspaceWebSurface'
 
 type WorkspacePanelProps = {
   sessionId: string
@@ -123,7 +125,9 @@ function getPreviewKindLabel(
   t: ReturnType<typeof useTranslation>,
   kind: WorkspacePreviewKind,
 ) {
-  return kind === 'diff' ? t('workspace.previewKind.diff') : t('workspace.previewKind.file')
+  if (kind === 'diff') return t('workspace.previewKind.diff')
+  if (kind === 'web') return t('workspace.previewKind.web')
+  return t('workspace.previewKind.file')
 }
 
 function getFileBadgeMeta(name: string) {
@@ -755,6 +759,8 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false)
   const [previewTabContextMenu, setPreviewTabContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null)
   const [fileContextMenu, setFileContextMenu] = useState<{ path: string; x: number; y: number } | null>(null)
+  const [webUrlInputOpen, setWebUrlInputOpen] = useState(false)
+  const [webUrlValue, setWebUrlValue] = useState('')
   const width = useWorkspacePanelStore((state) => state.width)
   const treePanelWidth = useWorkspacePanelStore((state) => state.treePanelWidth)
   const setTreePanelWidth = useWorkspacePanelStore((state) => state.setTreePanelWidth)
@@ -779,6 +785,7 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
   const clearTreeCache = useWorkspacePanelStore((state) => state.clearTreeCache)
   const toggleTreeNode = useWorkspacePanelStore((state) => state.toggleTreeNode)
   const openPreview = useWorkspacePanelStore((state) => state.openPreview)
+  const openWebPreview = useWorkspacePanelStore((state) => state.openWebPreview)
   const closePreview = useWorkspacePanelStore((state) => state.closePreview)
   const closePreviewTabs = useWorkspacePanelStore((state) => state.closePreviewTabs)
   const closePanel = useWorkspacePanelStore((state) => state.closePanel)
@@ -888,6 +895,40 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
       note,
       quote,
     })
+  }
+
+  const addPreviewPickToChat = (path: string, lineStart: number, lineEnd: number, note: string, quote: string) => {
+    // path/line are empty for proxy-mode picks (no data-source). The agent
+    // then greps the project using the selector/text/outerHTML in note/quote.
+    addWorkspaceReference(sessionId, {
+      kind: 'code-comment',
+      path,
+      absolutePath: path ? resolveWorkspaceAttachmentPath(status?.workDir, path) : undefined,
+      name: path ? (path.split('/').pop() || path) : 'Picked element',
+      lineStart: lineStart || undefined,
+      lineEnd: lineEnd || undefined,
+      note,
+      quote,
+    })
+    useUIStore.getState().addToast({
+      type: 'success',
+      message: path
+        ? t('workspace.previewPickToastPrecise')
+        : t('workspace.previewPickToastGrep'),
+    })
+  }
+
+  const submitWebUrl = () => {
+    const trimmed = webUrlValue.trim()
+    if (!trimmed) {
+      setWebUrlInputOpen(false)
+      setWebUrlValue('')
+      return
+    }
+    const url = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
+    openWebPreview(sessionId, url)
+    setWebUrlValue('')
+    setWebUrlInputOpen(false)
   }
 
   const handleSetActiveView = (view: 'changed' | 'all') => {
@@ -1036,6 +1077,24 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
     const kindLabel = getPreviewKindLabel(t, activePreviewTab.kind)
     const state = activePreviewTab.state ?? 'loading'
 
+    if (activePreviewTab.kind === 'web') {
+      const webUrl = activePreviewTab.url
+      if (!webUrl) {
+        return (
+          <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-xs text-[var(--color-text-tertiary)]">
+            {t('workspace.previewEmpty')}
+          </div>
+        )
+      }
+      return (
+        <WorkspaceWebSurface
+          url={webUrl}
+          onPick={addPreviewPickToChat}
+          onUndo={() => useChatStore.getState().queueComposerPrefill(sessionId, { text: '/rewind' })}
+        />
+      )
+    }
+
     return (
       <>
         <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 text-[12px]">
@@ -1121,12 +1180,18 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
                   role="tab"
                   aria-selected={isActive}
                   onClick={() => {
-                    void openPreview(sessionId, tab.path, tab.kind)
+                    if (tab.kind === 'web') {
+                      openWebPreview(sessionId, tab.url ?? tab.path)
+                    } else {
+                      void openPreview(sessionId, tab.path, tab.kind)
+                    }
                   }}
                   className="min-w-0 flex flex-1 items-center gap-2 text-left"
                 >
                   {tab.kind === 'diff' ? (
                     <span className="material-symbols-outlined shrink-0 text-[15px] text-[var(--color-text-tertiary)]">difference</span>
+                  ) : tab.kind === 'web' ? (
+                    <span className="material-symbols-outlined shrink-0 text-[15px] text-[var(--color-text-tertiary)]">public</span>
                   ) : (
                     <FileTypeBadge name={tab.title} subtle={!isActive} />
                   )}
@@ -1146,6 +1211,35 @@ export function WorkspacePanel({ sessionId }: WorkspacePanelProps) {
             )
           })
         )}
+        <div className="ml-auto flex shrink-0 items-center">
+          {webUrlInputOpen ? (
+            <input
+              autoFocus
+              value={webUrlValue}
+              onChange={(event) => setWebUrlValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  submitWebUrl()
+                } else if (event.key === 'Escape') {
+                  setWebUrlInputOpen(false)
+                  setWebUrlValue('')
+                }
+              }}
+              onBlur={submitWebUrl}
+              placeholder={t('workspace.previewWebUrlPlaceholder')}
+              className="h-7 w-[220px] rounded-[6px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand)]"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setWebUrlInputOpen(true)}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]"
+              title={t('workspace.previewWebOpen')}
+            >
+              <span className="material-symbols-outlined text-[16px]">public</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {previewTabContextMenu && (

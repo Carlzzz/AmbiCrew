@@ -7,11 +7,13 @@ import { useProviderStore } from '../stores/providerStore'
 import { useSessionRuntimeStore, DRAFT_RUNTIME_SELECTION_KEY } from '../stores/sessionRuntimeStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
+import { inferDefaultRuntimeSelection } from '../utils/runtimeSelection'
 import { SETTINGS_TAB_ID, useTabStore } from '../stores/tabStore'
 import { useCentralOAuthStore } from '../stores/centralOAuthStore'
 import { DirectoryPicker } from '../components/shared/DirectoryPicker'
 import { PermissionModeSelector } from '../components/controls/PermissionModeSelector'
 import { ModelSelector } from '../components/controls/ModelSelector'
+import { LivePreviewFrameworkSelector } from '../components/controls/LivePreviewFrameworkSelector'
 import { AttachmentGallery } from '../components/chat/AttachmentGallery'
 import { ContextUsageIndicator } from '../components/chat/ContextUsageIndicator'
 import { FileSearchMenu, type FileSearchMenuHandle } from '../components/chat/FileSearchMenu'
@@ -53,6 +55,9 @@ export function EmptySession() {
   const [slashFilter, setSlashFilter] = useState('')
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [slashCommands, setSlashCommands] = useState<SlashCommandOption[]>([])
+  // Draft live-preview toggle + framework, applied to the session on creation.
+  const [draftLivePreview, setDraftLivePreview] = useState(false)
+  const [draftFramework, setDraftFramework] = useState<'react' | 'vue' | 'svelte'>('react')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const plusMenuRef = useRef<HTMLDivElement>(null)
@@ -168,50 +173,9 @@ export function EmptySession() {
     [slashCommands],
   )
 
-  const resolveDraftRuntimeSelection = async () => {
-    const settings = useSettingsStore.getState()
-    let providerState = useProviderStore.getState()
-    if (
-      settings.activeProviderName &&
-      providerState.providers.length === 0 &&
-      !providerState.isLoading
-    ) {
-      await providerState.fetchProviders()
-      providerState = useProviderStore.getState()
-    }
-    const inferredProviderId = providerState.activeId ?? (
-      settings.activeProviderName
-        ? providerState.providers.find((provider) => provider.name === settings.activeProviderName)?.id ?? null
-        : null
-    )
-    // For CrewCentral (provider-managed), prefer the provider's default model
-    // (e.g. MiniMax-M2.7-highspeed) over availableModels[0] which may be a
-    // different model (e.g. doubao-seed-2.0-pro). currentModel may also hold a
-    // stale value from a previous provider (e.g. "haiku") that isn't valid on CrewProxy.
-    const availableIds = settings.availableModels.map((m) => m.id)
-    const isCurrentModelValid = settings.currentModel?.id && availableIds.includes(settings.currentModel.id)
-    const inferredProvider = inferredProviderId
-      ? providerState.providers.find((provider) => provider.id === inferredProviderId) ?? null
-      : null
-    const defaultProviderModel = inferredProvider?.models.main.trim()
-    const isDefaultProviderModelValid = defaultProviderModel && (
-      availableIds.length === 0 || availableIds.includes(defaultProviderModel)
-    )
-
-    const modelId = isCurrentModelValid
-      ? settings.currentModel!.id
-      : inferredProvider?.presetId === 'crewcentral' && isDefaultProviderModelValid
-        ? defaultProviderModel
-        : ''
-
-    return (
-      useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
-      ?? {
-        providerId: inferredProviderId,
-        modelId,
-      }
-    )
-  }
+  const resolveDraftRuntimeSelection = async () =>
+    useSessionRuntimeStore.getState().selections[DRAFT_RUNTIME_SELECTION_KEY]
+    ?? await inferDefaultRuntimeSelection()
 
   const openDraftSessionForWorkDir = async (newWorkDir: string) => {
     setWorkDir(newWorkDir)
@@ -223,6 +187,10 @@ export function EmptySession() {
       const sessionId = await createSession(newWorkDir)
       useSessionRuntimeStore.getState().setSelection(sessionId, draftSelection)
       useSessionRuntimeStore.getState().clearSelection(DRAFT_RUNTIME_SELECTION_KEY)
+      if (draftLivePreview) {
+        useChatStore.getState().setLivePreview(sessionId, true)
+        useChatStore.getState().setLivePreviewFramework(sessionId, draftFramework)
+      }
       setActiveView('code')
       useTabStore.getState().openTab(sessionId, 'New Session')
       connectToSession(sessionId)
@@ -324,6 +292,10 @@ export function EmptySession() {
       const sessionId = await createSession(workDir || undefined)
       useSessionRuntimeStore.getState().setSelection(sessionId, draftSelection)
       useSessionRuntimeStore.getState().clearSelection(DRAFT_RUNTIME_SELECTION_KEY)
+      if (draftLivePreview) {
+        useChatStore.getState().setLivePreview(sessionId, true)
+        useChatStore.getState().setLivePreviewFramework(sessionId, draftFramework)
+      }
       setActiveView('code')
       useTabStore.getState().openTab(sessionId, 'New Session')
       connectToSession(sessionId)
@@ -671,7 +643,7 @@ export function EmptySession() {
               />
             </div>
 
-            <div className="flex items-center justify-between border-t border-[var(--color-border-separator)] pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-y-2 border-t border-[var(--color-border-separator)] pt-3">
               <div className="flex items-center gap-2">
                 <div ref={plusMenuRef} className="relative">
                   <button
@@ -706,9 +678,28 @@ export function EmptySession() {
                 </div>
 
                 <PermissionModeSelector workDir={workDir} />
+                <button
+                  type="button"
+                  onClick={() => setDraftLivePreview((v) => !v)}
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    draftLivePreview
+                      ? 'bg-[var(--color-brand)]/15 text-[var(--color-brand)]'
+                      : 'bg-[var(--color-surface-container-low)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                  }`}
+                  title={t('chat.livePreviewHint')}
+                >
+                  <span className="material-symbols-outlined text-[14px]">preview</span>
+                  <span>{t('chat.livePreview')}</span>
+                </button>
+                {draftLivePreview && (
+                  <LivePreviewFrameworkSelector
+                    framework={draftFramework}
+                    onChange={setDraftFramework}
+                  />
+                )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="ml-auto flex items-center gap-3">
                 <ContextUsageIndicator
                   chatState="idle"
                   messageCount={0}
