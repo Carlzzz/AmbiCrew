@@ -31,6 +31,23 @@ function isAskUserQuestion(toolName: string): boolean {
   return toolName.toLowerCase() === 'askuserquestion'
 }
 
+/** Detect the scaffold's framework from its package.json dependencies. Matches
+ *  the deps create-vite adds per template (vue / svelte / react). Returns
+ *  undefined if none are found so the caller can keep the current selection. */
+function detectFrameworkFromPackageJson(content: string): 'react' | 'vue' | 'svelte' | undefined {
+  let deps: Record<string, unknown> = {}
+  try {
+    const pkg = JSON.parse(content) as { dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown> }
+    deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }
+  } catch {
+    return undefined
+  }
+  if ('vue' in deps || '@vitejs/plugin-vue' in deps) return 'vue'
+  if ('svelte' in deps || '@sveltejs/vite-plugin-svelte' in deps) return 'svelte'
+  if ('react' in deps || '@vitejs/plugin-react' in deps) return 'react'
+  return undefined
+}
+
 export type PerSessionState = {
   messages: UIMessage[]
   chatState: ChatState
@@ -533,12 +550,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       const result = await sessionsApi.getWorkspaceFile(sessionId, 'ambicrew-source-locator.js')
       const hasPlugin = !!result && result.state === 'ok'
+      // When the plugin is present, also detect which framework the existing
+      // scaffold uses (from package.json deps) so the framework selector
+      // reflects the real project instead of defaulting to react.
+      let detectedFramework: 'react' | 'vue' | 'svelte' | undefined
+      if (hasPlugin) {
+        try {
+          const pkg = await sessionsApi.getWorkspaceFile(sessionId, 'package.json')
+          if (pkg && pkg.state === 'ok' && pkg.content) {
+            detectedFramework = detectFrameworkFromPackageJson(pkg.content)
+          }
+        } catch {
+          // package.json unreadable - keep the existing framework selection.
+        }
+      }
       set((s) => {
         const session = s.sessions[sessionId] ?? createDefaultSessionState()
         return {
           sessions: {
             ...s.sessions,
-            [sessionId]: { ...session, livePreview: hasPlugin, livePreviewSetupDone: false },
+            [sessionId]: {
+              ...session,
+              livePreview: hasPlugin,
+              livePreviewSetupDone: false,
+              livePreviewFramework: detectedFramework ?? session.livePreviewFramework,
+            },
           },
         }
       })
