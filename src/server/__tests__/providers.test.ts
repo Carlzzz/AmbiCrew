@@ -98,10 +98,10 @@ describe('ProviderService', () => {
         presetId: 'crewcentral',
         name: 'CrewCentral',
         models: {
-          main: 'MiniMax-M3',
-          haiku: 'MiniMax-M3',
-          sonnet: 'MiniMax-M3',
-          opus: 'MiniMax-M3',
+          main: 'deepseek-v4-flash',
+          haiku: 'deepseek-v4-flash',
+          sonnet: 'deepseek-v4-flash',
+          opus: 'deepseek-v4-flash',
         },
       })
     })

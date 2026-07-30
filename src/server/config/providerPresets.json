@@ -216,15 +216,16 @@
     "baseUrl": "",
     "apiFormat": "anthropic",
     "defaultModels": {
-      "main": "MiniMax-M3",
-      "haiku": "MiniMax-M3",
-      "sonnet": "MiniMax-M3",
-      "opus": "MiniMax-M3"
+      "main": "deepseek-v4-flash",
+      "haiku": "deepseek-v4-flash",
+      "sonnet": "deepseek-v4-flash",
+      "opus": "deepseek-v4-flash"
     },
     "needsApiKey": false,
     "websiteUrl": "",
     "promoText": "通过 CrewCentral 中控统一认证，LLM 请求经由 CrewProxy 网关路由和用量统计。",
     "modelContextWindows": {
+      "deepseek-v4-flash": 800000,
       "MiniMax-M3": 800000,
       "MiniMax-M2.7-highspeed": 204800,
       "MiniMax-M2.7": 204800,

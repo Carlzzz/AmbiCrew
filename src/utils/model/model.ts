@@ -198,7 +198,7 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   // Claude model IDs are intercepted as SDK-internal stubs by the proxy,
   // so default to the CrewProxy-routable model instead.
   if ((process.env.AUTH_MODE || '').toLowerCase() === 'central') {
-    return process.env.ANTHROPIC_MODEL || 'MiniMax-M3'
+    return process.env.ANTHROPIC_MODEL || 'deepseek-v4-flash'
   }
 
   // Ants default to defaultModel from flag config, or Opus 1M if not configured

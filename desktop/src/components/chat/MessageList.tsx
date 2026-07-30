@@ -251,12 +251,12 @@ type MessageListProps = {
 }
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 48
+// Show the jump-to-latest control once the viewport is meaningfully away from
+// the newest message, at any scroll position — not just near the very top.
+const JUMP_TO_LATEST_VISIBLE_THRESHOLD_PX = 200
 
-function isNearScrollBottom(element: HTMLElement) {
-  return (
-    element.scrollHeight - element.scrollTop - element.clientHeight <=
-    AUTO_SCROLL_BOTTOM_THRESHOLD_PX
-  )
+function distanceFromScrollBottom(element: HTMLElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight
 }
 
 export function MessageList({ sessionId, compact = false, hidden = false }: MessageListProps = {}) {
@@ -278,6 +278,7 @@ export function MessageList({ sessionId, compact = false, hidden = false }: Mess
   const activeThinkingId = sessionState?.activeThinkingId ?? null
   const agentTaskNotifications = sessionState?.agentTaskNotifications ?? {}
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
   const lastSessionIdRef = useRef<string | null | undefined>(undefined)
@@ -293,15 +294,28 @@ export function MessageList({ sessionId, compact = false, hidden = false }: Mess
   const [turnUndoConfirmTargetId, setTurnUndoConfirmTargetId] = useState<string | null>(null)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
 
+  // Recompute jump-to-latest visibility from the current scroll distance.
+  // Kept independent of the auto-scroll decision so the control stays in sync
+  // when new content grows the list, not only when the user drags the bar.
+  const refreshJumpToLatest = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    if (forcedScrollPendingRef.current) return
+    setShowJumpToLatest(
+      distanceFromScrollBottom(container) > JUMP_TO_LATEST_VISIBLE_THRESHOLD_PX,
+    )
+  }, [])
+
   const updateAutoScrollState = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
     // Don't let scroll events override auto-scroll while a forced scroll
     // (session switch / history load) is still in flight.
     if (forcedScrollPendingRef.current) return
-    shouldAutoScrollRef.current = isNearScrollBottom(container)
-    setShowJumpToLatest(!shouldAutoScrollRef.current && messages.length > 10)
-  }, [messages.length])
+    shouldAutoScrollRef.current =
+      distanceFromScrollBottom(container) <= AUTO_SCROLL_BOTTOM_THRESHOLD_PX
+    refreshJumpToLatest()
+  }, [refreshJumpToLatest])
 
   const scrollRafRef = useRef<number>(0)
 
@@ -365,7 +379,16 @@ export function MessageList({ sessionId, compact = false, hidden = false }: Mess
     // If a forced scroll is still pending, don't schedule a competing rAF.
     if (forcedScrollPendingRef.current) return
 
-    if (!shouldAutoScrollRef.current) return
+    // When the user has scrolled up, new content growing the list changes the
+    // distance to the bottom, so re-evaluate the jump-to-latest control instead
+    // of leaving it stale until the next manual scroll.
+    if (!shouldAutoScrollRef.current) {
+      refreshJumpToLatest()
+      return
+    }
+
+    // Auto-scrolling keeps us pinned to the latest message; hide the control.
+    setShowJumpToLatest(false)
 
     const needsInstantScroll =
       chatState === 'streaming' || chatState === 'tool_executing'
@@ -378,7 +401,34 @@ export function MessageList({ sessionId, compact = false, hidden = false }: Mess
     // Batch scroll updates into a single animation frame to avoid layout thrashing
     cancelAnimationFrame(scrollRafRef.current)
     scrollRafRef.current = requestAnimationFrame(doScroll)
-  }, [messages.length, resolvedSessionId, streamingText, chatState, scheduleForceScroll])
+  }, [messages.length, resolvedSessionId, streamingText, chatState, scheduleForceScroll, refreshJumpToLatest])
+
+  // Keep the jump-to-latest control in sync with size changes that fire neither
+  // a scroll event nor a React dep change: window/panel resizes, tool blocks
+  // expanding after async notifications, late-loading images, or history items
+  // settling to their real height after content-visibility estimation. Without
+  // this, the button can stay hidden while the true bottom drifts out of view.
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+    const container = scrollContainerRef.current
+    const content = contentRef.current
+    if (!container || !content) return
+
+    const observer = new ResizeObserver(() => {
+      if (forcedScrollPendingRef.current) return
+      // If the user is pinned to the bottom, keep them there as content grows.
+      if (shouldAutoScrollRef.current) {
+        container.scrollTop = container.scrollHeight
+        setShowJumpToLatest(false)
+        return
+      }
+      refreshJumpToLatest()
+    })
+
+    observer.observe(container)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [resolvedSessionId, refreshJumpToLatest])
 
   const { toolResultMap, childToolCallsByParent, renderItems } = useMemo(
     () => buildRenderModel(messages),
@@ -547,12 +597,18 @@ export function MessageList({ sessionId, compact = false, hidden = false }: Mess
   }, [addToast, resolvedSessionId, t])
 
   return (
-    <div
-      ref={scrollContainerRef}
-      onScroll={updateAutoScrollState}
-      className={`flex-1 overflow-y-auto [will-change:transform] ${hidden ? 'hidden' : ''} ${compact ? 'px-3 py-3 pb-5' : 'px-4 py-4'}`}
-    >
-      <div className={compact ? 'mx-auto max-w-full' : 'mx-auto max-w-[860px]'}>
+    // Non-scrolling relative shell so the jump-to-latest control can be an
+    // absolute sibling of the scroll area. It must NOT live inside the scroller:
+    // that container sets `will-change:transform`, which makes it the containing
+    // block for any descendant `position:fixed`, so a fixed button there scrolls
+    // with the content instead of floating over the viewport.
+    <div className={`relative flex min-h-0 flex-1 flex-col ${hidden ? 'hidden' : ''}`}>
+      <div
+        ref={scrollContainerRef}
+        onScroll={updateAutoScrollState}
+        className={`min-h-0 flex-1 overflow-y-auto [will-change:transform] ${compact ? 'px-3 py-3 pb-5' : 'px-4 py-4'}`}
+      >
+        <div ref={contentRef} className={compact ? 'mx-auto max-w-full' : 'mx-auto max-w-[860px]'}>
         {renderItems.map((item, index) => {
           const cardsForItem = turnCardsByRenderIndex.get(index) ?? []
 
@@ -628,7 +684,8 @@ export function MessageList({ sessionId, compact = false, hidden = false }: Mess
           </div>
         )}
 
-        <div ref={bottomRef} />
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {showJumpToLatest && (
@@ -639,7 +696,7 @@ export function MessageList({ sessionId, compact = false, hidden = false }: Mess
             shouldAutoScrollRef.current = true
             setShowJumpToLatest(false)
           }}
-          className="fixed bottom-24 left-1/2 z-20 -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-lg transition-all hover:bg-[var(--color-surface-container-low)] hover:text-[var(--color-text-primary)]"
+          className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] shadow-lg transition-all hover:bg-[var(--color-surface-container-low)] hover:text-[var(--color-text-primary)]"
         >
           <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
           {t('chat.jumpToLatest')}

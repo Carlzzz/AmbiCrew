@@ -307,16 +307,16 @@
   --color-on-surface: #E5E2E1;
   --color-on-surface-variant: #B7AAA5;
 
-  --color-surface: #131313;
-  --color-surface-bright: #201F1F;
-  --color-surface-dim: #0E0E0E;
-  --color-surface-container: #201F1F;
-  --color-surface-container-low: #1C1B1B;
-  --color-surface-container-high: #2A2929;
-  --color-surface-container-highest: #353534;
-  --color-surface-container-lowest: #0E0E0E;
-  --color-surface-variant: #252120;
-  --color-background: #0E0E0E;
+  --color-surface: #282C34;
+  --color-surface-bright: #31363F;
+  --color-surface-dim: #21252B;
+  --color-surface-container: #31363F;
+  --color-surface-container-low: #2C313A;
+  --color-surface-container-high: #3A404B;
+  --color-surface-container-highest: #454C59;
+  --color-surface-container-lowest: #21252B;
+  --color-surface-variant: #333842;
+  --color-background: #282C34;
 
   --color-outline: #8D7F7A;
   --color-outline-variant: #5A4138;
@@ -337,14 +337,14 @@
   --color-success: #7EDB8B;
   --color-warning: #F7C46C;
 
-  --color-surface-sidebar: #171615;
+  --color-surface-sidebar: #24282F;
   --color-surface-hover: var(--color-surface-container-highest);
   --color-surface-selected: var(--color-surface-container);
   --color-model-option-selected-bg: rgba(255, 181, 159, 0.13);
   --color-model-option-selected-border: rgba(255, 181, 159, 0.34);
-  --color-inspector-surface: #131211;
-  --color-inspector-panel: #1C1B1B;
-  --color-inspector-chip: #252120;
+  --color-inspector-surface: #24282F;
+  --color-inspector-panel: #2C313A;
+  --color-inspector-chip: #333842;
   --color-inspector-border: rgba(255, 181, 159, 0.18);
   --color-inspector-accent: #FFB59F;
   --color-inspector-accent-hover: #FFD4C8;
@@ -383,7 +383,7 @@
   --color-text-secondary: var(--color-on-surface-variant);
   --color-text-tertiary: #8F827D;
 
-  --color-surface-info: rgba(32, 31, 31, 0.88);
+  --color-surface-info: rgba(49, 54, 63, 0.88);
   --color-brand: var(--color-primary);
   --color-text-accent: var(--color-tertiary);
 
@@ -396,13 +396,13 @@
   --gradient-btn-primary: linear-gradient(135deg, var(--color-primary), var(--color-primary-container));
   --gradient-btn-primary-hover: linear-gradient(135deg, var(--color-primary-container), var(--color-primary));
 
-  --color-surface-user-msg: rgba(32, 31, 31, 0.92);
+  --color-surface-user-msg: rgba(58, 64, 75, 0.92);
 
   --color-overlay-scrim: rgba(6, 6, 6, 0.56);
-  --color-surface-glass: rgba(32, 31, 31, 0.8);
+  --color-surface-glass: rgba(40, 44, 52, 0.8);
   --color-surface-glass-border: rgba(90, 65, 56, 0.18);
 
-  --color-code-bg: #0E0E0E;
+  --color-code-bg: #21252B;
   --color-code-fg: #E5E2E1;
   --color-code-comment: #8F8683;
   --color-code-string: #88C988;

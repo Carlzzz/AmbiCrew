@@ -448,6 +448,7 @@ describe('MessageList nested tool calls', () => {
     const { container } = render(<MessageList />)
     const scroller = container.querySelector('.overflow-y-auto') as HTMLDivElement
     let scrollTop = 120
+    let forceScrollDone = false
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
     Object.defineProperty(scroller, 'scrollTop', {
@@ -455,14 +456,20 @@ describe('MessageList nested tool calls', () => {
       get: () => scrollTop,
       set: (value) => {
         scrollTop = value
+        forceScrollDone = true
       },
     })
 
-    // Wait for the mount force-scroll to finish
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50))
+    // Wait for the mount force-scroll to finish (it pins scrollTop to the
+    // bottom). Observing its scrollTop write is deterministic; a fixed timer
+    // races the setTimeout+rAF chain and makes this test flaky.
+    await waitFor(() => {
+      expect(forceScrollDone).toBe(true)
     })
 
+    // User then scrolls up to read history: distance to bottom is 480px, well
+    // past the auto-scroll threshold, so auto-follow must switch off.
+    scrollTop = 120
     scrollIntoView.mockClear()
     fireEvent.scroll(scroller)
 
@@ -511,6 +518,7 @@ describe('MessageList nested tool calls', () => {
     const { container } = render(<MessageList />)
     const scroller = container.querySelector('.overflow-y-auto') as HTMLDivElement
     let scrollTop = 552
+    let forceScrollDone = false
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
     Object.defineProperty(scroller, 'scrollTop', {
@@ -518,14 +526,19 @@ describe('MessageList nested tool calls', () => {
       get: () => scrollTop,
       set: (value) => {
         scrollTop = value
+        forceScrollDone = true
       },
     })
 
-    // Wait for the mount force-scroll to finish
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50))
+    // Wait for the mount force-scroll to finish. Observing its scrollTop write
+    // is deterministic; a fixed timer races the setTimeout+rAF chain and flakes.
+    await waitFor(() => {
+      expect(forceScrollDone).toBe(true)
     })
 
+    // User is parked right near the bottom (distance 48px = threshold), so
+    // auto-follow stays engaged and new output keeps scrolling into view.
+    scrollTop = 552
     scrollIntoView.mockClear()
     fireEvent.scroll(scroller)
 
@@ -545,6 +558,158 @@ describe('MessageList nested tool calls', () => {
       expect(screen.getByText('streaming next token')).toBeTruthy()
       expect(scrollIntoView).toHaveBeenCalled()
     })
+  })
+
+  it('shows jump-to-latest whenever scrolled away from the bottom, not only near the top', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    })
+
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'streaming',
+          messages: [
+            { id: 'user-1', type: 'user_text', content: '第一条', timestamp: 1 },
+            { id: 'assistant-1', type: 'assistant_text', content: '回复', timestamp: 2 },
+          ],
+          streamingText: 'streaming',
+        }),
+      },
+    })
+
+    const { container } = render(<MessageList />)
+    const scroller = container.querySelector('.overflow-y-auto') as HTMLDivElement
+    // Parked in the middle of the history (far from the bottom, not at the top).
+    let scrollTop = 3000
+    let forceScrollDone = false
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 6000 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value) => {
+        scrollTop = value
+        forceScrollDone = true
+      },
+    })
+
+    // Wait for the mount force-scroll to finish (it pins scrollTop to the
+    // bottom). Observing its scrollTop write is deterministic; a fixed timer
+    // races the setTimeout+rAF chain and makes this test flaky.
+    await waitFor(() => {
+      expect(forceScrollDone).toBe(true)
+    })
+
+    // User scrolls up into the middle of the history and stops there.
+    scrollTop = 3000
+    fireEvent.scroll(scroller)
+    expect(await screen.findByText('Jump to latest')).toBeTruthy()
+
+    // New streaming output grows the list while still parked mid-history:
+    // the control must stay visible without another manual scroll.
+    act(() => {
+      useChatStore.setState((state) => ({
+        sessions: {
+          ...state.sessions,
+          [ACTIVE_TAB]: {
+            ...state.sessions[ACTIVE_TAB]!,
+            streamingText: 'streaming more output',
+          },
+        },
+      }))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('streaming more output')).toBeTruthy()
+    })
+    expect(screen.getByText('Jump to latest')).toBeTruthy()
+  })
+
+  it('reveals jump-to-latest on a size change that fires no scroll or message update', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    })
+
+    // Controllable ResizeObserver: capture callbacks so the test can trigger a
+    // resize the way a panel opening or a tool block expanding would.
+    const resizeCallbacks: ResizeObserverCallback[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: ResizeObserverCallback) {
+          resizeCallbacks.push(cb)
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    )
+
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            { id: 'user-1', type: 'user_text', content: '第一条', timestamp: 1 },
+            { id: 'assistant-1', type: 'assistant_text', content: '回复', timestamp: 2 },
+          ],
+        }),
+      },
+    })
+
+    const { container } = render(<MessageList />)
+    const scroller = container.querySelector('.overflow-y-auto') as HTMLDivElement
+    // Scrolled up a little: past the 48px auto-scroll threshold (so we are no
+    // longer pinned to the bottom) but still within the 200px reveal threshold,
+    // so the control is hidden to begin with.
+    let scrollTop = 500
+    let scrollHeight = 1000
+    let forceScrollDone = false
+    Object.defineProperty(scroller, 'scrollHeight', {
+      configurable: true,
+      get: () => scrollHeight,
+    })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 })
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value) => {
+        // The mount force-scroll writes scrollTop = scrollHeight; observing it
+        // lets us wait for the force-scroll to finish deterministically instead
+        // of racing a fixed timer (which is what makes sibling tests flaky).
+        scrollTop = value
+        forceScrollDone = true
+      },
+    })
+
+    // Wait until the mount force-scroll has actually run and cleared its
+    // pending flag, so the scroll/resize handlers below are not short-circuited.
+    await waitFor(() => {
+      expect(forceScrollDone).toBe(true)
+    })
+
+    // A scroll settles the auto-scroll flag to false; distance is 100px (<200),
+    // so the control is not shown yet.
+    scrollTop = 500
+    fireEvent.scroll(scroller)
+    expect(screen.queryByText('Jump to latest')).toBeNull()
+
+    // Pure layout change: content grows (a tool block expands / images load)
+    // with no scroll event and no message/chatState change. Distance to the
+    // bottom jumps to 1100px, so the control must now appear.
+    scrollHeight = 2000
+
+    act(() => {
+      resizeCallbacks.forEach((cb) =>
+        cb([] as unknown as ResizeObserverEntry[], {} as ResizeObserver),
+      )
+    })
+
+    expect(screen.getByText('Jump to latest')).toBeTruthy()
+
+    vi.unstubAllGlobals()
   })
 
   it('keeps user actions anchored to the right bubble and assistant actions to the left bubble', () => {
