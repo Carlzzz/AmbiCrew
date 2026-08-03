@@ -26,6 +26,33 @@ import {
 // confusion with the user's locally installed Claude Code.
 const DEFAULT_MODELS: ApiModelInfo[] = []
 
+/** Collect { modelId: contextWindow } from proxy items that reported a window. */
+function collectProxyWindows(items: ProxyModelItem[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const m of items) {
+    if (typeof m.contextWindow === 'number') out[m.modelId] = m.contextWindow
+  }
+  return out
+}
+
+/**
+ * Persist proxy-advertised real context windows to the active provider's
+ * cache (梯度 1). Fire-and-forget: failure must not block the model list —
+ * compact simply falls back to preset windows.
+ */
+function cacheProxyWindows(items: ProxyModelItem[]): void {
+  const windows = collectProxyWindows(items)
+  if (Object.keys(windows).length === 0) return
+  void (async () => {
+    try {
+      const { activeId } = await providerService.listProviders()
+      if (activeId) await providerService.persistProxyModelContextWindows(activeId, windows)
+    } catch {
+      // best-effort cache; ignore
+    }
+  })()
+}
+
 const EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const
 
 const DEFAULT_MODEL = ''
@@ -287,6 +314,7 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
       })
       clearAuthCache()
 
+      cacheProxyWindows(result.items)
       return result.items.map((m: ProxyModelItem) => ({
         id: m.modelId,
         name: m.modelAlias,
@@ -310,6 +338,7 @@ async function tryFetchProxyModels(providerBaseUrl?: string): Promise<ApiModelIn
               token: newToken,
             })
             clearAuthCache()
+            cacheProxyWindows(result.items)
             return result.items.map((m: ProxyModelItem) => ({
               id: m.modelId,
               name: m.modelAlias,

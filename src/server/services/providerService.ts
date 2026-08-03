@@ -391,8 +391,11 @@ export class ProviderService {
       ? `http://127.0.0.1:${ProviderService.serverPort}${proxyPath}`
       : provider.baseUrl
 
+    // Priority (low → high): preset < proxy-advertised real windows < user-set.
+    // User's hand-set values always win; proxy fills gaps the preset misses.
     const modelContextWindows = {
       ...getPresetModelContextWindows(provider.presetId),
+      ...(provider.proxyModelContextWindows ?? {}),
       ...(provider.modelContextWindows ?? {}),
     }
 

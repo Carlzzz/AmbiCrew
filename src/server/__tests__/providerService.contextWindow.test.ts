@@ -58,3 +58,20 @@ describe('persistProxyModelContextWindows', () => {
     expect(saved.proxyModelContextWindows).toEqual({ a: 1, b: 2 })
   })
 })
+
+import { MODEL_CONTEXT_WINDOWS_ENV_KEY } from '../../utils/model/modelContextWindows.js'
+
+describe('env merge priority: user > proxy > preset', () => {
+  test('user modelContextWindows wins over proxy; proxy-only keys kept', async () => {
+    const svc = new ProviderService()
+    const p = await svc.addProvider(
+      sampleInput({ modelContextWindows: { shared: 111 } }),
+    )
+    await svc.persistProxyModelContextWindows(p.id, { shared: 222, proxyOnly: 333 })
+
+    const env = await svc.getProviderRuntimeEnv(p.id)
+    const parsed = JSON.parse(env[MODEL_CONTEXT_WINDOWS_ENV_KEY]!) as Record<string, number>
+    expect(parsed.shared).toBe(111)
+    expect(parsed.proxyOnly).toBe(333)
+  })
+})
