@@ -513,3 +513,23 @@ export function extractQuotaStatusFromError(error: APIError): void {
     logError(e as Error)
   }
 }
+
+// ─── Proxy trim signal (梯度 2) ───
+// CrewProxy sets x-crew-trimmed-tokens when it mechanically trimmed the
+// request to fit the context window. Surfaced to the user once per turn.
+let lastProxyTrimTokens = 0
+
+export function extractTrimStatusFromHeaders(headers: globalThis.Headers): void {
+  const raw = headers.get('x-crew-trimmed-tokens')
+  if (!raw) return
+  const n = Number(raw)
+  if (Number.isFinite(n) && Number.isInteger(n) && n > 0) {
+    lastProxyTrimTokens = n
+  }
+}
+
+export function consumeProxyTrimTokens(): number {
+  const v = lastProxyTrimTokens
+  lastProxyTrimTokens = 0
+  return v
+}

@@ -98,6 +98,7 @@ import {
   currentLimits,
   extractQuotaStatusFromError,
   extractQuotaStatusFromHeaders,
+  extractTrimStatusFromHeaders,
 } from "../claudeAiLimits.js";
 import { getAPIContextManagement } from "../compact/apiMicrocompact.js";
 
@@ -2475,6 +2476,7 @@ async function* queryModel(
       const resp = streamResponse as unknown as Response | undefined;
       if (resp) {
         extractQuotaStatusFromHeaders(resp.headers);
+        extractTrimStatusFromHeaders(resp.headers);
         // Store headers for gateway detection
         responseHeaders = resp.headers;
       }
