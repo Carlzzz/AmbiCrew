@@ -43,6 +43,7 @@ import {
   isPromptTooLongMessage,
 } from './services/api/errors.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
+import { consumeProxyTrimTokens } from './services/claudeAiLimits.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -873,6 +874,17 @@ async function* queryLoop(
             }
           }
           queryCheckpoint('query_api_streaming_end')
+
+          // 梯度 2: CrewProxy mechanically trimmed this request to fit the
+          // context window. Surface it once for this turn so the silent
+          // truncation is visible and the user can /compact or start fresh.
+          const proxyTrimmed = consumeProxyTrimTokens()
+          if (proxyTrimmed > 0) {
+            yield createSystemMessage(
+              `⚠️ 本轮上下文被模型代理裁剪了约 ${proxyTrimmed} tokens 以适配上下文窗口。较早的对话内容可能已被裁掉。建议使用 /compact 压缩上下文，或新建会话。`,
+              'warning',
+            )
+          }
 
           // Yield deferred microcompact boundary message using actual API-reported
           // token deletion count instead of client-side estimates.
