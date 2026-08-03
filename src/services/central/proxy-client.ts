@@ -20,6 +20,38 @@ export interface ProxyModelItem {
   modelId: string
   modelAlias: string
   imageSupport?: boolean
+  contextWindow?: number
+}
+
+/**
+ * Parse raw /models items into ProxyModelItem[]. Extracted as a pure function
+ * so context_window parsing is unit-testable without a live proxy.
+ * A positive numeric context_window is kept; missing / non-positive → undefined
+ * (downstream falls back to preset windows).
+ */
+export function parseProxyModelItems(rawItems: unknown[]): ProxyModelItem[] {
+  const items: ProxyModelItem[] = []
+  for (const it of rawItems) {
+    if (!it || typeof it !== 'object') continue
+    const rec = it as {
+      model_id?: unknown
+      model_alias?: unknown
+      image_support?: unknown
+      context_window?: unknown
+    }
+    if (typeof rec.model_id !== 'string' || typeof rec.model_alias !== 'string') continue
+    const cw =
+      typeof rec.context_window === 'number' && rec.context_window > 0
+        ? rec.context_window
+        : undefined
+    items.push({
+      modelId: rec.model_id,
+      modelAlias: rec.model_alias,
+      imageSupport: typeof rec.image_support === 'boolean' ? rec.image_support : undefined,
+      ...(cw !== undefined && { contextWindow: cw }),
+    })
+  }
+  return items
 }
 
 export function classifyProxyError(error: unknown, status?: number): ProxyErrorCategory {
@@ -175,17 +207,7 @@ export async function fetchProxyModelList(
     throw err
   }
 
-  const items: ProxyModelItem[] = []
-  for (const it of data.items) {
-    if (!it || typeof it !== 'object') continue
-    const rec = it as { model_id?: unknown; model_alias?: unknown; image_support?: unknown }
-    if (typeof rec.model_id !== 'string' || typeof rec.model_alias !== 'string') continue
-    items.push({
-      modelId: rec.model_id,
-      modelAlias: rec.model_alias,
-      imageSupport: typeof rec.image_support === 'boolean' ? rec.image_support : undefined,
-    })
-  }
+  const items = parseProxyModelItems(data.items)
 
   return { items }
 }
