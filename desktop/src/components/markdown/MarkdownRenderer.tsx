@@ -203,6 +203,9 @@ const BASE_PROSE_CLASSES = `markdown-prose prose prose-sm max-w-none text-[var(-
   prose-pre:!bg-transparent prose-pre:!p-0 prose-pre:!shadow-none
   prose-a:text-[var(--color-text-accent)] prose-a:no-underline hover:prose-a:underline prose-a:break-all
   prose-strong:text-[var(--color-text-primary)]
+  prose-em:text-[var(--color-text-secondary)]
+  prose-blockquote:text-[var(--color-text-secondary)] prose-blockquote:italic
+  prose-blockquote:border-l-4 prose-blockquote:border-[var(--color-outline-variant)] prose-blockquote:bg-[var(--color-surface-container-low)] prose-blockquote:my-4 prose-blockquote:rounded-r-lg prose-blockquote:px-4 prose-blockquote:py-2
   prose-ul:my-2 prose-ol:my-2
   prose-li:my-0.5
   prose-table:my-0 prose-table:w-full prose-table:table-auto prose-table:text-sm
