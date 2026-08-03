@@ -298,6 +298,36 @@ export class ProviderService {
     return updated
   }
 
+  /**
+   * Persist real context windows advertised by CrewProxy /models into the
+   * provider's internal proxyModelContextWindows cache (merging, new keys
+   * win). Never touches user-set modelContextWindows. No-op for empty input
+   * or unknown provider. Re-syncs settings if the provider is active so the
+   * merged window reaches the next CLI spawn.
+   */
+  async persistProxyModelContextWindows(
+    providerId: string,
+    windows: Record<string, number>,
+  ): Promise<void> {
+    if (Object.keys(windows).length === 0) return
+    const index = await this.readIndex()
+    const idx = index.providers.findIndex((p) => p.id === providerId)
+    if (idx === -1) return
+    const existing = index.providers[idx]!
+    const updated: SavedProvider = {
+      ...existing,
+      proxyModelContextWindows: {
+        ...(existing.proxyModelContextWindows ?? {}),
+        ...windows,
+      },
+    }
+    index.providers[idx] = updated
+    await this.writeIndex(index)
+    if (index.activeId === providerId) {
+      await this.syncToSettings(updated)
+    }
+  }
+
   async deleteProvider(id: string): Promise<void> {
     const index = await this.readIndex()
     const idx = index.providers.findIndex((p) => p.id === id)

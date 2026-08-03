@@ -47,6 +47,10 @@ export const SavedProviderSchema = z.object({
   models: ModelMappingSchema,
   autoCompactWindow: AutoCompactWindowSchema.optional(),
   modelContextWindows: ModelContextWindowsSchema.optional(),
+  // Real context windows advertised by CrewProxy /models. Internal cache,
+  // not user-editable; kept separate so it never overwrites the user's
+  // hand-set modelContextWindows. Merged at spawn: preset < proxy < user.
+  proxyModelContextWindows: ModelContextWindowsSchema.optional(),
   notes: z.string().optional(),
 })
 
