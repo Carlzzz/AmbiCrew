@@ -529,7 +529,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       ...(options?.rule ? { rule: options.rule } : {}),
       ...(options?.updatedInput ? { updatedInput: options.updatedInput } : {}),
     })
-    set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ pendingPermission: null, chatState: allowed ? 'tool_executing' : 'idle' })) }))
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
+        pendingPermission: null,
+        chatState: allowed ? 'tool_executing' : 'idle',
+        ...(session.askUserQuestionDedupe?.requestId === requestId
+          ? { askUserQuestionDedupe: null }
+          : {}),
+      })),
+    }))
   },
 
   respondToComputerUsePermission: (sessionId, requestId, response) => {
@@ -577,6 +585,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             chatState: 'idle',
             pendingPermission: null,
             pendingComputerUsePermission: null,
+            askUserQuestionDedupe: null,
             elapsedTimer: null,
           },
         },
@@ -710,6 +719,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamingToolInput: '',
             pendingPermission: null,
             pendingComputerUsePermission: null,
+            askUserQuestionDedupe: null,
             elapsedTimer: null,
             statusVerb: '',
           })),
@@ -742,7 +752,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   clearMessages: (sessionId) => {
-    set((s) => ({ sessions: updateSessionIn(s.sessions, sessionId, () => ({ messages: [], streamingText: '', chatState: 'idle' })) }))
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+        messages: [],
+        streamingText: '',
+        chatState: 'idle',
+        pendingPermission: null,
+        pendingComputerUsePermission: null,
+        askUserQuestionDedupe: null,
+      })),
+    }))
   },
 
   handleServerMessage: (sessionId, msg) => {
@@ -889,6 +908,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             break
           }
         }
+        const askSignature = isAskUserQuestion(toolName)
+          ? getAskUserQuestionSignature(msg.input)
+          : null
+        if (askSignature && session?.askUserQuestionDedupe?.signature === askSignature) {
+          console.warn(
+            `[chatStore:AskUserQuestion] dropping duplicate question signature toolUseId=${toolUseId}`,
+          )
+          update(() => ({
+            activeToolUseId: null,
+            activeToolName: null,
+            activeThinkingId: null,
+            streamingToolInput: '',
+          }))
+          break
+        }
         if (toolName === 'OpenPreview') {
           const url = (msg.input as { url?: string } | null | undefined)?.url
           if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
@@ -909,6 +943,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             toolUseId,
             input: msg.input, timestamp: Date.now(), parentToolUseId: msg.parentToolUseId,
           }],
+          ...(askSignature ? {
+            askUserQuestionDedupe: {
+              signature: askSignature,
+              toolUseId,
+              requestId: s.askUserQuestionDedupe?.requestId,
+            },
+          } : {}),
           activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
         }))
         if (toolName === 'TodoWrite' && Array.isArray((msg.input as any)?.todos)) {
@@ -940,6 +981,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             `[chatStore:AskUserQuestion] permission_request received toolUseId=${msg.toolUseId} requestId=${msg.requestId}`,
           )
         }
+        const sessionState = get().sessions[sessionId]
+        const askSignature = isAskUserQuestion(msg.toolName)
+          ? getAskUserQuestionSignature(msg.input)
+          : null
+        if (
+          askSignature &&
+          sessionState?.askUserQuestionDedupe?.signature === askSignature &&
+          sessionState.askUserQuestionDedupe.requestId &&
+          sessionState.pendingPermission?.requestId === sessionState.askUserQuestionDedupe.requestId
+        ) {
+          console.warn(
+            `[chatStore:AskUserQuestion] dropping duplicate permission_request requestId=${msg.requestId}`,
+          )
+          break
+        }
         notifyDesktop({
           dedupeKey: `permission:${msg.requestId}`,
           cooldownScope: 'permission-prompt',
@@ -957,6 +1013,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             input: msg.input,
             description: msg.description,
           },
+          ...(askSignature ? {
+            askUserQuestionDedupe: {
+              signature: askSignature,
+              toolUseId: msg.toolUseId ?? s.askUserQuestionDedupe?.toolUseId ?? '',
+              requestId: msg.requestId,
+            },
+          } : {}),
           pendingComputerUsePermission: null,
           chatState: 'permission_pending',
           activeThinkingId: null,
@@ -1013,6 +1076,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           activeThinkingId: null,
           pendingPermission: null,
           pendingComputerUsePermission: null,
+          askUserQuestionDedupe: null,
           elapsedTimer: null,
         }))
         const notification = wasAgentRunning
@@ -1045,6 +1109,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             streamingText: '',
             pendingPermission: null,
             pendingComputerUsePermission: null,
+            askUserQuestionDedupe: null,
             authRestartState: wasRestarting ? 'failed' : undefined,
           }
         })
@@ -1138,6 +1203,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             activeThinkingId: null,
             pendingPermission: null,
             pendingComputerUsePermission: null,
+            askUserQuestionDedupe: null,
             chatState: 'idle',
             elapsedTimer: null,
             elapsedSeconds: 0,
