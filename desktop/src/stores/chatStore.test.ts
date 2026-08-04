@@ -779,7 +779,7 @@ describe('chatStore history mapping', () => {
     })
   })
 
-  it('restores the first AskUserQuestion request when a duplicate follows a temporary replacement', () => {
+  it('keeps the current unrelated permission when a duplicate AskUserQuestion follows a replacement', () => {
     seedDesktopSession()
     const askInput = {
       questions: [{ question: 'Choose a format?', options: [{ label: 'JSON' }, { label: 'YAML' }] }],
@@ -814,10 +814,114 @@ describe('chatStore history mapping', () => {
     })
 
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingPermission).toMatchObject({
-      requestId: 'perm-restore-1',
-      toolUseId: 'tool-restore-1',
-      toolName: 'AskUserQuestion',
+      requestId: 'perm-read',
+      toolName: 'Read',
+      toolUseId: 'tool-read',
     })
+  })
+
+  it('dedupes tool-only AskUserQuestion replays before permission and keeps the first tool answerable', () => {
+    seedDesktopSession()
+    const askInput = { questions: [{ question: 'Pick a deployment region?' }] }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-only-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-only-2',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-only-1',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-only-1',
+      input: askInput,
+    })
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(session?.messages.filter((message) => message.type === 'tool_use')).toHaveLength(1)
+    expect(session?.messages[0]).toMatchObject({ toolUseId: 'tool-only-1' })
+    expect(session?.pendingPermission).toMatchObject({
+      requestId: 'perm-only-1',
+      toolUseId: 'tool-only-1',
+    })
+
+    useChatStore.getState().respondToPermission(TEST_SESSION_ID, 'perm-only-1', true)
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'permission_response',
+      requestId: 'perm-only-1',
+      allowed: true,
+    })
+  })
+
+  it('adopts the first tool id when an AskUserQuestion permission arrives without one', () => {
+    seedDesktopSession()
+    const askInput = { questions: [{ question: 'Pick a deployment region?' }] }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-missing-tool',
+      toolName: 'AskUserQuestion',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-adopted-1',
+      input: askInput,
+    })
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(session?.messages.filter((message) => message.type === 'tool_use')).toHaveLength(1)
+    expect(session?.messages[0]).toMatchObject({ toolUseId: 'tool-adopted-1' })
+    expect(session?.pendingPermission).toMatchObject({
+      requestId: 'perm-missing-tool',
+      toolUseId: undefined,
+    })
+    expect(session?.askUserQuestionDedupe).toMatchObject({
+      requestId: 'perm-missing-tool',
+      toolUseId: 'tool-adopted-1',
+    })
+  })
+
+  it('does not restore a duplicate AskUserQuestion over an unrelated pending permission', () => {
+    seedDesktopSession()
+    const askInput = { questions: [{ question: 'Pick a deployment region?' }] }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-ask-tracked',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-ask-tracked',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-read',
+      toolName: 'Read',
+      toolUseId: 'tool-read',
+      input: { file_path: 'README.md' },
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-ask-duplicate',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-ask-replay',
+      input: askInput,
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingPermission).toMatchObject({
+      requestId: 'perm-read',
+      toolName: 'Read',
+      toolUseId: 'tool-read',
+    })
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingComputerUsePermission).toBeNull()
   })
 
   it('allows the same AskUserQuestion content again after message_complete clears dedupe state', () => {

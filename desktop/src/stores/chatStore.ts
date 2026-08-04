@@ -111,9 +111,9 @@ function detectFrameworkFromPackageJson(content: string): 'react' | 'vue' | 'sve
 
 type AskUserQuestionDedupe = {
   signature: string
-  toolUseId: string
-  requestId: string
-  pendingPermission: {
+  toolUseId?: string
+  requestId?: string
+  pendingPermission?: {
     requestId: string
     toolName: string
     toolUseId?: string
@@ -918,6 +918,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (
           askSignature &&
           trackedAsk?.signature === askSignature &&
+          trackedAsk.toolUseId &&
           trackedAsk.toolUseId !== toolUseId
         ) {
           console.warn(
@@ -951,11 +952,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             toolUseId,
             input: msg.input, timestamp: Date.now(), parentToolUseId: msg.parentToolUseId,
           }],
-          ...(askSignature && s.askUserQuestionDedupe?.signature === askSignature ? {
-            askUserQuestionDedupe: {
-              ...s.askUserQuestionDedupe,
-              toolUseId,
-            },
+          ...(askSignature ? {
+            askUserQuestionDedupe: s.askUserQuestionDedupe?.signature === askSignature
+              ? {
+                  ...s.askUserQuestionDedupe,
+                  toolUseId: s.askUserQuestionDedupe.toolUseId ?? toolUseId,
+                }
+              : {
+                  signature: askSignature,
+                  toolUseId,
+                },
           } : {}),
           activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
         }))
@@ -996,19 +1002,35 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const askSignature = isAskUserQuestion(msg.toolName)
           ? getAskUserQuestionSignature(msg.input)
           : null
-        if (
-          askSignature &&
-          sessionState?.askUserQuestionDedupe?.signature === askSignature
-        ) {
+        if (askSignature && sessionState?.askUserQuestionDedupe?.signature === askSignature) {
+          const trackedAsk = sessionState.askUserQuestionDedupe
+          const isCurrentTrackedAsk =
+            sessionState.pendingPermission?.requestId === trackedAsk.requestId
+          if (
+            !isCurrentTrackedAsk &&
+            sessionState.pendingPermission &&
+            sessionState.pendingPermission.toolName !== 'AskUserQuestion'
+          ) {
+            break
+          }
           console.warn(
             `[chatStore:AskUserQuestion] dropping duplicate permission_request requestId=${msg.requestId}`,
           )
-          if (
-            sessionState.pendingPermission?.requestId !==
-            sessionState.askUserQuestionDedupe.requestId
-          ) {
+          if (!trackedAsk.requestId) {
+            const pendingPermission = {
+              requestId: msg.requestId,
+              toolName: msg.toolName,
+              toolUseId: msg.toolUseId,
+              input: msg.input,
+              description: msg.description,
+            }
             update(() => ({
-              pendingPermission: sessionState.askUserQuestionDedupe!.pendingPermission,
+              pendingPermission,
+              askUserQuestionDedupe: {
+                ...trackedAsk,
+                requestId: msg.requestId,
+                pendingPermission,
+              },
               pendingComputerUsePermission: null,
               chatState: 'permission_pending',
               activeThinkingId: null,
@@ -1038,7 +1060,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ...(askSignature ? {
               askUserQuestionDedupe: {
                 signature: askSignature,
-                toolUseId: msg.toolUseId ?? '',
+                ...(msg.toolUseId ? { toolUseId: msg.toolUseId } : {}),
                 requestId: msg.requestId,
                 pendingPermission,
               },
