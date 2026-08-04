@@ -54,3 +54,28 @@ Self-review:
 
 Residual concerns:
 - Expected duplicate-drop console diagnostics remain visible in focused tests; they are existing runtime logging, not failures.
+
+## Final Review Important Fix Report
+
+Status: DONE
+
+Changes:
+- Correlated replay permissions to the first visible AskUserQuestion card's toolUseId while preserving the arriving requestId for the websocket response.
+- Updated the permission-without-toolUseId adoption path so both active and stored pending permission state use the adopted tool id.
+- Restored the tracked AskUserQuestion permission after an unrelated permission is answered; answering the tracked Ask clears dedupe as before.
+- Added regression tests for replay-id correlation, adopted tool id answerability, unrelated-permission restoration, and final Ask clearing.
+
+Commands/outcomes:
+- `cd desktop && bun run vitest run src/stores/chatStore.test.ts` — passed: 43 tests passed, 1 test file passed.
+- `cd desktop && bun run vitest run src/components/chat/AskUserQuestion.test.tsx` — passed: 3 tests passed, 1 test file passed.
+- `git diff --check` — passed with no output.
+
+Commit hash: PENDING
+
+Self-review:
+- Scope is limited to `desktop/src/stores/chatStore.ts` and `desktop/src/stores/chatStore.test.ts`; no dependencies or CLI/SDK behavior changed.
+- Arriving replay request IDs remain the IDs sent in permission responses, while UI correlation always follows the first card.
+- Computer-use state is untouched by the permission restoration path.
+
+Residual concerns:
+- Expected duplicate-drop console diagnostics remain visible during focused tests; they are existing runtime logging, not failures.

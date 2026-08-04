@@ -701,6 +701,30 @@ describe('chatStore history mapping', () => {
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.askUserQuestionDedupe).toBeNull()
   })
 
+  it('uses the first visible card id when only the replay permission arrives', () => {
+    seedDesktopSession()
+    const askInput = { questions: [{ question: 'Pick a deployment region?' }] }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete', toolName: 'AskUserQuestion', toolUseId: 'tool-1', input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete', toolName: 'AskUserQuestion', toolUseId: 'tool-2', input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request', requestId: 'request-2', toolName: 'AskUserQuestion', toolUseId: 'tool-2', input: askInput,
+    })
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    expect(session?.messages.filter((message) => message.type === 'tool_use')).toHaveLength(1)
+    expect(session?.messages[0]).toMatchObject({ toolUseId: 'tool-1' })
+    expect(session?.pendingPermission).toMatchObject({ requestId: 'request-2', toolUseId: 'tool-1' })
+
+    useChatStore.getState().respondToPermission(TEST_SESSION_ID, 'request-2', true)
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'permission_response', requestId: 'request-2', allowed: true,
+    })
+  })
   it('does not dedupe a later same-content question when the first gets a result without becoming answerable', () => {
     seedDesktopSession()
     const askInput = {
@@ -882,7 +906,7 @@ describe('chatStore history mapping', () => {
     expect(session?.messages[0]).toMatchObject({ toolUseId: 'tool-adopted-1' })
     expect(session?.pendingPermission).toMatchObject({
       requestId: 'perm-missing-tool',
-      toolUseId: undefined,
+      toolUseId: 'tool-adopted-1',
     })
     expect(session?.askUserQuestionDedupe).toMatchObject({
       requestId: 'perm-missing-tool',
@@ -924,6 +948,26 @@ describe('chatStore history mapping', () => {
     expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingComputerUsePermission).toBeNull()
   })
 
+  it('restores the tracked AskUserQuestion after answering an unrelated permission', () => {
+    seedDesktopSession()
+    const askInput = { questions: [{ question: 'Pick a deployment region?' }] }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request', requestId: 'perm-ask', toolName: 'AskUserQuestion', toolUseId: 'tool-ask', input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request', requestId: 'perm-read', toolName: 'Read', toolUseId: 'tool-read', input: { file_path: 'README.md' },
+    })
+    useChatStore.getState().respondToPermission(TEST_SESSION_ID, 'perm-read', true)
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingPermission).toMatchObject({
+      requestId: 'perm-ask', toolUseId: 'tool-ask', toolName: 'AskUserQuestion',
+    })
+
+    useChatStore.getState().respondToPermission(TEST_SESSION_ID, 'perm-ask', true)
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingPermission).toBeNull()
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.askUserQuestionDedupe).toBeNull()
+  })
   it('allows the same AskUserQuestion content again after message_complete clears dedupe state', () => {
     seedDesktopSession()
     const askInput = {
@@ -961,6 +1005,7 @@ describe('chatStore history mapping', () => {
       'tool-turn-2',
     ])
   })
+
 
   it('replays saved runtime selection when reconnecting a session', () => {
     useSessionRuntimeStore.getState().setSelection(TEST_SESSION_ID, {

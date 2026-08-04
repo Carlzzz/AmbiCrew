@@ -533,13 +533,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       ...(options?.updatedInput ? { updatedInput: options.updatedInput } : {}),
     })
     set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
-        pendingPermission: null,
-        chatState: allowed ? 'tool_executing' : 'idle',
-        ...(session.askUserQuestionDedupe?.requestId === requestId
-          ? { askUserQuestionDedupe: null }
-          : {}),
-      })),
+      sessions: updateSessionIn(s.sessions, sessionId, (session) => {
+        const trackedAsk = session.askUserQuestionDedupe
+        const answeredTrackedAsk = trackedAsk?.requestId === requestId
+        const restoreAsk = !answeredTrackedAsk &&
+          session.pendingPermission?.requestId === requestId &&
+          trackedAsk?.pendingPermission
+        return {
+          pendingPermission: restoreAsk ? trackedAsk.pendingPermission : null,
+          chatState: restoreAsk ? 'permission_pending' : (allowed ? 'tool_executing' : 'idle'),
+          ...(answeredTrackedAsk ? { askUserQuestionDedupe: null } : {}),
+        }
+      }),
     }))
   },
 
@@ -946,25 +951,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             `[chatStore:AskUserQuestion] tool_use_complete received toolUseId=${msg.toolUseId} hasInput=${!!msg.input} inputKeys=${msg.input ? Object.keys(msg.input as object).join(',') : 'none'}`,
           )
         }
-        update((s) => ({
-          messages: [...s.messages, {
-            id: nextId(), type: 'tool_use', toolName,
-            toolUseId,
-            input: msg.input, timestamp: Date.now(), parentToolUseId: msg.parentToolUseId,
-          }],
-          ...(askSignature ? {
-            askUserQuestionDedupe: s.askUserQuestionDedupe?.signature === askSignature
-              ? {
-                  ...s.askUserQuestionDedupe,
-                  toolUseId: s.askUserQuestionDedupe.toolUseId ?? toolUseId,
-                }
-              : {
-                  signature: askSignature,
-                  toolUseId,
-                },
-          } : {}),
-          activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
-        }))
+        update((s) => {
+          const trackedAsk = askSignature && s.askUserQuestionDedupe?.signature === askSignature
+            ? s.askUserQuestionDedupe
+            : null
+          const adoptedToolUseId = trackedAsk?.toolUseId ?? toolUseId
+          const pendingPermission = trackedAsk?.pendingPermission
+          const adoptedPendingPermission = pendingPermission && !pendingPermission.toolUseId
+            ? { ...pendingPermission, toolUseId: adoptedToolUseId }
+            : pendingPermission
+          return {
+            messages: [...s.messages, {
+              id: nextId(), type: 'tool_use', toolName,
+              toolUseId,
+              input: msg.input, timestamp: Date.now(), parentToolUseId: msg.parentToolUseId,
+            }],
+            ...(askSignature ? {
+              askUserQuestionDedupe: trackedAsk
+                ? {
+                    ...trackedAsk,
+                    toolUseId: adoptedToolUseId,
+                    ...(adoptedPendingPermission ? { pendingPermission: adoptedPendingPermission } : {}),
+                  }
+                : {
+                    signature: askSignature,
+                    toolUseId,
+                  },
+            } : {}),
+            ...(adoptedPendingPermission && s.pendingPermission?.requestId === adoptedPendingPermission.requestId
+              ? { pendingPermission: adoptedPendingPermission }
+              : {}),
+            activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
+          }
+        })
         if (toolName === 'TodoWrite' && Array.isArray((msg.input as any)?.todos)) {
           useCLITaskStore.getState().setTasksFromTodos((msg.input as any).todos)
         } else if (TASK_TOOL_NAMES.has(toolName)) {
@@ -1020,7 +1039,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             const pendingPermission = {
               requestId: msg.requestId,
               toolName: msg.toolName,
-              toolUseId: msg.toolUseId,
+              toolUseId: trackedAsk.toolUseId ?? msg.toolUseId,
               input: msg.input,
               description: msg.description,
             }
