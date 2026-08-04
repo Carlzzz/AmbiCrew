@@ -130,6 +130,31 @@ describe('chatStore history mapping', () => {
     })
   })
 
+  function seedDesktopSession(sessionId = TEST_SESSION_ID) {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [],
+          chatState: 'idle',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+  }
+
   it('preserves thinking blocks when restoring transcript history', () => {
     const messages: MessageEntry[] = [
       {
@@ -598,6 +623,119 @@ describe('chatStore history mapping', () => {
     const messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
     const toolUses = messages.filter((m) => m.type === 'tool_use' && m.toolUseId === 'tool-dup-1')
     expect(toolUses).toHaveLength(1)
+  })
+
+  it('keeps the first AskUserQuestion answerable when replayed with different ids', () => {
+    seedDesktopSession()
+    const askInput = {
+      questions: [
+        {
+          question: 'Should we persist data?',
+          header: 'Persist',
+          multiSelect: false,
+          options: [
+            { label: 'No', description: 'Keep it memory-only' },
+            { label: 'Yes', description: 'Write it to disk' },
+          ],
+        },
+      ],
+    }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-ask-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-ask-1',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-ask-1',
+      input: askInput,
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-ask-2',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-ask-2',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-ask-2',
+      input: askInput,
+    })
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    const askCards = session?.messages.filter(
+      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+    ) ?? []
+
+    expect(askCards).toHaveLength(1)
+    expect(askCards[0]).toMatchObject({ toolUseId: 'tool-ask-1' })
+    expect(session?.pendingPermission).toMatchObject({
+      requestId: 'perm-ask-1',
+      toolUseId: 'tool-ask-1',
+      toolName: 'AskUserQuestion',
+    })
+
+    useChatStore.getState().respondToPermission(TEST_SESSION_ID, 'perm-ask-1', true, {
+      updatedInput: {
+        ...askInput,
+        answers: { 'Should we persist data?': 'No' },
+      },
+    })
+
+    expect(sendMock).toHaveBeenCalledWith(TEST_SESSION_ID, {
+      type: 'permission_response',
+      requestId: 'perm-ask-1',
+      allowed: true,
+      updatedInput: {
+        ...askInput,
+        answers: { 'Should we persist data?': 'No' },
+      },
+    })
+  })
+
+  it('allows the same AskUserQuestion content again after message_complete clears dedupe state', () => {
+    seedDesktopSession()
+    const askInput = {
+      questions: [
+        {
+          question: 'Choose deployment target?',
+          options: [{ label: 'Staging' }, { label: 'Production' }],
+        },
+      ],
+    }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-turn-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'message_complete',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-turn-2',
+      input: askInput,
+    })
+
+    const askCards = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.filter(
+      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+    ) ?? []
+
+    expect(askCards.map((message) => message.toolUseId)).toEqual([
+      'tool-turn-1',
+      'tool-turn-2',
+    ])
   })
 
   it('replays saved runtime selection when reconnecting a session', () => {
