@@ -70,7 +70,7 @@ Commands/outcomes:
 - `cd desktop && bun run vitest run src/components/chat/AskUserQuestion.test.tsx` — passed: 3 tests passed, 1 test file passed.
 - `git diff --check` — passed with no output.
 
-Commit hash: PENDING
+Commit hash: 94aff44f0ff0caa2a969f2c913f4fc8cffa2857b
 
 Self-review:
 - Scope is limited to `desktop/src/stores/chatStore.ts` and `desktop/src/stores/chatStore.test.ts`; no dependencies or CLI/SDK behavior changed.
