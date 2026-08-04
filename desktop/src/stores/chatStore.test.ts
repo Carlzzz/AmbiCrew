@@ -698,6 +698,126 @@ describe('chatStore history mapping', () => {
         answers: { 'Should we persist data?': 'No' },
       },
     })
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.askUserQuestionDedupe).toBeNull()
+  })
+
+  it('does not dedupe a later same-content question when the first gets a result without becoming answerable', () => {
+    seedDesktopSession()
+    const askInput = {
+      questions: [{ question: 'Choose a region?', options: [{ label: 'East' }, { label: 'West' }] }],
+    }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-unanswered-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_result',
+      toolUseId: 'tool-unanswered-1',
+      content: 'Question was not presented',
+      isError: true,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-unanswered-2',
+      input: askInput,
+    })
+
+    const askCards = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.filter(
+      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+    ) ?? []
+    expect(askCards.map((message) => message.toolUseId)).toEqual([
+      'tool-unanswered-1',
+      'tool-unanswered-2',
+    ])
+  })
+
+  it('preserves the first request when permission arrives before tool completion', () => {
+    seedDesktopSession()
+    const askInput = {
+      questions: [{ question: 'Choose a database?', options: [{ label: 'SQLite' }, { label: 'Postgres' }] }],
+    }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-before-1',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-before-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-before-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-before-2',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-before-2',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-before-2',
+      input: askInput,
+    })
+
+    const session = useChatStore.getState().sessions[TEST_SESSION_ID]
+    const askCards = session?.messages.filter(
+      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+    ) ?? []
+    expect(askCards.map((message) => message.toolUseId)).toEqual(['tool-before-1'])
+    expect(session?.pendingPermission).toMatchObject({
+      requestId: 'perm-before-1',
+      toolUseId: 'tool-before-1',
+    })
+  })
+
+  it('restores the first AskUserQuestion request when a duplicate follows a temporary replacement', () => {
+    seedDesktopSession()
+    const askInput = {
+      questions: [{ question: 'Choose a format?', options: [{ label: 'JSON' }, { label: 'YAML' }] }],
+    }
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'tool_use_complete',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-restore-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-restore-1',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-restore-1',
+      input: askInput,
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-read',
+      toolName: 'Read',
+      toolUseId: 'tool-read',
+      input: { file_path: 'README.md' },
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'permission_request',
+      requestId: 'perm-restore-2',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-restore-2',
+      input: askInput,
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.pendingPermission).toMatchObject({
+      requestId: 'perm-restore-1',
+      toolUseId: 'tool-restore-1',
+      toolName: 'AskUserQuestion',
+    })
   })
 
   it('allows the same AskUserQuestion content again after message_complete clears dedupe state', () => {

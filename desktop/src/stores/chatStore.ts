@@ -112,7 +112,14 @@ function detectFrameworkFromPackageJson(content: string): 'react' | 'vue' | 'sve
 type AskUserQuestionDedupe = {
   signature: string
   toolUseId: string
-  requestId?: string
+  requestId: string
+  pendingPermission: {
+    requestId: string
+    toolName: string
+    toolUseId?: string
+    input: unknown
+    description?: string
+  }
 }
 
 export type PerSessionState = {
@@ -179,10 +186,6 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
 
 function createDefaultSessionState(): PerSessionState {
   return { ...DEFAULT_SESSION_STATE, messages: [], tokenUsage: { input_tokens: 0, output_tokens: 0 } }
-}
-
-export function clearAskUserQuestionDedupe(session: PerSessionState): Partial<PerSessionState> {
-  return session.askUserQuestionDedupe ? { askUserQuestionDedupe: null } : {}
 }
 
 type ChatStore = {
@@ -911,7 +914,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const askSignature = isAskUserQuestion(toolName)
           ? getAskUserQuestionSignature(msg.input)
           : null
-        if (askSignature && session?.askUserQuestionDedupe?.signature === askSignature) {
+        const trackedAsk = session?.askUserQuestionDedupe
+        if (
+          askSignature &&
+          trackedAsk?.signature === askSignature &&
+          trackedAsk.toolUseId !== toolUseId
+        ) {
           console.warn(
             `[chatStore:AskUserQuestion] dropping duplicate question signature toolUseId=${toolUseId}`,
           )
@@ -943,11 +951,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             toolUseId,
             input: msg.input, timestamp: Date.now(), parentToolUseId: msg.parentToolUseId,
           }],
-          ...(askSignature ? {
+          ...(askSignature && s.askUserQuestionDedupe?.signature === askSignature ? {
             askUserQuestionDedupe: {
-              signature: askSignature,
+              ...s.askUserQuestionDedupe,
               toolUseId,
-              requestId: s.askUserQuestionDedupe?.requestId,
             },
           } : {}),
           activeToolUseId: null, activeToolName: null, activeThinkingId: null, streamingToolInput: '',
@@ -967,7 +974,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             id: nextId(), type: 'tool_result', toolUseId: msg.toolUseId,
             content: msg.content, isError: msg.isError, timestamp: Date.now(), parentToolUseId: msg.parentToolUseId,
           }],
-          chatState: 'thinking', activeThinkingId: null,
+          chatState: 'thinking',
+          activeThinkingId: null,
+          ...(s.askUserQuestionDedupe?.toolUseId === msg.toolUseId
+            ? { askUserQuestionDedupe: null }
+            : {}),
         }))
         if (pendingTaskToolUseIds.has(msg.toolUseId)) {
           pendingTaskToolUseIds.delete(msg.toolUseId)
@@ -987,13 +998,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           : null
         if (
           askSignature &&
-          sessionState?.askUserQuestionDedupe?.signature === askSignature &&
-          sessionState.askUserQuestionDedupe.requestId &&
-          sessionState.pendingPermission?.requestId === sessionState.askUserQuestionDedupe.requestId
+          sessionState?.askUserQuestionDedupe?.signature === askSignature
         ) {
           console.warn(
             `[chatStore:AskUserQuestion] dropping duplicate permission_request requestId=${msg.requestId}`,
           )
+          if (
+            sessionState.pendingPermission?.requestId !==
+            sessionState.askUserQuestionDedupe.requestId
+          ) {
+            update(() => ({
+              pendingPermission: sessionState.askUserQuestionDedupe!.pendingPermission,
+              pendingComputerUsePermission: null,
+              chatState: 'permission_pending',
+              activeThinkingId: null,
+            }))
+          }
           break
         }
         notifyDesktop({
@@ -1005,38 +1025,42 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ? `${msg.toolName} 请求执行，正在等待允许。`
             : '有一个工具请求正在等待允许。',
         })
-        update((s) => ({
-          pendingPermission: {
+        update((s) => {
+          const pendingPermission = {
             requestId: msg.requestId,
             toolName: msg.toolName,
             toolUseId: msg.toolUseId,
             input: msg.input,
             description: msg.description,
-          },
-          ...(askSignature ? {
-            askUserQuestionDedupe: {
-              signature: askSignature,
-              toolUseId: msg.toolUseId ?? s.askUserQuestionDedupe?.toolUseId ?? '',
-              requestId: msg.requestId,
-            },
-          } : {}),
-          pendingComputerUsePermission: null,
-          chatState: 'permission_pending',
-          activeThinkingId: null,
-          messages:
-            isAskUserQuestion(msg.toolName)
-              ? s.messages
-              : [...s.messages, {
-                  id: nextId(),
-                  type: 'permission_request',
-                  requestId: msg.requestId,
-                  toolName: msg.toolName,
-                  toolUseId: msg.toolUseId,
-                  input: msg.input,
-                  description: msg.description,
-                  timestamp: Date.now(),
-                }],
-        }))
+          }
+          return {
+            pendingPermission,
+            ...(askSignature ? {
+              askUserQuestionDedupe: {
+                signature: askSignature,
+                toolUseId: msg.toolUseId ?? '',
+                requestId: msg.requestId,
+                pendingPermission,
+              },
+            } : {}),
+            pendingComputerUsePermission: null,
+            chatState: 'permission_pending',
+            activeThinkingId: null,
+            messages:
+              isAskUserQuestion(msg.toolName)
+                ? s.messages
+                : [...s.messages, {
+                    id: nextId(),
+                    type: 'permission_request',
+                    requestId: msg.requestId,
+                    toolName: msg.toolName,
+                    toolUseId: msg.toolUseId,
+                    input: msg.input,
+                    description: msg.description,
+                    timestamp: Date.now(),
+                  }],
+          }
+        })
         break
 
       case 'computer_use_permission_request':
