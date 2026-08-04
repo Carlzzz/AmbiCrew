@@ -31,6 +31,67 @@ function isAskUserQuestion(toolName: string): boolean {
   return toolName.toLowerCase() === 'askuserquestion'
 }
 
+type AskUserQuestionOption = {
+  label?: unknown
+  description?: unknown
+}
+
+type AskUserQuestionInput = {
+  questions?: unknown
+  question?: unknown
+  header?: unknown
+  options?: unknown
+  multiSelect?: unknown
+}
+
+function normalizeAskUserQuestionInput(input: unknown) {
+  if (!input || typeof input !== 'object') return null
+  const raw = input as AskUserQuestionInput
+  const rawQuestions = Array.isArray(raw.questions)
+    ? raw.questions
+    : typeof raw.question === 'string'
+      ? [raw]
+      : []
+
+  const questions = rawQuestions
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const question = entry as AskUserQuestionInput
+      if (typeof question.question !== 'string' || !question.question.trim()) return null
+      const options = Array.isArray(question.options)
+        ? question.options
+          .map((option) => {
+            if (!option || typeof option !== 'object') return null
+            const typed = option as AskUserQuestionOption
+            const label = typeof typed.label === 'string' ? typed.label : ''
+            const description = typeof typed.description === 'string' ? typed.description : ''
+            return { label, description }
+          })
+          .filter((option): option is { label: string; description: string } => option !== null)
+        : []
+
+      return {
+        question: question.question.trim(),
+        header: typeof question.header === 'string' ? question.header.trim() : '',
+        multiSelect: question.multiSelect === true,
+        options,
+      }
+    })
+    .filter((question): question is {
+      question: string
+      header: string
+      multiSelect: boolean
+      options: Array<{ label: string; description: string }>
+    } => question !== null)
+
+  return questions.length > 0 ? questions : null
+}
+
+export function getAskUserQuestionSignature(input: unknown): string | null {
+  const normalized = normalizeAskUserQuestionInput(input)
+  return normalized ? JSON.stringify(normalized) : null
+}
+
 /** Detect the scaffold's framework from its package.json dependencies. Matches
  *  the deps create-vite adds per template (vue / svelte / react). Returns
  *  undefined if none are found so the caller can keep the current selection. */
@@ -46,6 +107,12 @@ function detectFrameworkFromPackageJson(content: string): 'react' | 'vue' | 'sve
   if ('svelte' in deps || '@sveltejs/vite-plugin-svelte' in deps) return 'svelte'
   if ('react' in deps || '@vitejs/plugin-react' in deps) return 'react'
   return undefined
+}
+
+type AskUserQuestionDedupe = {
+  signature: string
+  toolUseId: string
+  requestId?: string
 }
 
 export type PerSessionState = {
@@ -64,6 +131,7 @@ export type PerSessionState = {
     input: unknown
     description?: string
   } | null
+  askUserQuestionDedupe?: AskUserQuestionDedupe | null
   pendingComputerUsePermission: {
     requestId: string
     request: ComputerUsePermissionRequest
@@ -111,6 +179,10 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
 
 function createDefaultSessionState(): PerSessionState {
   return { ...DEFAULT_SESSION_STATE, messages: [], tokenUsage: { input_tokens: 0, output_tokens: 0 } }
+}
+
+export function clearAskUserQuestionDedupe(session: PerSessionState): Partial<PerSessionState> {
+  return session.askUserQuestionDedupe ? { askUserQuestionDedupe: null } : {}
 }
 
 type ChatStore = {
