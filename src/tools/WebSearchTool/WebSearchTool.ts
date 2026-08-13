@@ -19,8 +19,6 @@ import { getMainLoopModel, getSmallFastModel } from '../../utils/model/model.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import {
-  getApiKeyForProvider,
-  getFallbackProvider,
   isWebSearchEnabledForModel,
   makeWebSearchUnavailableOutput,
   markAnthropicNativeUnsupported,
@@ -254,7 +252,7 @@ export const WebSearchTool = buildTool({
         data: makeWebSearchUnavailableOutput(
           query,
           durationSeconds,
-          'Web search is not configured for this model. Use a Claude model for native web search or add a Tavily/Brave API key in Settings.',
+          'Web search is not configured for this model. Use a Claude model for native web search.',
         ),
       }
     }
@@ -267,21 +265,9 @@ export const WebSearchTool = buildTool({
           query,
         },
       })
-      const apiKey = getApiKeyForProvider(resolved.provider, resolved.settings)
-      if (!apiKey) {
-        const durationSeconds = (performance.now() - startTime) / 1000
-        return {
-          data: makeWebSearchUnavailableOutput(
-            query,
-            durationSeconds,
-            `Web search provider ${resolved.provider} is selected but its API key is missing.`,
-          ),
-        }
-      }
       const data = await searchWithExternalProvider(
         resolved.provider,
         input,
-        apiKey,
         context.abortController.signal,
       )
       onProgress?.({
@@ -309,36 +295,10 @@ export const WebSearchTool = buildTool({
       }
 
       markAnthropicNativeUnsupported(model)
-      const fallbackProvider = getFallbackProvider(resolved.settings)
-      if (!fallbackProvider) {
-        const durationSeconds = (performance.now() - startTime) / 1000
-        logError(error instanceof Error ? error : new Error(String(error)))
-        return {
-          data: makeWebSearchUnavailableOutput(
-            query,
-            durationSeconds,
-            'Native Anthropic web search failed for this endpoint, and no Tavily/Brave API key is configured for fallback.',
-          ),
-        }
-      }
-
-      const apiKey = getApiKeyForProvider(fallbackProvider, resolved.settings)
-      if (!apiKey) {
-        const durationSeconds = (performance.now() - startTime) / 1000
-        return {
-          data: makeWebSearchUnavailableOutput(
-            query,
-            durationSeconds,
-            `Fallback provider ${fallbackProvider} is configured without an API key.`,
-          ),
-        }
-      }
-
       logError(error instanceof Error ? error : new Error(String(error)))
       const data = await searchWithExternalProvider(
-        fallbackProvider,
+        'tavily',
         input,
-        apiKey,
         context.abortController.signal,
       )
       return { data }

@@ -1,3 +1,7 @@
+import {
+  configureApiKeyHeaders,
+  getCustomBaseUrl,
+} from '../../services/api/client.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import type { Input, Output, SearchResult } from './WebSearchTool.js'
@@ -13,8 +17,6 @@ export type WebSearchProvider = 'anthropic' | 'tavily' | 'brave' | 'disabled'
 
 export type WebSearchSettings = {
   mode?: WebSearchMode
-  tavilyApiKey?: string
-  braveApiKey?: string
 }
 
 export type ResolvedWebSearch = {
@@ -57,8 +59,6 @@ export function getConfiguredWebSearchSettings(
 
   return {
     mode: WEB_SEARCH_MODES.has(modeCandidate) ? modeCandidate : 'auto',
-    tavilyApiKey: normalizeApiKey(raw.tavilyApiKey),
-    braveApiKey: normalizeApiKey(raw.braveApiKey),
   }
 }
 
@@ -68,38 +68,18 @@ export function resolveWebSearchProvider(
 ): ResolvedWebSearch {
   const mode = settings.mode ?? 'auto'
 
-  if (mode === 'disabled') {
-    return { provider: 'disabled', settings }
-  }
-
-  if (mode === 'tavily') {
-    return { provider: settings.tavilyApiKey ? 'tavily' : 'disabled', settings }
-  }
-
-  if (mode === 'brave') {
-    return { provider: settings.braveApiKey ? 'brave' : 'disabled', settings }
-  }
-
+  if (mode === 'disabled') return { provider: 'disabled', settings }
+  if (mode === 'tavily') return { provider: 'tavily', settings }
+  if (mode === 'brave') return { provider: 'brave', settings }
   if (mode === 'anthropic') {
     return {
       provider: canUseAnthropicNativeWebSearch(model) ? 'anthropic' : 'disabled',
       settings,
     }
   }
-
-  if (canUseAnthropicNativeWebSearch(model)) {
-    return { provider: 'anthropic', settings }
-  }
-
-  if (settings.tavilyApiKey) {
-    return { provider: 'tavily', settings }
-  }
-
-  if (settings.braveApiKey) {
-    return { provider: 'brave', settings }
-  }
-
-  return { provider: 'disabled', settings }
+  // auto
+  if (canUseAnthropicNativeWebSearch(model)) return { provider: 'anthropic', settings }
+  return { provider: 'tavily', settings }
 }
 
 export function isWebSearchEnabledForModel(
@@ -129,38 +109,48 @@ export function markAnthropicNativeUnsupported(model: string | undefined): void 
 export async function searchWithExternalProvider(
   provider: Exclude<WebSearchProvider, 'anthropic' | 'disabled'>,
   input: Input,
-  apiKey: string,
   signal: AbortSignal,
 ): Promise<Output> {
   const startTime = performance.now()
-  const hits =
-    provider === 'tavily'
-      ? await searchWithTavily(input, apiKey, signal)
-      : await searchWithBrave(input, apiKey, signal)
+  const hits = await searchViaProxy(provider, input, signal)
   const durationSeconds = (performance.now() - startTime) / 1000
 
   return makeExternalSearchOutput(provider, input.query, hits, durationSeconds)
 }
 
-export function getFallbackProvider(
-  settings: WebSearchSettings,
-): Exclude<WebSearchProvider, 'anthropic' | 'disabled'> | null {
-  if (settings.tavilyApiKey) {
-    return 'tavily'
+async function searchViaProxy(
+  provider: 'tavily' | 'brave',
+  input: Input,
+  signal: AbortSignal,
+): Promise<ExternalSearchHit[]> {
+  const baseUrl = getCustomBaseUrl()
+  if (!baseUrl) {
+    throw new Error(
+      'CrewProxy base URL is not configured (set LLM_PROXY_BASE_URL or ANTHROPIC_BASE_URL)',
+    )
   }
-  if (settings.braveApiKey) {
-    return 'brave'
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  await configureApiKeyHeaders(headers, false)
+  const response = await fetch(`${baseUrl}/v1/websearch`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      provider,
+      query: input.query,
+      allowed_domains: input.allowed_domains,
+      blocked_domains: input.blocked_domains,
+    }),
+    signal,
+  })
+  if (!response.ok) {
+    throw new Error(`Web search via proxy failed: ${response.status}`)
   }
-  return null
-}
-
-export function getApiKeyForProvider(
-  provider: Exclude<WebSearchProvider, 'anthropic' | 'disabled'>,
-  settings: WebSearchSettings,
-): string | null {
-  return provider === 'tavily'
-    ? settings.tavilyApiKey ?? null
-    : settings.braveApiKey ?? null
+  const body = (await response.json()) as {
+    results?: Array<{ title?: unknown; url?: unknown }>
+  }
+  return (body.results ?? [])
+    .map(hit => normalizeHit(hit.title, hit.url))
+    .filter((hit): hit is ExternalSearchHit => hit != null)
 }
 
 export function makeWebSearchUnavailableOutput(
@@ -183,92 +173,6 @@ function canUseAnthropicNativeWebSearch(model: string | undefined): boolean {
 function normalizeModelKey(model: string | undefined): string | null {
   const trimmed = model?.trim().toLowerCase()
   return trimmed || null
-}
-
-function normalizeApiKey(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined
-  }
-  const trimmed = value.trim()
-  return trimmed.length ? trimmed : undefined
-}
-
-async function searchWithTavily(
-  input: Input,
-  apiKey: string,
-  signal: AbortSignal,
-): Promise<ExternalSearchHit[]> {
-  const response = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      query: input.query,
-      max_results: 8,
-      search_depth: 'basic',
-      include_answer: false,
-      include_domains: input.allowed_domains,
-      exclude_domains: input.blocked_domains,
-    }),
-    signal,
-  })
-
-  if (!response.ok) {
-    throw new Error(`Tavily search failed: ${response.status} ${await readErrorBody(response)}`)
-  }
-
-  const body = (await response.json()) as {
-    results?: Array<{ title?: unknown; url?: unknown }>
-  }
-
-  return (body.results ?? [])
-    .map(hit => normalizeHit(hit.title, hit.url))
-    .filter((hit): hit is ExternalSearchHit => hit != null)
-}
-
-async function searchWithBrave(
-  input: Input,
-  apiKey: string,
-  signal: AbortSignal,
-): Promise<ExternalSearchHit[]> {
-  const url = new URL('https://api.search.brave.com/res/v1/web/search')
-  url.searchParams.set('q', applyDomainFiltersToQuery(input))
-  url.searchParams.set('count', '8')
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      'X-Subscription-Token': apiKey,
-    },
-    signal,
-  })
-
-  if (!response.ok) {
-    throw new Error(`Brave search failed: ${response.status} ${await readErrorBody(response)}`)
-  }
-
-  const body = (await response.json()) as {
-    web?: { results?: Array<{ title?: unknown; url?: unknown }> }
-  }
-
-  return (body.web?.results ?? [])
-    .map(hit => normalizeHit(hit.title, hit.url))
-    .filter((hit): hit is ExternalSearchHit => hit != null)
-}
-
-function applyDomainFiltersToQuery(input: Input): string {
-  const allowed = input.allowed_domains?.filter(Boolean) ?? []
-  const blocked = input.blocked_domains?.filter(Boolean) ?? []
-  const allowedClause = allowed.length
-    ? `(${allowed.map(domain => `site:${domain}`).join(' OR ')}) `
-    : ''
-  const blockedClause = blocked.length
-    ? `${blocked.map(domain => `-site:${domain}`).join(' ')} `
-    : ''
-
-  return `${allowedClause}${blockedClause}${input.query}`.trim()
 }
 
 function normalizeHit(title: unknown, url: unknown): ExternalSearchHit | null {
@@ -295,9 +199,4 @@ function makeExternalSearchOutput(
     results: [`Search provider: ${provider}`, result],
     durationSeconds,
   }
-}
-
-async function readErrorBody(response: Response): Promise<string> {
-  const text = await response.text().catch(() => '')
-  return text.slice(0, 500)
 }

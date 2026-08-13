@@ -8,8 +8,6 @@ export type WebSearchMode = 'auto' | 'anthropic' | 'tavily' | 'brave' | 'disable
 
 export type WebSearchSettings = {
   mode?: WebSearchMode
-  tavilyApiKey?: string
-  braveApiKey?: string
 }
 
 export type ModelInfo = {
