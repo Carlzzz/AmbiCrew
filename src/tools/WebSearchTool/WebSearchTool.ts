@@ -265,21 +265,38 @@ export const WebSearchTool = buildTool({
           query,
         },
       })
-      const data = await searchWithExternalProvider(
-        resolved.provider,
-        input,
-        context.abortController.signal,
-      )
-      onProgress?.({
-        toolUseID: `${resolved.provider}-web-search`,
-        data: {
-          type: 'search_results_received',
-          resultCount:
-            typeof data.results[1] === 'object' ? data.results[1].content.length : 0,
-          query,
-        },
-      })
-      return { data }
+      // auto 模式不显式指定 provider，让 proxy 自动选择（brave-only 配置也能工作）
+      const explicitProvider =
+        resolved.settings.mode === 'tavily' || resolved.settings.mode === 'brave'
+          ? resolved.provider
+          : undefined
+      try {
+        const data = await searchWithExternalProvider(
+          explicitProvider,
+          input,
+          context.abortController.signal,
+        )
+        onProgress?.({
+          toolUseID: `${resolved.provider}-web-search`,
+          data: {
+            type: 'search_results_received',
+            resultCount:
+              typeof data.results[1] === 'object' ? data.results[1].content.length : 0,
+            query,
+          },
+        })
+        return { data }
+      } catch (error) {
+        // proxy 不可达或未配置时优雅降级，不把异常抛进 agent loop
+        const durationSeconds = (performance.now() - startTime) / 1000
+        logError(error instanceof Error ? error : new Error(String(error)))
+        const reason = `Web search via proxy is unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+        return {
+          data: makeWebSearchUnavailableOutput(query, durationSeconds, reason),
+        }
+      }
     }
 
     try {
@@ -297,7 +314,7 @@ export const WebSearchTool = buildTool({
       markAnthropicNativeUnsupported(model)
       logError(error instanceof Error ? error : new Error(String(error)))
       const data = await searchWithExternalProvider(
-        'tavily',
+        undefined,
         input,
         context.abortController.signal,
       )

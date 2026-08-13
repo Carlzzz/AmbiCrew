@@ -107,7 +107,7 @@ export function markAnthropicNativeUnsupported(model: string | undefined): void 
 }
 
 export async function searchWithExternalProvider(
-  provider: Exclude<WebSearchProvider, 'anthropic' | 'disabled'>,
+  provider: 'tavily' | 'brave' | undefined,
   input: Input,
   signal: AbortSignal,
 ): Promise<Output> {
@@ -119,7 +119,7 @@ export async function searchWithExternalProvider(
 }
 
 async function searchViaProxy(
-  provider: 'tavily' | 'brave',
+  provider: 'tavily' | 'brave' | undefined,
   input: Input,
   signal: AbortSignal,
 ): Promise<ExternalSearchHit[]> {
@@ -184,19 +184,21 @@ function normalizeHit(title: unknown, url: unknown): ExternalSearchHit | null {
 }
 
 function makeExternalSearchOutput(
-  provider: Exclude<WebSearchProvider, 'anthropic' | 'disabled'>,
+  provider: 'tavily' | 'brave' | undefined,
   query: string,
   hits: ExternalSearchHit[],
   durationSeconds: number,
 ): Output {
+  // 当 provider 未显式指定（auto 模式）时由 proxy 自动选择，这里用通用标签展示。
+  const providerLabel = provider ?? 'proxy'
   const result: SearchResult = {
-    tool_use_id: `${provider}-web-search`,
+    tool_use_id: `${providerLabel}-web-search`,
     content: hits,
   }
 
   return {
     query,
-    results: [`Search provider: ${provider}`, result],
+    results: [`Search provider: ${providerLabel}`, result],
     durationSeconds,
   }
 }
