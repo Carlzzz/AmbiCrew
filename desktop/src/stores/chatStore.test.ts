@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageEntry } from '../types/session'
+import type { UIMessage } from '../types/chat'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
+
+function isAskUserQuestionCard(message: UIMessage): message is Extract<UIMessage, { type: 'tool_use' }> {
+  return message.type === 'tool_use' && message.toolName === 'AskUserQuestion'
+}
 
 const {
   sendMock,
@@ -671,7 +676,7 @@ describe('chatStore history mapping', () => {
 
     const session = useChatStore.getState().sessions[TEST_SESSION_ID]
     const askCards = session?.messages.filter(
-      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+      isAskUserQuestionCard,
     ) ?? []
 
     expect(askCards).toHaveLength(1)
@@ -751,7 +756,7 @@ describe('chatStore history mapping', () => {
     })
 
     const askCards = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.filter(
-      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+      isAskUserQuestionCard,
     ) ?? []
     expect(askCards.map((message) => message.toolUseId)).toEqual([
       'tool-unanswered-1',
@@ -794,7 +799,7 @@ describe('chatStore history mapping', () => {
 
     const session = useChatStore.getState().sessions[TEST_SESSION_ID]
     const askCards = session?.messages.filter(
-      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+      isAskUserQuestionCard,
     ) ?? []
     expect(askCards.map((message) => message.toolUseId)).toEqual(['tool-before-1'])
     expect(session?.pendingPermission).toMatchObject({
@@ -997,7 +1002,7 @@ describe('chatStore history mapping', () => {
     })
 
     const askCards = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages.filter(
-      (message) => message.type === 'tool_use' && message.toolName === 'AskUserQuestion',
+      isAskUserQuestionCard,
     ) ?? []
 
     expect(askCards.map((message) => message.toolUseId)).toEqual([
