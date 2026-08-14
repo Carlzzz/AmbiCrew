@@ -17,6 +17,7 @@ release/
 .vite/
 
 # Environment files (contains secrets)
+desktop/.npmrc
 
 # Claude Code worktrees
 .claude
