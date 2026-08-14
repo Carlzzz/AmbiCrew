@@ -60,9 +60,9 @@ describe('WebSearch backend resolver', () => {
     expect(resolveWebSearchProvider('gpt-5.4', { mode: 'auto' }).provider).toBe('tavily')
   })
 
-  test('explicit provider modes select the provider directly', () => {
+  test('tavily/brave modes are normalized to proxy auto-select', () => {
     expect(resolveWebSearchProvider('gpt-5.4', { mode: 'tavily' }).provider).toBe('tavily')
-    expect(resolveWebSearchProvider('gpt-5.4', { mode: 'brave' }).provider).toBe('brave')
+    expect(resolveWebSearchProvider('gpt-5.4', { mode: 'brave' }).provider).toBe('tavily')
     expect(resolveWebSearchProvider('gpt-5.4', { mode: 'disabled' }).provider).toBe('disabled')
   })
 

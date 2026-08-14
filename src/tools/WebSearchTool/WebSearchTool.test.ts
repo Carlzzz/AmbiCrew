@@ -89,7 +89,7 @@ describe('WebSearchTool call()', () => {
     })
   })
 
-  test('explicit tavily mode still sends the provider to the proxy', async () => {
+  test('tavily mode is normalized to auto and omits provider', async () => {
     mockSettings = { webSearch: { mode: 'tavily' } }
     const { calls } = stubFetch([{ title: 'Example', url: 'https://example.com' }])
 
@@ -102,7 +102,7 @@ describe('WebSearchTool call()', () => {
     )
 
     const body = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>
-    expect(body.provider).toBe('tavily')
+    expect('provider' in body).toBe(false)
   })
 
   test('degrades gracefully when the proxy is unreachable instead of throwing', async () => {

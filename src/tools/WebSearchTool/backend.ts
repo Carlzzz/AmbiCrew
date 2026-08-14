@@ -69,15 +69,13 @@ export function resolveWebSearchProvider(
   const mode = settings.mode ?? 'auto'
 
   if (mode === 'disabled') return { provider: 'disabled', settings }
-  if (mode === 'tavily') return { provider: 'tavily', settings }
-  if (mode === 'brave') return { provider: 'brave', settings }
   if (mode === 'anthropic') {
     return {
       provider: canUseAnthropicNativeWebSearch(model) ? 'anthropic' : 'disabled',
       settings,
     }
   }
-  // auto
+  // auto / tavily / brave 归一化:key 已收敛到 proxy,非 Claude 模型统一走 proxy auto-select
   if (canUseAnthropicNativeWebSearch(model)) return { provider: 'anthropic', settings }
   return { provider: 'tavily', settings }
 }

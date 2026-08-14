@@ -265,14 +265,10 @@ export const WebSearchTool = buildTool({
           query,
         },
       })
-      // auto 模式不显式指定 provider，让 proxy 自动选择（brave-only 配置也能工作）
-      const explicitProvider =
-        resolved.settings.mode === 'tavily' || resolved.settings.mode === 'brave'
-          ? resolved.provider
-          : undefined
       try {
+        // key 已收敛到 proxy,永远不显式指定 provider,让 proxy auto-select
         const data = await searchWithExternalProvider(
-          explicitProvider,
+          undefined,
           input,
           context.abortController.signal,
         )
