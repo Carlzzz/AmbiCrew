@@ -19,8 +19,6 @@ import { getMainLoopModel, getSmallFastModel } from '../../utils/model/model.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import {
-  getApiKeyForProvider,
-  getFallbackProvider,
   isWebSearchEnabledForModel,
   makeWebSearchUnavailableOutput,
   markAnthropicNativeUnsupported,
@@ -254,7 +252,7 @@ export const WebSearchTool = buildTool({
         data: makeWebSearchUnavailableOutput(
           query,
           durationSeconds,
-          'Web search is not configured for this model. Use a Claude model for native web search or add a Tavily/Brave API key in Settings.',
+          'Web search is not configured for this model. Use a Claude model for native web search.',
         ),
       }
     }
@@ -267,33 +265,34 @@ export const WebSearchTool = buildTool({
           query,
         },
       })
-      const apiKey = getApiKeyForProvider(resolved.provider, resolved.settings)
-      if (!apiKey) {
-        const durationSeconds = (performance.now() - startTime) / 1000
-        return {
-          data: makeWebSearchUnavailableOutput(
+      try {
+        // key 已收敛到 proxy,永远不显式指定 provider,让 proxy auto-select
+        const data = await searchWithExternalProvider(
+          undefined,
+          input,
+          context.abortController.signal,
+        )
+        onProgress?.({
+          toolUseID: `${resolved.provider}-web-search`,
+          data: {
+            type: 'search_results_received',
+            resultCount:
+              typeof data.results[1] === 'object' ? data.results[1].content.length : 0,
             query,
-            durationSeconds,
-            `Web search provider ${resolved.provider} is selected but its API key is missing.`,
-          ),
+          },
+        })
+        return { data }
+      } catch (error) {
+        // proxy 不可达或未配置时优雅降级，不把异常抛进 agent loop
+        const durationSeconds = (performance.now() - startTime) / 1000
+        logError(error instanceof Error ? error : new Error(String(error)))
+        const reason = `Web search via proxy is unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+        return {
+          data: makeWebSearchUnavailableOutput(query, durationSeconds, reason),
         }
       }
-      const data = await searchWithExternalProvider(
-        resolved.provider,
-        input,
-        apiKey,
-        context.abortController.signal,
-      )
-      onProgress?.({
-        toolUseID: `${resolved.provider}-web-search`,
-        data: {
-          type: 'search_results_received',
-          resultCount:
-            typeof data.results[1] === 'object' ? data.results[1].content.length : 0,
-          query,
-        },
-      })
-      return { data }
     }
 
     try {
@@ -309,36 +308,10 @@ export const WebSearchTool = buildTool({
       }
 
       markAnthropicNativeUnsupported(model)
-      const fallbackProvider = getFallbackProvider(resolved.settings)
-      if (!fallbackProvider) {
-        const durationSeconds = (performance.now() - startTime) / 1000
-        logError(error instanceof Error ? error : new Error(String(error)))
-        return {
-          data: makeWebSearchUnavailableOutput(
-            query,
-            durationSeconds,
-            'Native Anthropic web search failed for this endpoint, and no Tavily/Brave API key is configured for fallback.',
-          ),
-        }
-      }
-
-      const apiKey = getApiKeyForProvider(fallbackProvider, resolved.settings)
-      if (!apiKey) {
-        const durationSeconds = (performance.now() - startTime) / 1000
-        return {
-          data: makeWebSearchUnavailableOutput(
-            query,
-            durationSeconds,
-            `Fallback provider ${fallbackProvider} is configured without an API key.`,
-          ),
-        }
-      }
-
       logError(error instanceof Error ? error : new Error(String(error)))
       const data = await searchWithExternalProvider(
-        fallbackProvider,
+        undefined,
         input,
-        apiKey,
         context.abortController.signal,
       )
       return { data }

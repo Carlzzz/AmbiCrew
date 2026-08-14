@@ -59,7 +59,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   skipWebFetchPreflight: true,
   desktopNotificationsEnabled: false,
   autoDreamEnabled: true,
-  webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '' },
+  webSearch: { mode: 'auto' },
   replyLanguage: '',
   isLoading: false,
   error: null,
@@ -232,7 +232,5 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 function normalizeWebSearchSettings(settings: WebSearchSettings | undefined): WebSearchSettings {
   return {
     mode: settings?.mode ?? 'auto',
-    tavilyApiKey: settings?.tavilyApiKey ?? '',
-    braveApiKey: settings?.braveApiKey ?? '',
   }
 }

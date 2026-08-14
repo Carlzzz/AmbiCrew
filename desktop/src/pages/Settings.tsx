@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useUpdateStore } from '../stores/updateStore'
 import { useTranslation } from '../i18n'
-import { Input } from '../components/shared/Input'
 import { Button } from '../components/shared/Button'
 import type { PermissionMode, EffortLevel, ThemeMode, WebSearchMode } from '../types/settings'
 import type { Locale } from '../i18n'
@@ -500,60 +499,6 @@ function GeneralSettings() {
                 {label}
               </button>
             ))}
-          </div>
-          <div className="grid grid-cols-1 gap-3">
-            <Input
-              id="web-search-tavily-key"
-              type="password"
-              label={t('settings.general.webSearchTavilyKey')}
-              value={webSearchDraft.tavilyApiKey ?? ''}
-              placeholder="tvly-..."
-              autoComplete="off"
-              onChange={(event) =>
-                setWebSearchDraft({
-                  ...webSearchDraft,
-                  tavilyApiKey: event.target.value,
-                })
-              }
-            />
-            <div className="-mt-1 flex items-center justify-between gap-3 text-xs text-[var(--color-text-tertiary)]">
-              <span>{t('settings.general.webSearchTavilyFreeHint')}</span>
-              <a
-                href="https://app.tavily.com/home"
-                target="_blank"
-                rel="noreferrer"
-                aria-label={t('settings.general.webSearchTavilyApiKeyLink')}
-                className="font-medium text-[var(--color-brand)] hover:underline whitespace-nowrap"
-              >
-                {t('settings.general.webSearchGetApiKey')}
-              </a>
-            </div>
-            <Input
-              id="web-search-brave-key"
-              type="password"
-              label={t('settings.general.webSearchBraveKey')}
-              value={webSearchDraft.braveApiKey ?? ''}
-              placeholder={t('settings.general.webSearchBravePlaceholder')}
-              autoComplete="off"
-              onChange={(event) =>
-                setWebSearchDraft({
-                  ...webSearchDraft,
-                  braveApiKey: event.target.value,
-                })
-              }
-            />
-            <div className="-mt-1 flex items-center justify-between gap-3 text-xs text-[var(--color-text-tertiary)]">
-              <span>{t('settings.general.webSearchBraveFreeHint')}</span>
-              <a
-                href="https://api-dashboard.search.brave.com/app/keys"
-                target="_blank"
-                rel="noreferrer"
-                aria-label={t('settings.general.webSearchBraveApiKeyLink')}
-                className="font-medium text-[var(--color-brand)] hover:underline whitespace-nowrap"
-              >
-                {t('settings.general.webSearchGetApiKey')}
-              </a>
-            </div>
           </div>
           <div className="mt-4 flex flex-col gap-3">
             <p className="text-xs text-[var(--color-text-tertiary)] leading-5">

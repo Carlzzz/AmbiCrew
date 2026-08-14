@@ -337,7 +337,7 @@ export async function getAnthropicClient({
   return new Anthropic(clientConfig)
 }
 
-async function configureApiKeyHeaders(
+export async function configureApiKeyHeaders(
   headers: Record<string, string>,
   isNonInteractiveSession: boolean,
 ): Promise<void> {
@@ -393,7 +393,7 @@ function isLLMDirectMode(): boolean {
   return true
 }
 
-function getCustomBaseUrl(): string | null {
+export function getCustomBaseUrl(): string | null {
   // LLM_DIRECT_MODE: bypass CrewProxy, use ANTHROPIC_BASE_URL directly
   if (isLLMDirectMode()) {
     const raw = process.env.ANTHROPIC_BASE_URL?.trim()
