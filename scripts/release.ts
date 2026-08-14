@@ -17,7 +17,7 @@ const root = path.resolve(import.meta.dir, '..')
 
 const VERSION_FILES = [
   {
-    path: path.join(root, 'desktop/package.json'),
+    path: path.join(root, 'desktop/src-tauri/tauri.conf.json'),
     update(content: string, version: string) {
       return content.replace(/"version":\s*"[^"]*"/, `"version": "${version}"`)
     },
@@ -25,10 +25,10 @@ const VERSION_FILES = [
 ]
 
 function getCurrentVersion(): string {
-  const pkg = JSON.parse(
-    readFileSync(path.join(root, 'desktop/package.json'), 'utf-8'),
+  const conf = JSON.parse(
+    readFileSync(path.join(root, 'desktop/src-tauri/tauri.conf.json'), 'utf-8'),
   )
-  return pkg.version
+  return conf.version
 }
 
 function getReleaseNotesPath(version: string): string {
@@ -115,7 +115,7 @@ console.log('  Creating git commit...')
 await run([
   'git',
   'add',
-  'desktop/package.json',
+  'desktop/src-tauri/tauri.conf.json',
   path.relative(root, releaseNotesPath),
 ])
 await run(['git', 'commit', '-m', `release: v${next}`])

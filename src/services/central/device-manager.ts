@@ -5,9 +5,8 @@
  * Key differences from the Electron version:
  * - Device UUID persisted to ~/.claude/device.json (instead of SQLite)
  * - No GUI dialogs; uses console + process.exit for reboot
- * - No app.getVersion(); reads the version from APP_VERSION (injected by the
- *   Tauri launcher from CARGO_PKG_VERSION), falling back to the MACRO global
- *   (injected by preload.ts) for non-desktop runs.
+ * - No app.getVersion(); reads the version from the MACRO global (injected by
+ *   preload.ts from the build-baked CLAUDE_CODE_LOCAL_VERSION).
  */
 
 import os from 'node:os'
@@ -86,7 +85,6 @@ export async function getDeviceInfo(): Promise<DeviceInfo> {
     mac_address: mac,
     os_version: `${os.type()} ${os.release()}`,
     client_version:
-      process.env.APP_VERSION ||
       (typeof MACRO !== 'undefined' && MACRO?.VERSION) ||
       '0.0.0',
     platform: process.platform,

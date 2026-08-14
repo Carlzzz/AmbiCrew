@@ -428,7 +428,7 @@ export class DiagnosticsService {
 
   private buildAppInfo(): Record<string, unknown> {
     return this.sanitizeValue({
-      appVersion: process.env.APP_VERSION || '999.0.0-local',
+      appVersion: typeof MACRO !== 'undefined' ? MACRO.VERSION : 'unknown',
       platform: process.platform,
       arch: process.arch,
       node: process.version,

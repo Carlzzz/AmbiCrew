@@ -31,16 +31,16 @@ const resourcesDir = path.join(desktopDir, 'resources')
 // CLAUDE_CODE_LOCAL_VERSION at startup to populate MACRO.VERSION (used by
 // `/version`, the auto-updater, and the CrewCentral device heartbeat). Without
 // this, the compiled binary falls back to '999.0.0-local'. Source of truth is
-// desktop/package.json, kept in sync with tauri.conf.json.
+// desktop/src-tauri/tauri.conf.json.
 function resolveAppVersion(): string {
   if (process.env.CLAUDE_CODE_LOCAL_VERSION) {
     return process.env.CLAUDE_CODE_LOCAL_VERSION
   }
   try {
-    const pkg = JSON.parse(readFileSync(path.join(desktopDir, 'package.json'), 'utf-8')) as {
+    const conf = JSON.parse(readFileSync(path.join(desktopDir, 'src-tauri', 'tauri.conf.json'), 'utf-8')) as {
       version?: string
     }
-    if (pkg.version) return pkg.version
+    if (conf.version) return conf.version
   } catch {
     // fall through to default
   }

@@ -402,7 +402,6 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
             .current_dir(&repo_root)
             .env("SERVER_PORT", port.to_string())
             .env("DESKTOP_MODE", "1")
-            .env("APP_VERSION", env!("CARGO_PKG_VERSION"))
             .env("CLAUDE_RUNTIME_DIR", repo_root.join("runtime").to_string_lossy().to_string())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -415,7 +414,6 @@ fn start_server_inner(app: &AppHandle) -> Result<(), String> {
         cmd.args(["server", "--app-root", &resource_dir])
             .env("SERVER_PORT", port.to_string())
             .env("DESKTOP_MODE", "1")
-            .env("APP_VERSION", env!("CARGO_PKG_VERSION"))
             .env("CLAUDE_RUNTIME_DIR", format!("{}/runtime", resource_dir))
             .env("CLAUDE_APP_ROOT", &resource_dir)
             .env("AUTH_MODE", std::env::var("AUTH_MODE").unwrap_or_else(|_| "central".to_string()))

@@ -9,14 +9,14 @@ const sidecarsDir = path.join(desktopRoot, 'src-tauri', 'sidecars')
 // CLAUDE_CODE_LOCAL_VERSION to populate MACRO.VERSION (used by `/version`, the
 // auto-updater, and the CrewCentral device heartbeat). A compiled binary runs
 // where this env var is absent, so we inline it at build time via Bun's
-// `define`. Source of truth: desktop/package.json (synced with tauri.conf.json).
+// `define`. Source of truth: desktop/src-tauri/tauri.conf.json.
 async function resolveAppVersion(): Promise<string> {
   if (process.env.CLAUDE_CODE_LOCAL_VERSION) return process.env.CLAUDE_CODE_LOCAL_VERSION
   try {
-    const pkg = JSON.parse(await readFile(path.join(desktopRoot, 'package.json'), 'utf-8')) as {
+    const conf = JSON.parse(await readFile(path.join(desktopRoot, 'src-tauri', 'tauri.conf.json'), 'utf-8')) as {
       version?: string
     }
-    if (pkg.version) return pkg.version
+    if (conf.version) return conf.version
   } catch {
     // fall through to default
   }

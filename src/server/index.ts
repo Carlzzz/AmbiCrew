@@ -300,7 +300,7 @@ export function startServer(port = PORT, host = HOST) {
       // Health check
       if (url.pathname === '/health') {
         return Response.json(
-          { status: 'ok', version: process.env.APP_VERSION || 'unknown', timestamp: new Date().toISOString() },
+          { status: 'ok', version: typeof MACRO !== 'undefined' ? MACRO.VERSION : 'unknown', timestamp: new Date().toISOString() },
           { headers: corsHeaders(origin) },
         )
       }
