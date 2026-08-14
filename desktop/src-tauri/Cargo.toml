@@ -1,6 +1,6 @@
 [package]
 name = "ambicrew"
-version = "3.2.2"
+version = "3.2.3"
 description = "AmbiCrew - Enterprise AI Development Environment"
 authors = ["Ambilight"]
 edition = "2021"
