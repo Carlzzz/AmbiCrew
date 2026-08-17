@@ -2,6 +2,7 @@ import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { findToolByName, type ToolUseContext } from '../../Tool.js'
 import type { AssistantMessage, Message } from '../../types/message.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { all } from '../../utils/generators.js'
 import { type MessageUpdateLazy, runToolUse } from './toolExecution.js'
 
@@ -124,6 +125,10 @@ async function* runToolsSerially(
   let currentContext = toolUseContext
 
   for (const toolUse of toolUseMessages) {
+    const toolStart = performance.now()
+    logForDebugging(
+      `toolOrchestration: serial tool start name=${toolUse.name} id=${toolUse.id}`,
+    )
     toolUseContext.setInProgressToolUseIDs(prev =>
       new Set(prev).add(toolUse.id),
     )
@@ -146,6 +151,11 @@ async function* runToolsSerially(
       }
     }
     markToolUseAsComplete(toolUseContext, toolUse.id)
+    logForDebugging(
+      `toolOrchestration: serial tool done name=${toolUse.name} id=${toolUse.id} duration_ms=${Math.round(
+        performance.now() - toolStart,
+      )}`,
+    )
   }
 }
 
@@ -157,6 +167,10 @@ async function* runToolsConcurrently(
 ): AsyncGenerator<MessageUpdateLazy, void> {
   yield* all(
     toolUseMessages.map(async function* (toolUse) {
+      const toolStart = performance.now()
+      logForDebugging(
+        `toolOrchestration: concurrent tool start name=${toolUse.name} id=${toolUse.id}`,
+      )
       toolUseContext.setInProgressToolUseIDs(prev =>
         new Set(prev).add(toolUse.id),
       )
@@ -171,6 +185,11 @@ async function* runToolsConcurrently(
         toolUseContext,
       )
       markToolUseAsComplete(toolUseContext, toolUse.id)
+      logForDebugging(
+        `toolOrchestration: concurrent tool done name=${toolUse.name} id=${toolUse.id} duration_ms=${Math.round(
+          performance.now() - toolStart,
+        )}`,
+      )
     }),
     getMaxToolUseConcurrency(),
   )

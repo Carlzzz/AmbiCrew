@@ -2,6 +2,7 @@ import {
   configureApiKeyHeaders,
   getCustomBaseUrl,
 } from '../../services/api/client.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import type { Input, Output, SearchResult } from './WebSearchTool.js'
@@ -129,6 +130,10 @@ async function searchViaProxy(
   }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   await configureApiKeyHeaders(headers, false)
+  logForDebugging(
+    `WebSearchTool searchViaProxy: fetch start provider=${provider} query=${input.query}`,
+  )
+  const fetchStart = performance.now()
   const response = await fetch(`${baseUrl}/v1/websearch`, {
     method: 'POST',
     headers,
@@ -140,6 +145,11 @@ async function searchViaProxy(
     }),
     signal,
   })
+  logForDebugging(
+    `WebSearchTool searchViaProxy: fetch done status=${response.status} duration_ms=${Math.round(
+      performance.now() - fetchStart,
+    )}`,
+  )
   if (!response.ok) {
     throw new Error(`Web search via proxy failed: ${response.status}`)
   }

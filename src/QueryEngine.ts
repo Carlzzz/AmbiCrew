@@ -1066,6 +1066,13 @@ export class QueryEngine {
       result?.type === 'assistant'
         ? (last(result.message.content)?.type ?? 'none')
         : 'n/a'
+    const edeContentTypes = Array.isArray(result?.message?.content)
+      ? result.message.content
+          .map(c =>
+            typeof c === 'object' && c !== null && 'type' in c ? c.type : typeof c,
+          )
+          .join(',')
+      : 'n/a'
 
     // Flush buffered transcript writes before yielding result.
     // The desktop app kills the CLI process immediately after receiving the
@@ -1109,7 +1116,7 @@ export class QueryEngine {
             ? all.lastIndexOf(errorLogWatermark) + 1
             : 0
           return [
-            `[ede_diagnostic] result_type=${edeResultType} last_content_type=${edeLastContentType} stop_reason=${lastStopReason}`,
+            `[ede_diagnostic] result_type=${edeResultType} last_content_type=${edeLastContentType} content_types=${edeContentTypes} stop_reason=${lastStopReason}`,
             ...all.slice(start).map(_ => _.error),
           ]
         })(),
