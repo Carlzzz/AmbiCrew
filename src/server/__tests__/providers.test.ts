@@ -427,6 +427,26 @@ describe('ProviderService', () => {
       })
     })
 
+    test('CrewCentral buildManagedEnv ignores ANTHROPIC_BASE_URL env (stale-loop guard)', async () => {
+      const prevProxy = process.env.LLM_PROXY_BASE_URL
+      const prevAnthropic = process.env.ANTHROPIC_BASE_URL
+      try {
+        delete process.env.LLM_PROXY_BASE_URL
+        process.env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:3456'
+
+        const svc = new ProviderService()
+        const runtimeEnv = await svc.getProviderRuntimeEnv('crewcentral-default')
+
+        // 不回读 ANTHROPIC_BASE_URL：它来自 settings.json 写回，会循环固化 stale 值
+        expect(runtimeEnv.ANTHROPIC_BASE_URL).not.toBe('http://127.0.0.1:3456')
+      } finally {
+        if (prevProxy === undefined) delete process.env.LLM_PROXY_BASE_URL
+        else process.env.LLM_PROXY_BASE_URL = prevProxy
+        if (prevAnthropic === undefined) delete process.env.ANTHROPIC_BASE_URL
+        else process.env.ANTHROPIC_BASE_URL = prevAnthropic
+      }
+    })
+
     test('should honor provider auth env strategies on activation and runtime env', async () => {
       const svc = new ProviderService()
 

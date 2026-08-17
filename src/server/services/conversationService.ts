@@ -861,6 +861,7 @@ export class ConversationService {
     const PROVIDER_ENV_KEYS = [
       'ANTHROPIC_API_KEY',
       'ANTHROPIC_BASE_URL',
+      'LLM_PROXY_BASE_URL',
       'ANTHROPIC_AUTH_TOKEN',
       'ANTHROPIC_MODEL',
       'ANTHROPIC_DEFAULT_HAIKU_MODEL',

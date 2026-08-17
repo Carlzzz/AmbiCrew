@@ -399,11 +399,13 @@ export class ProviderService {
       ...(provider.modelContextWindows ?? {}),
     }
 
-    // CrewCentral: baseUrl comes from LLM_PROXY_BASE_URL env var, auth via JWT
+    // CrewCentral: baseUrl comes from the authoritative provider config
+    // (providers.json). Never read ANTHROPIC_BASE_URL here — that value is
+    // written back from settings.json, so reading it loops a stale URL.
     if (provider.presetId === 'crewcentral') {
       const proxyBaseUrl =
+        provider.baseUrl ||
         process.env.LLM_PROXY_BASE_URL?.trim() ||
-        process.env.ANTHROPIC_BASE_URL?.trim() ||
         ''
       return {
         ...getPresetDefaultEnv(provider.presetId),
