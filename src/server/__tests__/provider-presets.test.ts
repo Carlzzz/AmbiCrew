@@ -97,18 +97,15 @@ describe('provider presets API', () => {
     expect(kimi?.defaultEnv?.CC_HAHA_SEND_DISABLED_THINKING).toBe('1')
     expect(minimax?.authStrategy).toBe('auth_token')
     expect(minimax?.defaultModels.main).toBe('MiniMax-M3')
-    expect(minimax?.modelContextWindows?.['MiniMax-M3']).toBe(800000)
     expect(jiekouai?.baseUrl).toBe('https://api.jiekou.ai/anthropic')
     expect(jiekouai?.authStrategy).toBe('auth_token')
     expect(jiekouai?.defaultModels.main).toBe('claude-sonnet-4-6')
     expect(jiekouai?.defaultModels.opus).toBe('claude-opus-4-7')
     expect(jiekouai?.defaultEnv?.ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES).toBe('none')
-    expect(jiekouai?.modelContextWindows?.['claude-sonnet-4-6']).toBe(1000000)
     expect(shengsuanyun?.baseUrl).toBe('https://router.shengsuanyun.com/api')
     expect(shengsuanyun?.authStrategy).toBe('auth_token')
     expect(shengsuanyun?.defaultModels.main).toBe('anthropic/claude-sonnet-4.6')
     expect(shengsuanyun?.defaultModels.haiku).toBe('anthropic/claude-haiku-4.5:thinking')
-    expect(shengsuanyun?.modelContextWindows?.['anthropic/claude-sonnet-4.6']).toBe(1000000)
   })
 
   test('configured presets can expose optional API key and promo metadata', () => {
@@ -120,7 +117,6 @@ describe('provider presets API', () => {
     const minimax = PROVIDER_PRESETS.find((preset) => preset.id === 'minimax')
     const jiekouai = PROVIDER_PRESETS.find((preset) => preset.id === 'jiekouai')
     const shengsuanyun = PROVIDER_PRESETS.find((preset) => preset.id === 'shengsuanyun')
-    const crewcentral = PROVIDER_PRESETS.find((preset) => preset.id === 'crewcentral')
 
     expect(lmstudio?.needsApiKey).toBe(false)
     expect(lmstudio?.promoText).toContain('http://localhost:1234')
@@ -135,15 +131,10 @@ describe('provider presets API', () => {
       ANTHROPIC_AUTH_TOKEN: 'ollama',
     })
     expect(deepseek?.apiKeyUrl).toBe('https://platform.deepseek.com/api_keys')
-    expect(deepseek?.modelContextWindows?.['deepseek-v4-pro']).toBe(800000)
-    expect(deepseek?.modelContextWindows?.['deepseek-v4-flash']).toBe(800000)
     expect(zhipu?.apiKeyUrl).toBe('https://www.bigmodel.cn/invite?icode=d41B2qi8Z5xNwTGLNPPF3OZLO2QH3C0EBTSr%2BArzMw4%3D')
     expect(zhipu?.promoText).toContain('AmbiCrew')
     expect(zhipu?.defaultEnv?.CC_HAHA_SEND_DISABLED_THINKING).toBe('1')
-    expect(zhipu?.modelContextWindows?.['glm-5.2']).toBe(800000)
-    expect(zhipu?.modelContextWindows?.['glm-4.5-air']).toBe(128000)
     expect(kimi?.apiKeyUrl).toBe('https://platform.kimi.com/console/api-keys')
-    expect(kimi?.modelContextWindows?.['kimi-k2.6']).toBe(262144)
     expect(minimax?.apiKeyUrl).toBe('https://platform.minimaxi.com/subscribe/token-plan?code=1TG2Cseab2&source=link')
     expect(jiekouai?.apiKeyUrl).toBe('https://jiekou.ai/referral?invited_code=OBNU3K')
     expect(jiekouai?.promoText).toContain('官方 8 折')
@@ -156,11 +147,6 @@ describe('provider presets API', () => {
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'none',
     })
-    expect(shengsuanyun?.modelContextWindows?.['anthropic/claude-opus-4.7']).toBe(1000000)
-    expect(crewcentral?.modelContextWindows?.['gpt-5.6-luna']).toBe(272000)
-    expect(crewcentral?.modelContextWindows?.['gpt-5.6-sol']).toBe(272000)
-    expect(crewcentral?.modelContextWindows?.['gpt-5.6-terra']).toBe(272000)
-    expect(crewcentral?.modelContextWindows?.['claude-opus-4-8']).toBe(1000000)
   })
 
   test('GET and PUT /api/providers/settings read and write AmbiCrew settings.json', async () => {

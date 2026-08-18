@@ -32,12 +32,6 @@
       "ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES": "thinking,effort,adaptive_thinking,max_effort",
       "ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES": "thinking,effort,adaptive_thinking,max_effort",
       "ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES": "thinking,effort,adaptive_thinking,max_effort"
-    },
-    "modelContextWindows": {
-      "deepseek-v4-pro": 800000,
-      "deepseek-v4-flash": 800000,
-      "deepseek-chat": 800000,
-      "deepseek-reasoner": 800000
     }
   },
   {
@@ -58,10 +52,6 @@
     "authStrategy": "auth_token",
     "defaultEnv": {
       "CC_HAHA_SEND_DISABLED_THINKING": "1"
-    },
-    "modelContextWindows": {
-      "glm-5.2": 800000,
-      "glm-4.5-air": 128000
     }
   },
   {
@@ -81,14 +71,6 @@
     "authStrategy": "auth_token",
     "defaultEnv": {
       "CC_HAHA_SEND_DISABLED_THINKING": "1"
-    },
-    "modelContextWindows": {
-      "kimi-k2.6": 262144,
-      "kimi-k2.5": 262144,
-      "kimi-k2-0905-preview": 262144,
-      "kimi-k2-turbo-preview": 262144,
-      "kimi-k2-thinking": 262144,
-      "kimi-k2-thinking-turbo": 262144
     }
   },
   {
@@ -105,17 +87,7 @@
     "needsApiKey": true,
     "websiteUrl": "https://platform.minimaxi.com",
     "apiKeyUrl": "https://platform.minimaxi.com/subscribe/token-plan?code=1TG2Cseab2&source=link",
-    "authStrategy": "auth_token",
-    "modelContextWindows": {
-      "MiniMax-M3": 800000,
-      "MiniMax-M2.7": 204800,
-      "MiniMax-M2.7-highspeed": 204800,
-      "MiniMax-M2.5": 204800,
-      "MiniMax-M2.5-highspeed": 204800,
-      "MiniMax-M2.1": 204800,
-      "MiniMax-M2.1-highspeed": 204800,
-      "MiniMax-M2": 204800
-    }
+    "authStrategy": "auth_token"
   },
   {
     "id": "jiekouai",
@@ -136,12 +108,6 @@
     "authStrategy": "auth_token",
     "defaultEnv": {
       "ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES": "none"
-    },
-    "modelContextWindows": {
-      "claude-sonnet-4-6": 1000000,
-      "claude-haiku-4-5-20251001": 200000,
-      "claude-haiku-4-5": 200000,
-      "claude-opus-4-7": 1000000
     }
   },
   {
@@ -165,11 +131,6 @@
       "API_TIMEOUT_MS": "3000000",
       "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
       "ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES": "none"
-    },
-    "modelContextWindows": {
-      "anthropic/claude-sonnet-4.6": 1000000,
-      "anthropic/claude-haiku-4.5:thinking": 200000,
-      "anthropic/claude-opus-4.7": 1000000
     }
   },
   {
@@ -223,16 +184,6 @@
     },
     "needsApiKey": false,
     "websiteUrl": "",
-    "promoText": "通过 CrewCentral 中控统一认证，LLM 请求经由 CrewProxy 网关路由和用量统计。",
-    "modelContextWindows": {
-      "deepseek-v4-flash": 800000,
-      "MiniMax-M3": 800000,
-      "MiniMax-M2.7-highspeed": 204800,
-      "MiniMax-M2.7": 204800,
-      "gpt-5.6-luna": 272000,
-      "gpt-5.6-sol": 272000,
-      "gpt-5.6-terra": 272000,
-      "claude-opus-4-8": 1000000
-    }
+    "promoText": "通过 CrewCentral 中控统一认证，LLM 请求经由 CrewProxy 网关路由和用量统计。"
   }
 ]

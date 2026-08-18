@@ -46,10 +46,7 @@ export const SavedProviderSchema = z.object({
   apiFormat: ApiFormatSchema.default('anthropic'),
   models: ModelMappingSchema,
   autoCompactWindow: AutoCompactWindowSchema.optional(),
-  modelContextWindows: ModelContextWindowsSchema.optional(),
-  // Real context windows advertised by CrewProxy /models. Internal cache,
-  // not user-editable; kept separate so it never overwrites the user's
-  // hand-set modelContextWindows. Merged at spawn: preset < proxy < user.
+  // Real context windows advertised by CrewProxy /models. Sole source; no preset/user merge.
   proxyModelContextWindows: ModelContextWindowsSchema.optional(),
   notes: z.string().optional(),
 })
@@ -68,7 +65,6 @@ export const CreateProviderSchema = z.object({
   apiFormat: ApiFormatSchema.default('anthropic'),
   models: ModelMappingSchema,
   autoCompactWindow: AutoCompactWindowSchema.optional(),
-  modelContextWindows: ModelContextWindowsSchema.optional(),
   notes: z.string().optional(),
 })
 
@@ -80,7 +76,6 @@ export const UpdateProviderSchema = z.object({
   apiFormat: ApiFormatSchema.optional(),
   models: ModelMappingSchema.optional(),
   autoCompactWindow: AutoCompactWindowSchema.nullable().optional(),
-  modelContextWindows: ModelContextWindowsSchema.nullable().optional(),
   notes: z.string().optional(),
 })
 
