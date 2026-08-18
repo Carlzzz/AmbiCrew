@@ -33,16 +33,15 @@ function sampleInput(overrides?: Partial<CreateProviderInput>): CreateProviderIn
 }
 
 describe('persistProxyModelContextWindows', () => {
-  test('stores proxy windows without touching user modelContextWindows', async () => {
+  test('stores proxy windows', async () => {
     const svc = new ProviderService()
-    const p = await svc.addProvider(sampleInput({ modelContextWindows: { m1: 100 } }))
+    const p = await svc.addProvider(sampleInput())
 
     await svc.persistProxyModelContextWindows(p.id, { m1: 999, m2: 272000 })
 
     const { providers } = await svc.listProviders()
     const saved = providers.find((x) => x.id === p.id)!
     expect(saved.proxyModelContextWindows).toEqual({ m1: 999, m2: 272000 })
-    expect(saved.modelContextWindows).toEqual({ m1: 100 })
   })
 
   test('merges into existing proxy cache and is a no-op for empty input', async () => {
@@ -61,17 +60,14 @@ describe('persistProxyModelContextWindows', () => {
 
 import { MODEL_CONTEXT_WINDOWS_ENV_KEY } from '../../utils/model/modelContextWindows.js'
 
-describe('env merge priority: user > proxy > preset', () => {
-  test('user modelContextWindows wins over proxy; proxy-only keys kept', async () => {
+describe('env carries proxy windows', () => {
+  test('proxy windows are serialized into env; no user override', async () => {
     const svc = new ProviderService()
-    const p = await svc.addProvider(
-      sampleInput({ modelContextWindows: { shared: 111 } }),
-    )
+    const p = await svc.addProvider(sampleInput())
     await svc.persistProxyModelContextWindows(p.id, { shared: 222, proxyOnly: 333 })
 
     const env = await svc.getProviderRuntimeEnv(p.id)
     const parsed = JSON.parse(env[MODEL_CONTEXT_WINDOWS_ENV_KEY]!) as Record<string, number>
-    expect(parsed.shared).toBe(111)
-    expect(parsed.proxyOnly).toBe(333)
+    expect(parsed).toEqual({ shared: 222, proxyOnly: 333 })
   })
 })

@@ -61,7 +61,6 @@ function buildDefaultCrewCentralProvider(): SavedProvider {
     baseUrl: process.env.LLM_PROXY_BASE_URL?.trim() || preset.baseUrl,
     apiFormat: preset.apiFormat,
     models: preset.defaultModels,
-    ...(preset.modelContextWindows && { modelContextWindows: preset.modelContextWindows }),
   }
 }
 
@@ -95,10 +94,6 @@ function omitAuthEnv(env: Record<string, string>): Record<string, string> {
 
 function getPresetAuthStrategy(presetId: string): ProviderAuthStrategy {
   return PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.authStrategy ?? 'auth_token'
-}
-
-function getPresetModelContextWindows(presetId: string): Record<string, number> {
-  return PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.modelContextWindows ?? {}
 }
 
 function buildProviderAuthEnv(
@@ -254,7 +249,6 @@ export class ProviderService {
       apiFormat: input.apiFormat ?? 'anthropic',
       models: input.models,
       ...(input.autoCompactWindow !== undefined && { autoCompactWindow: input.autoCompactWindow }),
-      ...(input.modelContextWindows !== undefined && { modelContextWindows: input.modelContextWindows }),
       ...(input.notes !== undefined && { notes: input.notes }),
     }
 
@@ -278,14 +272,10 @@ export class ProviderService {
       ...(input.apiFormat !== undefined && { apiFormat: input.apiFormat }),
       ...(input.models !== undefined && { models: input.models }),
       ...(typeof input.autoCompactWindow === 'number' && { autoCompactWindow: input.autoCompactWindow }),
-      ...(input.modelContextWindows !== undefined && input.modelContextWindows !== null && { modelContextWindows: input.modelContextWindows }),
       ...(input.notes !== undefined && { notes: input.notes }),
     }
     if (input.autoCompactWindow === null) {
       delete updated.autoCompactWindow
-    }
-    if (input.modelContextWindows === null) {
-      delete updated.modelContextWindows
     }
 
     index.providers[idx] = updated
@@ -300,10 +290,10 @@ export class ProviderService {
 
   /**
    * Persist real context windows advertised by CrewProxy /models into the
-   * provider's internal proxyModelContextWindows cache (merging, new keys
-   * win). Never touches user-set modelContextWindows. No-op for empty input
-   * or unknown provider. Re-syncs settings if the provider is active so the
-   * merged window reaches the next CLI spawn.
+   * provider's proxyModelContextWindows cache (merging, new keys win). This
+   * cache is the sole context-window source. No-op for empty input or unknown
+   * provider. Re-syncs settings if the provider is active so the window
+   * reaches the next CLI spawn.
    */
   async persistProxyModelContextWindows(
     providerId: string,
@@ -391,13 +381,8 @@ export class ProviderService {
       ? `http://127.0.0.1:${ProviderService.serverPort}${proxyPath}`
       : provider.baseUrl
 
-    // Priority (low → high): preset < proxy-advertised real windows < user-set.
-    // User's hand-set values always win; proxy fills gaps the preset misses.
-    const modelContextWindows = {
-      ...getPresetModelContextWindows(provider.presetId),
-      ...(provider.proxyModelContextWindows ?? {}),
-      ...(provider.modelContextWindows ?? {}),
-    }
+    // Sole source: real windows advertised by CrewProxy /models.
+    const modelContextWindows = provider.proxyModelContextWindows ?? {}
 
     // CrewCentral: baseUrl comes from the authoritative provider config
     // (providers.json). Never read ANTHROPIC_BASE_URL here — that value is

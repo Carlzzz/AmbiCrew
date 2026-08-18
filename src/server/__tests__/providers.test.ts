@@ -173,21 +173,6 @@ describe('ProviderService', () => {
 
       expect(provider.autoCompactWindow).toBe(64000)
     })
-
-    test('should preserve optional model context windows', async () => {
-      const svc = new ProviderService()
-      const provider = await svc.addProvider(sampleInput({
-        modelContextWindows: {
-          'model-main': 300000,
-          'model-haiku': 128000,
-        },
-      }))
-
-      expect(provider.modelContextWindows).toEqual({
-        'model-main': 300000,
-        'model-haiku': 128000,
-      })
-    })
   })
 
   // ─── getProvider ─────────────────────────────────────────────────────────
@@ -284,36 +269,6 @@ describe('ProviderService', () => {
       env = settings.env as Record<string, string>
       expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
     })
-
-    test('updating active provider should override and clear model context windows', async () => {
-      const svc = new ProviderService()
-      const added = await svc.addProvider(sampleInput({
-        modelContextWindows: { 'model-main': 300000 },
-      }))
-      await svc.activateProvider(added.id)
-
-      let settings = await readSettings()
-      let env = settings.env as Record<string, string>
-      expect(JSON.parse(env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toEqual({
-        'model-main': 300000,
-      })
-
-      await svc.updateProvider(added.id, {
-        modelContextWindows: { 'model-main': 500000 },
-      })
-
-      settings = await readSettings()
-      env = settings.env as Record<string, string>
-      expect(JSON.parse(env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toEqual({
-        'model-main': 500000,
-      })
-
-      await svc.updateProvider(added.id, { modelContextWindows: null })
-
-      settings = await readSettings()
-      env = settings.env as Record<string, string>
-      expect(env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS).toBeUndefined()
-    })
   })
 
   // ─── deleteProvider ──────────────────────────────────────────────────────
@@ -408,23 +363,12 @@ describe('ProviderService', () => {
       expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
     })
 
-    test('CrewCentral runtime env should include preset model context windows', async () => {
+    test('CrewCentral runtime env has no context windows until proxy backfills', async () => {
       const svc = new ProviderService()
 
       const runtimeEnv = await svc.getProviderRuntimeEnv('crewcentral-default')
-      const modelContextWindows = JSON.parse(
-        runtimeEnv.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS,
-      ) as Record<string, number>
 
-      expect(modelContextWindows).toMatchObject({
-        'MiniMax-M3': 800000,
-        'MiniMax-M2.7-highspeed': 204800,
-        'MiniMax-M2.7': 204800,
-        'gpt-5.6-luna': 272000,
-        'gpt-5.6-sol': 272000,
-        'gpt-5.6-terra': 272000,
-        'claude-opus-4-8': 1000000,
-      })
+      expect(runtimeEnv.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS).toBeUndefined()
     })
 
     test('CrewCentral buildManagedEnv ignores ANTHROPIC_BASE_URL env (stale-loop guard)', async () => {
@@ -514,21 +458,13 @@ describe('ProviderService', () => {
       expect(env.API_TIMEOUT_MS).toBe('3000000')
       expect(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
       expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
-      expect(JSON.parse(env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toEqual({
-        'anthropic/claude-sonnet-4.6': 1000000,
-        'anthropic/claude-haiku-4.5:thinking': 200000,
-        'anthropic/claude-opus-4.7': 1000000,
-      })
+      expect(env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS).toBeUndefined()
 
       const runtimeEnv = await svc.getProviderRuntimeEnv(provider.id)
       expect(runtimeEnv.API_TIMEOUT_MS).toBe('3000000')
       expect(runtimeEnv.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
       expect(runtimeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
-      expect(JSON.parse(runtimeEnv.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toEqual({
-        'anthropic/claude-sonnet-4.6': 1000000,
-        'anthropic/claude-haiku-4.5:thinking': 200000,
-        'anthropic/claude-opus-4.7': 1000000,
-      })
+      expect(runtimeEnv.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS).toBeUndefined()
 
       await svc.activateOfficial()
       const clearedSettings = await readSettings()
