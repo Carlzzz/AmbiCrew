@@ -5,7 +5,7 @@ import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
-import { getConfiguredOrBuiltInModelContextWindow } from './model/modelContextWindows.js'
+import { getConfiguredModelContextWindow } from './model/modelContextWindows.js'
 
 // Default fallback when the model-specific capability is unknown.
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -73,7 +73,7 @@ export function getContextWindowForModel(
     return 1_000_000
   }
 
-  const configuredWindow = getConfiguredOrBuiltInModelContextWindow(model)
+  const configuredWindow = getConfiguredModelContextWindow(model)
   if (configuredWindow !== undefined) {
     if (
       configuredWindow > MODEL_CONTEXT_WINDOW_DEFAULT &&
