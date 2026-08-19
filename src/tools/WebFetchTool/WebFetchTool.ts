@@ -93,7 +93,11 @@ export const WebFetchTool = buildTool({
     return outputSchema()
   },
   isConcurrencySafe() {
-    return true
+    // 与 WebSearch 同一竞态：前端 permission_request 队列在同一时刻收到
+    // 多个同工具请求时会把后到的标记为"已响应"但不回发 control_response，
+    // sidecar 侧 Promise 永挂 → agent loop 卡死。串行化 WebFetch 让权限
+    // 弹窗一次只弹一个，规避该竞态。前端根因另行排查。
+    return false
   },
   isReadOnly() {
     return true
