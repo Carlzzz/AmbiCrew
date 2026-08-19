@@ -187,7 +187,11 @@ export const WebSearchTool = buildTool({
     return outputSchema()
   },
   isConcurrencySafe() {
-    return true
+    // 前端 permission_request 队列在同一时刻收到多个同工具请求时存在
+    // 去重/合并 bug：会把后到的请求标记为"已响应"但不回发 control_response，
+    // 导致 sidecar 侧 Promise 永挂、agent loop 卡死。串行化 WebSearch
+    // 让权限弹窗一次只弹一个，规避该竞态。
+    return false
   },
   isReadOnly() {
     return true
