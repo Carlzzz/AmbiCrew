@@ -1483,11 +1483,21 @@ export class ConversationService {
   }
 }
 
+// 用户点"本次会话允许"时，某些工具原生的 suggestions 是细粒度规则
+// （例如 WebFetch 的 domain:xxx.com），意图是分域名授权，但 UI 上"本次会话允许"
+// 的按钮文案让用户预期"整工具授权"——只点一次不会再问。忽略这些细粒度 suggestions,
+// 一律降级为整工具规则，行为对齐 WebSearch。
+const TOOL_WIDE_SESSION_APPROVE = new Set(['WebFetch'])
+
 function normalizeSessionPermissionUpdates(
   suggestions: unknown[] | undefined,
   toolName: string,
 ) {
-  if (Array.isArray(suggestions) && suggestions.length > 0) {
+  if (
+    !TOOL_WIDE_SESSION_APPROVE.has(toolName) &&
+    Array.isArray(suggestions) &&
+    suggestions.length > 0
+  ) {
     return suggestions.map((suggestion) => {
       if (!suggestion || typeof suggestion !== 'object') {
         return suggestion
