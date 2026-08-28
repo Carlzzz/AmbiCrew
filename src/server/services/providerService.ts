@@ -356,16 +356,74 @@ export class ProviderService {
   }
 
   async ensureActiveProviderSynced(): Promise<void> {
-    const index = await this.readIndex()
+    let index = await this.readIndex()
     if (!index.activeId) return
-    const provider = index.providers.find((p) => p.id === index.activeId)
+    let provider = index.providers.find((p) => p.id === index.activeId)
     if (!provider || provider.presetId === 'official') return
+
+    if (provider.presetId === 'crewcentral') {
+      const defaults = await this.fetchCrewCentralDefaults(provider)
+      if (defaults) {
+        const idx = index.providers.findIndex((p) => p.id === provider!.id)
+        if (idx !== -1) {
+          const updated: SavedProvider = { ...provider, models: defaults }
+          index.providers[idx] = updated
+          await this.writeIndex(index)
+          provider = updated
+        }
+      }
+    }
+
     const env = this.buildManagedEnv(provider)
     await this.syncToSettings(provider)
     for (const [key, value] of Object.entries(env)) {
       if (value && !process.env[key]) {
         process.env[key] = value
       }
+    }
+  }
+
+  /** Pull default model IDs from CrewProxy GET /models. CrewCentral-only.
+   *  Silent on any failure (no token, network error, timeout, bad shape) —
+   *  callers keep the existing local models and the server startup path
+   *  is never blocked. Timeout is deliberately tighter than /api/models
+   *  (3s vs 8s) to keep the boot path responsive. */
+  private async fetchCrewCentralDefaults(
+    provider: SavedProvider,
+  ): Promise<{ main: string; haiku: string; sonnet: string; opus: string } | undefined> {
+    const baseUrl =
+      provider.baseUrl?.trim() ||
+      process.env.LLM_PROXY_BASE_URL?.trim() ||
+      ''
+    if (!baseUrl) return undefined
+
+    let token = ''
+    try {
+      const { getCentralAccessToken } = await import('../../utils/auth.js')
+      token = (await getCentralAccessToken()) || ''
+    } catch {}
+    if (!token) {
+      try {
+        const { loadTokens } = await import('../../services/central/token-store.js')
+        const payload = await loadTokens()
+        token = payload?.access_token || ''
+      } catch {}
+    }
+    if (!token) return undefined
+
+    try {
+      const { parseProxyDefaults } = await import('../../services/central/proxy-client.js')
+      const url = baseUrl.replace(/\/+$/, '') + '/models'
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(3_000),
+      })
+      if (!resp.ok) return undefined
+      const data = (await resp.json().catch(() => null)) as { defaults?: unknown } | null
+      return parseProxyDefaults(data?.defaults)
+    } catch {
+      return undefined
     }
   }
 
