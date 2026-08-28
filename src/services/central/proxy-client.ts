@@ -23,6 +23,29 @@ export interface ProxyModelItem {
   contextWindow?: number
 }
 
+/** Client-facing defaults advertised by CrewProxy GET /models. All four slots
+ *  required — a partial payload is rejected upstream (proxy config validation)
+ *  and treated as absent here. */
+export interface ProxyDefaultModels {
+  main: string
+  haiku: string
+  sonnet: string
+  opus: string
+}
+
+export function parseProxyDefaults(raw: unknown): ProxyDefaultModels | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const rec = raw as Record<string, unknown>
+  const fields: Array<keyof ProxyDefaultModels> = ['main', 'haiku', 'sonnet', 'opus']
+  const out: Partial<ProxyDefaultModels> = {}
+  for (const key of fields) {
+    const value = rec[key]
+    if (typeof value !== 'string' || value.trim() === '') return undefined
+    out[key] = value.trim()
+  }
+  return out as ProxyDefaultModels
+}
+
 /**
  * Parse raw /models items into ProxyModelItem[]. Extracted as a pure function
  * so context_window parsing is unit-testable without a live proxy.
@@ -200,7 +223,7 @@ export async function fetchProxyModelList(
     throw err
   }
 
-  const data = (await parseJsonSafe(resp)) as { items?: unknown }
+  const data = (await parseJsonSafe(resp)) as { items?: unknown; defaults?: unknown }
   if (!data || typeof data !== 'object' || !Array.isArray(data.items)) {
     const err = new Error(toUserMessage('INVALID_RESPONSE'))
     ;(err as Error & { category?: ProxyErrorCategory }).category = 'INVALID_RESPONSE'
@@ -208,8 +231,9 @@ export async function fetchProxyModelList(
   }
 
   const items = parseProxyModelItems(data.items)
+  const defaults = parseProxyDefaults(data.defaults)
 
-  return { items }
+  return { items, ...(defaults !== undefined && { defaults }) }
 }
 
 /**

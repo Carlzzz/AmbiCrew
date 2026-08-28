@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { parseProxyModelItems } from './proxy-client.js'
+import { parseProxyModelItems, parseProxyDefaults } from './proxy-client.js'
 
 describe('parseProxyModelItems context_window parsing', () => {
   test('parses context_window when present and positive', () => {
@@ -31,5 +31,28 @@ describe('parseProxyModelItems context_window parsing', () => {
     expect(items[0]!.modelAlias).toBe('m1')
     expect(items[0]!.imageSupport).toBe(true)
     expect(items[0]!.contextWindow).toBe(128000)
+  })
+})
+
+describe('parseProxyDefaults', () => {
+  test('returns four-slot mapping when payload is well-formed', () => {
+    const d = parseProxyDefaults({ main: 'a', haiku: 'b', sonnet: 'c', opus: 'd' })
+    expect(d).toEqual({ main: 'a', haiku: 'b', sonnet: 'c', opus: 'd' })
+  })
+
+  test('returns undefined when any slot is missing', () => {
+    expect(parseProxyDefaults({ main: 'a', haiku: 'b', sonnet: 'c' })).toBeUndefined()
+    expect(parseProxyDefaults({})).toBeUndefined()
+  })
+
+  test('returns undefined when any slot is empty or non-string', () => {
+    expect(parseProxyDefaults({ main: '', haiku: 'b', sonnet: 'c', opus: 'd' })).toBeUndefined()
+    expect(parseProxyDefaults({ main: 'a', haiku: 42, sonnet: 'c', opus: 'd' })).toBeUndefined()
+  })
+
+  test('returns undefined for non-object input', () => {
+    expect(parseProxyDefaults(undefined)).toBeUndefined()
+    expect(parseProxyDefaults(null)).toBeUndefined()
+    expect(parseProxyDefaults('nope')).toBeUndefined()
   })
 })
