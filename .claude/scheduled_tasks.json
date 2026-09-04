@@ -1,3 +1,34 @@
 {
-  "tasks": []
+  "tasks": [
+    {
+      "id": "aa758000",
+      "cron": "0 9 * * *",
+      "prompt": "test prompt",
+      "createdAt": 1788492002690,
+      "recurring": true,
+      "name": "test-name",
+      "description": "test description",
+      "folder": "/test/folder",
+      "model": "claude-opus-4-7",
+      "permissionMode": "ask",
+      "worktree": false,
+      "frequency": "daily",
+      "scheduledTime": "09:00"
+    },
+    {
+      "id": "72cc4070",
+      "cron": "0 9 * * *",
+      "prompt": "test prompt",
+      "createdAt": 1788492143257,
+      "recurring": true,
+      "name": "test-name",
+      "description": "test description",
+      "folder": "/test/folder",
+      "model": "claude-opus-4-7",
+      "permissionMode": "ask",
+      "worktree": false,
+      "frequency": "daily",
+      "scheduledTime": "09:00"
+    }
+  ]
 }

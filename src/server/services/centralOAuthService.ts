@@ -195,7 +195,10 @@ export class CentralOAuthService {
   }
 
   async refreshToken(): Promise<string | null> {
-    const refreshToken = getRefreshToken()
+    // 磁盘优先：桌面端登录回调由 Tauri Rust 层直接写 token 文件，本进程
+    // 内存里的旧 refresh token 可能在磁盘上已被替换，刷新前必须回读。
+    const payload = await loadTokens()
+    const refreshToken = payload?.refresh_token ?? getRefreshToken()
     if (!refreshToken) return null
 
     const base = deriveApiBase(this.getLoginUrl())

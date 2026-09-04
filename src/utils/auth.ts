@@ -224,10 +224,11 @@ export async function getCentralAccessToken(): Promise<string | null> {
   if (!isCentralAuthMode()) return null
   try {
     const { getAccessToken, loadTokens } = await import('../services/central/token-store.js')
-    const token = getAccessToken()
-    if (token) return token
+    // 磁盘优先：桌面端登录回调由 Tauri Rust 层直接写 token 文件，本进程
+    // 内存缓存不会同步更新，必须回读磁盘才能拿到登录后的新 token。
     const payload = await loadTokens()
-    return payload?.access_token ?? null
+    if (payload?.access_token) return payload.access_token
+    return getAccessToken()
   } catch (err) {
     console.error('[auth] getCentralAccessToken failed:', err instanceof Error ? err.message : String(err))
     return null
